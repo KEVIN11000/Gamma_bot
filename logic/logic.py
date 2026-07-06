@@ -150,7 +150,7 @@ class AgenteAutonomoHoras:
                 self._guardar_log(log_msg)
                 return f"✅ *{nombre}* registrado a las {hora_ahora}."
 
-        return "ℹ️ Ya completaste todos los registros de hoy."
+        return "ℹ️ Ya completaste todos los registros of hoy."
 
     def ejecutar_cierre_periodo_manual(self):
         base_path = "/home/kevin11000/mysite"
@@ -196,19 +196,6 @@ class AgenteAutonomoHoras:
             self._guardar_log(error_msj)
             return error_msj
 
-    """def _parsear_horas_a_decimal(self, valor_str: str) -> float:
-        valor_str = str(valor_str).strip()
-        if not valor_str:
-            return 0.0
-        try:
-            if ':' in valor_str:
-                partes = valor_str.split(':')
-                return int(partes[0]) + int(partes[1]) / 60
-            valor_float = float(valor_str)
-            return valor_float * 24 if valor_float < 2 else valor_float
-        except (ValueError, IndexError):
-            return 0.0"""
-
     def _parsear_horas_a_decimal(self, valor_str: str) -> float:
         valor_str = str(valor_str).strip().replace(',','.')
 
@@ -217,7 +204,7 @@ class AgenteAutonomoHoras:
 
         try:
             if ':' in valor_str:
-                partes = valor_str.splt(':')
+                partes = valor_str.split(':') # Corregido typo 'splt' -> 'split'
                 return int(partes[0]) + int(partes[1]) / 60
 
             valor_float = float(valor_str)
@@ -545,3 +532,58 @@ class AgenteAutonomoHoras:
         except Exception as e:
             self._guardar_log(f"❌ Error al persistir el nuevo aviso en avisos.json: {e}")
             return f"❌ Error interno al guardar en la base de datos: {str(e)}"
+
+    def obtener_lista_avisos(self):
+        """Devuelve la lista completa de todos los avisos programados haciendo antes una limpieza de expirados."""
+        base_path = "/home/kevin11000/mysite"
+        path_json = os.path.join(base_path, "avisos.json")
+        if not os.path.exists(path_json):
+            return []
+        try:
+            with open(path_json, "r", encoding="utf-8") as f:
+                avisos = json.load(f)
+        except Exception:
+            return []
+
+        ahora = datetime.now(tz_py)
+        avisos_filtrados = []
+        modificado = False
+
+        for aviso in avisos:
+            try:
+                fecha_ev = datetime.strptime(aviso["fecha_evento"], "%d/%m/%Y %H:%M")
+                fecha_ev = tz_py.localize(fecha_ev) if fecha_ev.tzinfo is None else fecha_ev
+                if ahora <= fecha_ev:
+                    avisos_filtrados.append(aviso)
+                else:
+                    modificado = True
+            except Exception:
+                modificado = True
+
+        if modificado:
+            try:
+                with open(path_json, "w", encoding="utf-8") as f:
+                    json.dump(avisos_filtrados, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                self._guardar_log(f"❌ Error al guardar en obtener_lista_avisos: {e}")
+
+        return avisos_filtrados
+
+    def eliminar_aviso_por_indice(self, index: int):
+        """Elimina un aviso específico por su posición en la lista y persiste el cambio."""
+        base_path = "/home/kevin11000/mysite"
+        path_json = os.path.join(base_path, "avisos.json")
+        if not os.path.exists(path_json):
+            return None
+        try:
+            with open(path_json, "r", encoding="utf-8") as f:
+                avisos = json.load(f)
+
+            if 0 <= index < len(avisos):
+                aviso_eliminado = avisos.pop(index)
+                with open(path_json, "w", encoding="utf-8") as f:
+                    json.dump(avisos, f, indent=2, ensure_ascii=False)
+                return aviso_eliminado["titulo"]
+        except Exception as e:
+            self._guardar_log(f"❌ Error al eliminar aviso por índice: {e}")
+        return None

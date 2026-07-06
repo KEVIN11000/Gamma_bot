@@ -31,22 +31,7 @@ class GAMMA:
         self._registrar_manejadores()
 
     def _guardar_log(self, mensaje):
-        """
-        Registra un mensaje en el archivo de log del sistema.
-
-        Agrega cada entrada con timestamp al archivo gen_log.txt.
-        Si el archivo no existe, lo crea automáticamente.
-
-        Args:
-            mensaje (str): Texto a registrar en el log.
-
-        Raises:
-            OSError: Si no hay permisos de escritura en el directorio destino.
-
-        Example:
-            self._guardar_log("Proceso iniciado correctamente")
-            # Escribe: [2026-06-15 10:32:45] Proceso iniciado correctamente
-        """
+        """Registra un mensaje en el archivo de log del sistema con timestamp."""
         timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
         path = os.path.join("/home/kevin11000/mysite", "gen_log.txt")
         otpt = f"[{timestamp}] {mensaje}\n"
@@ -134,13 +119,21 @@ class GAMMA:
                 self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
                 return
             self._procesar_callback_aviso(call)
-        # ── Comando AVISOS ────────────────────────────────────────────────────
+
+        # ── Comando AVISOS (CORREGIDO Y INTEGRADO) ─────────────────────────────
         @self.bot.message_handler(commands=['avisos'])
         def comando_avisos(message):
             if not self._es_autorizado(message.from_user.id):
                 self._rechazar(message)
-            return
+                return
             self._cmd_avisos(message)
+
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith("borrar_"))
+        def callback_borrar_aviso(call):
+            if not self._es_autorizado(call.from_user.id):
+                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
+                return
+            self._procesar_callback_borrar_aviso(call)
 
     def _registrar_comandos_menu(self):
         """Sincroniza el menú '/' de Telegram con los comandos del bot."""
@@ -164,6 +157,7 @@ class GAMMA:
                 "*Comandos disponibles:*\n"
                 "▶️ /marcar — Registrar entrada o salida\n"
                 "✍️ /aviso  — Agendar recordatorios con lenguaje natural\n"
+                "📋 /avisos — Gestionar recordatorios activos\n"
                 "🔒 /cierre — Ejecutar cierre de período\n"
                 "🔄 /start  — Reestablecer este menú\n"
                 "━━━━━━━━━━━━━━━━━━━━━"
@@ -212,15 +206,11 @@ class GAMMA:
                 self.bot.edit_message_text("❌ Cierre cancelado.", chat_id, msg_id)
                 return
 
-            # FLUJO 1: Confirmación de cierre
             if call.data == "cierre_confirmar":
                 self.bot.edit_message_text("⚙️ Ejecutando cierre de período en Google Sheets...", chat_id, msg_id)
                 respuesta = self.agente_excel.ejecutar_cierre_periodo_manual()
-
-                # Enviamos el resultado del cierre
                 self.bot.send_message(chat_id, respuesta, parse_mode="Markdown")
 
-                # Desplegamos la pregunta sobre los descuentos
                 teclado = InlineKeyboardMarkup()
                 teclado.row(
                     InlineKeyboardButton("✅ Sí, aplicar descuento", callback_data="cierre_descuento_si"),
@@ -234,13 +224,11 @@ class GAMMA:
                 )
                 return
 
-            # FLUJO 2: El usuario indicó que NO hay descuento
             if call.data == "cierre_descuento_no":
                 self.bot.edit_message_text("✅ Generando reporte sin descuentos...", chat_id, msg_id)
                 self._generar_y_enviar_reporte(call.message, descuento=0)
                 return
 
-            # FLUJO 3: El usuario indicó que SÍ hay descuento
             if call.data == "cierre_descuento_si":
                 msg = self.bot.edit_message_text(
                     "✍️ *Por favor, enviame el monto exacto a descontar.*\n"
@@ -255,17 +243,10 @@ class GAMMA:
         except Exception as e:
             self.bot.send_message(call.message.chat.id, f"❌ Error interno en cierre: {str(e)}")
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # NUEVOS MÉTODOS AUXILIARES PARA EL REPORTE
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _capturar_monto_descuento(self, message):
-        """Atrapa el texto del usuario y valida que sea un número para el descuento."""
         try:
             texto_ingresado = message.text.strip().replace(".", "").replace(",", "")
             monto_descuento = float(texto_ingresado)
-
-            # Si es exitoso, procedemos a generar el reporte
             self._generar_y_enviar_reporte(message, descuento=monto_descuento)
         except ValueError:
             self.bot.reply_to(
@@ -276,10 +257,7 @@ class GAMMA:
             )
 
     def _generar_y_enviar_reporte(self, message_obj, descuento):
-        """Se encarga de pedirle el PDF a la lógica y enviarlo por Telegram."""
         self.bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF...")
-
-        # Pasamos el descuento a la función que modificamos en logic.py
         ruta_pdf, msg_pdf = self.agente_excel.generar_reporte_pdf(descuento=descuento)
 
         if ruta_pdf:
@@ -293,33 +271,22 @@ class GAMMA:
         else:
             self.bot.send_message(message_obj.chat.id, msg_pdf)
 
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # 🆕 MÉTODOS DE LA FASE 3: MANEJO DEL FLUJO DE AVISOS INTERACTIVOS
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _capturar_frase_aviso_secuencial(self, message):
-        """Captura la frase si el usuario optó por el flujo interactivo sin argumentos."""
         if not message.text or message.text.startswith('/'):
             self.bot.reply_to(message, "❌ Operación cancelada. No enviaste una frase válida.")
             return
         self._procesar_frase_aviso(message, message.text)
 
     def _procesar_frase_aviso(self, message, frase: str):
-        """Envía la frase a la IA y despliega la tarjeta de confirmación."""
         msg_espera = self.bot.send_message(message.chat.id, "🧠 Analizando frase con Gemini...")
-
-        # Consultamos a la lógica construida en la Fase 2
         datos_ia = self.agente_excel.interpretar_frase_con_ia(frase)
 
         if "error" in datos_ia:
             self.bot.edit_message_text(f"❌ {datos_ia['error']}", message.chat.id, msg_espera.message_id)
             return
 
-        # Almacenamos el JSON resultante en la caché usando el chat_id como llave
         self.avisos_pendientes[message.chat.id] = datos_ia
 
-        # Construimos el teclado interactivo
         teclado = InlineKeyboardMarkup()
         teclado.row(
             InlineKeyboardButton("✅ Guardar Aviso", callback_data="aviso_confirmar"),
@@ -345,18 +312,15 @@ class GAMMA:
         )
 
     def _procesar_callback_aviso(self, call):
-        """Maneja la pulsación de los botones Guardar o Cancelar aviso."""
         try:
             self.bot.answer_callback_query(call.id)
             chat_id = call.message.chat.id
 
             if call.data == "aviso_cancelar":
-                # Limpiamos la caché y editamos
                 self.avisos_pendientes.pop(chat_id, None)
                 self.bot.edit_message_text("❌ Registro de aviso cancelado.", chat_id, call.message.message_id)
                 return
 
-            # Si es confirmar, extraemos los datos guardados en caché
             datos_evento = self.avisos_pendientes.get(chat_id)
 
             if not datos_evento:
@@ -364,37 +328,86 @@ class GAMMA:
                 return
 
             self.bot.edit_message_text("💾 Escribiendo en la base de datos de Google Sheets...", chat_id, call.message.message_id)
-
-            # ── CONEXIÓN CON PLANILLA (Se consolidará en la Fase 4) ───────────
-            # Llamamos a un método (que crearemos a continuación en logic.py)
             resultado_escritura = self.agente_excel.guardar_nuevo_aviso_en_sheets(datos_evento)
-
-            # Limpiamos la caché tras la operación
             self.avisos_pendientes.pop(chat_id, None)
-
-            # Mostramos el feedback final
             self.bot.edit_message_text(resultado_escritura, chat_id, call.message.message_id, parse_mode="Markdown")
 
         except Exception as e:
             self.bot.send_message(call.message.chat.id, f"❌ Error al procesar confirmación: {str(e)}")
 
     def _cmd_avisos(self, message):
-        """Envía al chat la lista de avisos activos registrados en Sheets."""
+        """Muestra el panel interactivo con la lista de recordatorios y botones de borrado."""
         user = message.from_user
-        self._guardar_log(
-            f"[/avisos] Solicitado por ID: {user.id} | @{user.username or 'sin username'}"
-        )
+        self._guardar_log(f"[/avisos] Panel de gestión solicitado por ID: {user.id}")
         try:
-            respuesta = self.agente_excel.verificar_avisos_activos()
+            lista_avisos = self.agente_excel.obtener_lista_avisos()
 
-            if not respuesta or not respuesta.strip():
-                self._guardar_log(f"[/avisos] Sin avisos activos para ID: {user.id}")
-                self.bot.reply_to(message, "📭 No hay avisos activos en este momento.")
+            if not lista_avisos:
+                self.bot.reply_to(message, "📭 No tenés ningún aviso programado en este momento.")
                 return
 
-            self._guardar_log(f"[/avisos] Lista enviada correctamente a ID: {user.id}")
-            self.bot.reply_to(message, respuesta, parse_mode="Markdown")
+            texto = "📋 *TUS RECORDATORIOS ACTIVOS*\n━━━━━━━━━━━━━━━━━━━━━\n"
+            teclado = InlineKeyboardMarkup()
+            botones_fila = []
+
+            for idx, aviso in enumerate(lista_avisos):
+                texto += f"*{idx + 1}.* ⏳ *{aviso['titulo']}*\n    📅 {aviso['fecha_evento']} hs.\n\n"
+
+                btn = InlineKeyboardButton(f"❌ Borrar {idx + 1}", callback_data=f"borrar_{idx}")
+                botones_fila.append(btn)
+
+                if len(botones_fila) == 2:
+                    teclado.row(*botones_fila)
+                    botones_fila = []
+
+            if botones_fila:
+                teclado.row(*botones_fila)
+
+            texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
+            self.bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
 
         except Exception as e:
-            self._guardar_log(f"[/avisos] ERROR — {type(e).__name__}: {str(e)} | Usuario ID: {user.id}")
-            self.bot.reply_to(message, f"❌ Error al obtener avisos: {type(e).__name__} - {str(e)}")
+            self._guardar_log(f"❌ Error en _cmd_avisos: {str(e)}")
+            self.bot.reply_to(message, f"❌ Error al cargar el panel de avisos: {str(e)}")
+
+    def _procesar_callback_borrar_aviso(self, call):
+        """Procesa la baja física del aviso y redibuja la lista en tiempo real."""
+        try:
+            self.bot.answer_callback_query(call.id)
+            chat_id = call.message.chat.id
+            msg_id = call.message.message_id
+
+            indice = int(call.data.split("_")[1])
+            titulo_eliminado = self.agente_excel.eliminar_aviso_por_indice(indice)
+
+            if titulo_eliminado:
+                self.bot.send_message(chat_id, f"🗑️ El aviso *'{titulo_eliminado}'* fue eliminado correctamente.", parse_mode="Markdown")
+            else:
+                self.bot.send_message(chat_id, "❌ El aviso seleccionado ya no existe.")
+                return
+
+            # RE-RENDERIZADO: Volvemos a leer y a actualizar la misma tarjeta visual
+            lista_avisos = self.agente_excel.obtener_lista_avisos()
+            if not lista_avisos:
+                self.bot.edit_message_text("📭 No te quedan más avisos programados.", chat_id, msg_id)
+                return
+
+            texto = "📋 *TUS RECORDATORIOS ACTIVOS*\n━━━━━━━━━━━━━━━━━━━━━\n"
+            teclado = InlineKeyboardMarkup()
+            botones_fila = []
+
+            for idx, aviso in enumerate(lista_avisos):
+                texto += f"*{idx + 1}.* ⏳ *{aviso['titulo']}*\n    📅 {aviso['fecha_evento']} hs.\n\n"
+                btn = InlineKeyboardButton(f"❌ Borrar {idx + 1}", callback_data=f"borrar_{idx}")
+                botones_fila.append(btn)
+                if len(botones_fila) == 2:
+                    teclado.row(*botones_fila)
+                    botones_fila = []
+            if botones_fila:
+                teclado.row(*botones_fila)
+
+            texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
+            self.bot.edit_message_text(texto, chat_id, msg_id, parse_mode="Markdown", reply_markup=teclado)
+
+        except Exception as e:
+            self.bot.send_message(call.message.chat.id, f"❌ Error al procesar la baja del aviso: {str(e)}")
