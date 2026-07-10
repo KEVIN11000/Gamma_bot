@@ -30,7 +30,8 @@
 ```text
 mysite/
 │
-├── bot.py                  # Orquestador del Bot, manejadores de comandos y botones
+├── com/
+|   └──bot.py               # Orquestador del Bot, manejadores de comandos y botones
 ├── logic/
 │   └── logic.py            # Núcleo lógico: Sheets, PDF, Gemini e hilos de control
 ├── reportes/               # Repositorio local de PDFs contables generados
