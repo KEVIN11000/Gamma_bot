@@ -109,87 +109,24 @@ class GAMMA:
 
         # ── 🆕 COMANDO AVISO (Fase 3) ─────────────────────────────────────────
         @self.bot.message_handler(commands=['aviso'])
-        def _cmd_avisos(self, message):
-            """Muestra la lista de todos los avisos futuros y permite borrarlos interactivamente."""
-            user = message.from_user
-            self._guardar_log(f"[/avisos] Panel de gestión solicitado por ID: {user.id}")
-            try:
-                lista_avisos = self.agente_excel.obtener_lista_avisos()
+        def comando_aviso(message):
+            if not self._es_autorizado(message.from_user.id):
+                self._rechazar(message)
+                return
 
-                if not lista_avisos:
-                    self.bot.reply_to(message, "📭 No tenés ningún aviso programado en este momento.")
-                    return
-
-                texto = "📋 *TUS RECORDATORIOS ACTIVOS*\n━━━━━━━━━━━━━━━━━━━━━\n"
-                teclado = InlineKeyboardMarkup()
-                
-                botones_fila = []
-                for idx, aviso in enumerate(lista_avisos):
-                    texto += f"*{idx + 1}.* ⏳ *{aviso['titulo']}*\n    📅 {aviso['fecha_evento']} hs.\n\n"
-                    
-                    # Botón con callback apuntando al índice físico del arreglo
-                    btn = InlineKeyboardButton(f"❌ Borrar {idx + 1}", callback_data=f"borrar_{idx}")
-                    botones_fila.append(btn)
-                    
-                    # Acomodamos de a 2 botones por fila para optimizar el espacio en móviles
-                    if len(botones_fila) == 2:
-                        teclado.row(*botones_fila)
-                        botones_fila = []
-                
-                if botones_fila:
-                    teclado.row(*botones_fila)
-
-                texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
-                self.bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
-
-            except Exception as e:
-                self._guardar_log(f"❌ Error en _cmd_avisos: {str(e)}")
-                self.bot.reply_to(message, f"❌ Error al cargar el panel de avisos: {str(e)}")
-
-        def _procesar_callback_borrar_aviso(self, call):
-            """Ejecuta la baja del aviso seleccionado y actualiza el panel visual sin reenviar mensajes."""
-            try:
-                self.bot.answer_callback_query(call.id)
-                chat_id = call.message.chat.id
-                msg_id = call.message.message_id
-                
-                # Recuperamos el índice (ej: "borrar_2" -> 2)
-                indice = int(call.data.split("_")[1])
-                
-                # Mandamos la orden a la lógica de negocio
-                titulo_eliminado = self.agente_excel.eliminar_aviso_por_indice(indice)
-                
-                if titulo_eliminado:
-                    self.bot.send_message(chat_id, f"🗑️ El aviso *'{titulo_eliminado}'* fue eliminado correctamente.", parse_mode="Markdown")
-                else:
-                    self.bot.send_message(chat_id, "❌ El aviso seleccionado ya no existe o ya fue eliminado.")
-                    return
-
-                # RE-RENDERIZADO EN TIEMPO REAL: Traemos la lista actualizada para refrescar la pantalla
-                lista_avisos = self.agente_excel.obtener_lista_avisos()
-                if not lista_avisos:
-                    self.bot.edit_message_text("📭 No te quedan más avisos programados.", chat_id, msg_id)
-                    return
-                    
-                texto = "📋 *TUS RECORDATORIOS ACTIVOS*\n━━━━━━━━━━━━━━━━━━━━━\n"
-                teclado = InlineKeyboardMarkup()
-                botones_fila = []
-                
-                for idx, aviso in enumerate(lista_avisos):
-                    texto += f"*{idx + 1}.* ⏳ *{aviso['titulo']}*\n    📅 {aviso['fecha_evento']} hs.\n\n"
-                    btn = InlineKeyboardButton(f"❌ Borrar {idx + 1}", callback_data=f"borrar_{idx}")
-                    botones_fila.append(btn)
-                    if len(botones_fila) == 2:
-                        teclado.row(*botones_fila)
-                        botones_fila = []
-                if botones_fila:
-                    teclado.row(*botones_fila)
-                    
-                texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
-                self.bot.edit_message_text(texto, chat_id, msg_id, parse_mode="Markdown", reply_markup=teclado)
-                
-            except Exception as e:
-                self.bot.send_message(call.message.chat.id, f"❌ Error al procesar la baja del aviso: {str(e)}")
+            # Extrae la frase que viene después del comando /aviso
+            partes = message.text.split(maxsplit=1)
+            if len(partes) > 1:
+                self._procesar_frase_aviso(message, partes[1])
+            else:
+                # Si escribió solo /aviso, le pide amablemente la frase usando el flujo secuencial
+                msg = self.bot.reply_to(
+                    message,
+                    "✍️ *Por favor, escribí qué querés agendar.*\n"
+                    "Ejemplo: `entregar el laboratorio de mecatrónica mañana a las 4 y media`",
+                    parse_mode="Markdown"
+                )
+                self.bot.register_next_step_handler(msg, self._capturar_frase_aviso_secuencial)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("aviso_"))
         def callback_aviso(call):
