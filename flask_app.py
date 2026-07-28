@@ -39,6 +39,8 @@ def deploy():
     """
     Endpoint llamado por el webhook de GitHub en cada push a Main-stable.
     Valida la firma HMAC-SHA256 con GITHUB_WEBHOOK_SECRET para seguridad.
+    Tras el git pull, toca el archivo WSGI para forzar el reload de la app
+    en PythonAnywhere (funciona en cuentas gratuitas sin API externa).
     """
     secret = os.environ.get('GITHUB_WEBHOOK_SECRET', '').encode()
 
@@ -58,6 +60,7 @@ def deploy():
 
     # 3. Ejecutar git pull
     base_path = "/home/kevin11000/mysite"
+    wsgi_path = "/var/www/kevin11000_pythonanywhere_com_wsgi.py"
     try:
         resultado = subprocess.run(
             ["git", "pull", "origin", "Main-stable"],
@@ -72,7 +75,13 @@ def deploy():
         if resultado.returncode != 0:
             return f"❌ git pull falló:\n{salida}", 500
 
-        return f"✅ Deploy exitoso:\n{salida}", 200
+        # 4. Tocar el WSGI para que PythonAnywhere recargue la app
+        # (equivalente a hacer click en "Reload" en el panel web)
+        if os.path.exists(wsgi_path):
+            os.utime(wsgi_path, None)
+            print("[deploy] WSGI tocado — app recargando...", flush=True)
+
+        return f"✅ Deploy exitoso y app recargada:\n{salida}", 200
 
     except subprocess.TimeoutExpired:
         return "❌ Timeout en git pull", 500
