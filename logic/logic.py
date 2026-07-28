@@ -245,8 +245,8 @@ class AgenteAutonomoHoras:
 
             total_decimal = sum(self._parsear_horas_a_decimal(f[col_horas]) for f in filas_datos if col_horas < len(f))
             h_enteras = int(total_decimal)
-            m_resto = (total_decimal - h_enteras)
-            total_str = f"{h_enteras},{m_resto:02d}"
+            m_resto = int(round((total_decimal - h_enteras) * 60))
+            total_str = f"{h_enteras}h {m_resto:02d}m"
 
             salario_bruto = total_decimal * self.MONTO_POR_HORA
             salario_neto = salario_bruto - float(descuento)
@@ -587,3 +587,24 @@ class AgenteAutonomoHoras:
         except Exception as e:
             self._guardar_log(f"❌ Error al eliminar aviso por índice: {e}")
         return None
+
+    def obtener_nombres_hojas(self, limite: int = 6) -> list:
+        """
+        Devuelve los títulos de las últimas `limite` hojas del spreadsheet,
+        excluyendo la hoja activa actual (donde se están registrando las marcas).
+        Se usa para el comando /reporte para que el usuario elija el período.
+        """
+        try:
+            base_path = "/home/kevin11000/mysite"
+            path_txt = os.path.join(base_path, "periodo_actual.txt")
+            hoja_activa = ""
+            if os.path.exists(path_txt):
+                with open(path_txt, "r", encoding="utf-8") as f:
+                    hoja_activa = f.read().strip()
+
+            hojas = self.wb.worksheets()
+            nombres = [h.title for h in hojas if h.title != hoja_activa]
+            return nombres[-limite:][::-1]  # Las más recientes primero
+        except Exception as e:
+            self._guardar_log(f"❌ Error en obtener_nombres_hojas: {e}")
+            return []
