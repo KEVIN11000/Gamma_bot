@@ -182,19 +182,37 @@ class AgenteAutonomoHoras:
             nombre_hoja_nueva = f"Periodo_{ahora.strftime('%d_%m_%Y')}"
 
         try:
-            nueva_hoja = self.wb.add_worksheet(title=nombre_hoja_nueva, rows="60", cols="10")
-            encabezados = ["Dia", "Fecha", "Hora entrada", "Salgo almuerzo", "Vuelta almuerzo", "Hora salida", "Horas"]
-            nueva_hoja.update("A1:G1", [encabezados])
+            # ── Verificar si la hoja destino ya existe ────────────────────────
+            titulos_existentes = [h.title for h in self.wb.worksheets()]
+            hoja_ya_existia = nombre_hoja_nueva in titulos_existentes
 
+            if hoja_ya_existia:
+                # La hoja ya fue creada (cierre previo parcial): la reutilizamos
+                nueva_hoja = self.wb.worksheet(nombre_hoja_nueva)
+                self._guardar_log(f"⚠️ La hoja '{nombre_hoja_nueva}' ya existía. Reutilizando sin recrear encabezados.")
+                mensaje_creacion = f"⚠️ La pestaña *{nombre_hoja_nueva}* ya existía y fue reutilizada."
+            else:
+                # Flujo normal: crear hoja nueva con encabezados
+                nueva_hoja = self.wb.add_worksheet(title=nombre_hoja_nueva, rows="60", cols="10")
+                encabezados = ["Dia", "Fecha", "Hora entrada", "Salgo almuerzo", "Vuelta almuerzo", "Hora salida", "Horas"]
+                nueva_hoja.update("A1:G1", [encabezados])
+                mensaje_creacion = f"Se ha creado la pestaña *{nombre_hoja_nueva}* con sus encabezados."
+
+            # ── Siempre actualizar el período activo ──────────────────────────
             with open(path_txt, "w", encoding="utf-8") as f:
                 f.write(nombre_hoja_nueva)
 
-            self._guardar_log(f"🔄 CIERRE MANUAL PROCESADO: Finalizado período '{hoja_actual}'. Abierto '{nombre_hoja_nueva}'")
-            return f"✅ Cierre de período exitoso.\n\nSe ha creado la pestaña *{nombre_hoja_nueva}* con sus encabezados. A partir de ahora, todas las marcaciones se registrarán ahí."
+            self._guardar_log(f"🔄 CIERRE PROCESADO: Finalizado '{hoja_actual}'. Activo '{nombre_hoja_nueva}'")
+            return (
+                f"✅ Cierre de período exitoso.\n\n"
+                f"{mensaje_creacion} "
+                f"A partir de ahora, todas las marcaciones se registrarán ahí."
+            )
+
         except Exception as e:
-            error_msj = f"❌ Error al ejecutar el cierre manual: {e}"
-            self._guardar_log(error_msj)
-            return error_msj
+            # ── Si falla algo inesperado, aún así intentamos salvar el período ─
+            self._guardar_log(f"❌ Error inesperado en cierre: {e}")
+            return f"❌ Error al ejecutar el cierre: {e}"
 
     def _parsear_horas_a_decimal(self, valor_str: str) -> float:
         valor_str = str(valor_str).strip().replace(',','.')
@@ -587,3 +605,24 @@ class AgenteAutonomoHoras:
         except Exception as e:
             self._guardar_log(f"❌ Error al eliminar aviso por índice: {e}")
         return None
+
+    def obtener_nombres_hojas(self, limite: int = 6) -> list:
+        """
+        Devuelve los títulos de las últimas `limite` hojas del spreadsheet,
+        excluyendo la hoja activa actual (donde se están registrando las marcas).
+        Se usa para el comando /reporte para que el usuario elija el período.
+        """
+        try:
+            base_path = "/home/kevin11000/mysite"
+            path_txt = os.path.join(base_path, "periodo_actual.txt")
+            hoja_activa = ""
+            if os.path.exists(path_txt):
+                with open(path_txt, "r", encoding="utf-8") as f:
+                    hoja_activa = f.read().strip()
+
+            hojas = self.wb.worksheets()
+            nombres = [h.title for h in hojas if h.title != hoja_activa]
+            return nombres[-limite:][::-1]  # Las más recientes primero
+        except Exception as e:
+            self._guardar_log(f"❌ Error en obtener_nombres_hojas: {e}")
+            return []

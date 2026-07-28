@@ -92,6 +92,21 @@ class GAMMA:
                 return
             self._procesar_callback_cierre(call)
 
+        # ── Comando REPORTE ──────────────────────────────────────────────────
+        @self.bot.message_handler(commands=['reporte'])
+        def comando_reporte(message):
+            if not self._es_autorizado(message.from_user.id):
+                self._rechazar(message)
+                return
+            self._mostrar_selector_hojas(message)
+
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith("reporte_"))
+        def callback_reporte(call):
+            if not self._es_autorizado(call.from_user.id):
+                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
+                return
+            self._procesar_callback_reporte(call)
+
         # ── 🆕 COMANDO AVISO (Fase 3) ─────────────────────────────────────────
         @self.bot.message_handler(commands=['aviso'])
         def comando_aviso(message):
@@ -138,11 +153,12 @@ class GAMMA:
     def _registrar_comandos_menu(self):
         """Sincroniza el menú '/' de Telegram con los comandos del bot."""
         comandos = [
-            BotCommand("marcar", "Registra hora de marcación."),
-            BotCommand("aviso", "Agendar un hito o recordatorio con IA."),
-            BotCommand("avisos",  "Ver lista de avisos activos."),
-            BotCommand("cierre", "Ejecutar cierre de período de marcaciones."),
-            BotCommand("start",  "Actualizar menú de comandos"),
+            BotCommand("marcar",   "Registra hora de marcación."),
+            BotCommand("reporte",  "Generar reporte PDF de un período anterior."),
+            BotCommand("aviso",    "Agendar un hito o recordatorio con IA."),
+            BotCommand("avisos",   "Ver lista de avisos activos."),
+            BotCommand("cierre",   "Ejecutar cierre de período de marcaciones."),
+            BotCommand("start",    "Actualizar menú de comandos"),
         ]
         self.bot.set_my_commands(comandos)
         print("✅ Menú de comandos actualizado.", flush=True)
@@ -155,11 +171,12 @@ class GAMMA:
                 "━━━━━━━━━━━━━━━━━━━━━\n"
                 "Menú de comandos sincronizado ✅\n\n"
                 "*Comandos disponibles:*\n"
-                "▶️ /marcar — Registrar entrada o salida\n"
-                "✍️ /aviso  — Agendar recordatorios con lenguaje natural\n"
-                "📋 /avisos — Gestionar recordatorios activos\n"
-                "🔒 /cierre — Ejecutar cierre de período\n"
-                "🔄 /start  — Reestablecer este menú\n"
+                "▶️ /marcar  — Registrar entrada o salida\n"
+                "📄 /reporte — Generar PDF de un período anterior\n"
+                "✍️ /aviso   — Agendar recordatorios con lenguaje natural\n"
+                "📋 /avisos  — Gestionar recordatorios activos\n"
+                "🔒 /cierre  — Ejecutar cierre de período\n"
+                "🔄 /start   — Reestablecer este menú\n"
                 "━━━━━━━━━━━━━━━━━━━━━"
             )
             self.bot.reply_to(message, texto, parse_mode="Markdown")
@@ -260,6 +277,122 @@ class GAMMA:
         self.bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF...")
         ruta_pdf, msg_pdf = self.agente_excel.generar_reporte_pdf(descuento=descuento)
 
+        if ruta_pdf:
+            with open(ruta_pdf, 'rb') as f:
+                self.bot.send_document(
+                    message_obj.chat.id,
+                    f,
+                    caption=f"📊 {msg_pdf}",
+                    visible_file_name=os.path.basename(ruta_pdf)
+                )
+        else:
+            self.bot.send_message(message_obj.chat.id, msg_pdf)
+
+    # ── Métodos del comando /reporte ──────────────────────────────────
+    def _mostrar_selector_hojas(self, message, limite: int = 6):
+        """Muestra un menú inline con las últimas `limite` hojas disponibles para reportar."""
+        nombres = self.agente_excel.obtener_nombres_hojas(limite=limite)
+
+        if not nombres:
+            self.bot.reply_to(message, "❌ No hay períodos anteriores disponibles para generar un reporte.")
+            return
+
+        teclado = InlineKeyboardMarkup()
+        for nombre in nombres:
+            # Truncamos a 30 chars por límite de Telegram en callback_data (64 bytes)
+            safe = nombre[:30]
+            teclado.row(InlineKeyboardButton(f"📅 {nombre}", callback_data=f"reporte_hoja_{safe}"))
+        teclado.row(InlineKeyboardButton("❌ Cancelar", callback_data="reporte_cancelar"))
+
+        self.bot.reply_to(
+            message,
+            "📄 *¿De qué período querés el reporte?*\n"
+            "_Se muestran los últimos períodos cerrados._",
+            parse_mode="Markdown",
+            reply_markup=teclado
+        )
+
+    def _procesar_callback_reporte(self, call):
+        """Maneja toda la lógica de callbacks del comando /reporte."""
+        try:
+            self.bot.answer_callback_query(call.id)
+            chat_id  = call.message.chat.id
+            msg_id   = call.message.message_id
+            data     = call.data
+
+            # ── Cancelar ───────────────────────────────────────────────
+            if data == "reporte_cancelar":
+                self.bot.edit_message_text("❌ Operación cancelada.", chat_id, msg_id)
+                return
+
+            # ── Elección de hoja ─────────────────────────────────────────
+            if data.startswith("reporte_hoja_"):
+                nombre_hoja = data[len("reporte_hoja_"):]
+                # Guardamos la hoja elegida en el caché reutilizando avisos_pendientes
+                self.avisos_pendientes[f"reporte_{chat_id}"] = nombre_hoja
+
+                teclado = InlineKeyboardMarkup()
+                teclado.row(
+                    InlineKeyboardButton("✅ Sí, aplicar descuento",    callback_data="reporte_desc_si"),
+                    InlineKeyboardButton("❌ No, reporte directo",       callback_data="reporte_desc_no"),
+                )
+                self.bot.edit_message_text(
+                    f"📅 Período seleccionado: *{nombre_hoja}*\n\n"
+                    f"¿Deseas aplicar algún *descuento* al salario calculado?",
+                    chat_id, msg_id,
+                    parse_mode="Markdown",
+                    reply_markup=teclado
+                )
+                return
+
+            # ── Sin descuento ─────────────────────────────────────────
+            if data == "reporte_desc_no":
+                nombre_hoja = self.avisos_pendientes.pop(f"reporte_{chat_id}", None)
+                if not nombre_hoja:
+                    self.bot.edit_message_text("❌ Sesión expirada. Ejecutá /reporte de nuevo.", chat_id, msg_id)
+                    return
+                self.bot.edit_message_text("✅ Generando reporte sin descuentos...", chat_id, msg_id)
+                self._generar_y_enviar_reporte_por_hoja(call.message, nombre_hoja, descuento=0)
+                return
+
+            # ── Con descuento ─────────────────────────────────────────
+            if data == "reporte_desc_si":
+                msg = self.bot.edit_message_text(
+                    "✍️ *Ingresá el monto exacto a descontar.*\n"
+                    "Solo números (ej: `50000`).",
+                    chat_id, msg_id,
+                    parse_mode="Markdown"
+                )
+                self.bot.register_next_step_handler(msg, self._capturar_descuento_reporte)
+                return
+
+        except Exception as e:
+            self.bot.send_message(call.message.chat.id, f"❌ Error en /reporte: {str(e)}")
+
+    def _capturar_descuento_reporte(self, message):
+        """Captura el monto de descuento ingresado y genera el PDF."""
+        try:
+            chat_id = message.chat.id
+            nombre_hoja = self.avisos_pendientes.pop(f"reporte_{chat_id}", None)
+            if not nombre_hoja:
+                self.bot.reply_to(message, "❌ Sesión expirada. Ejecutá /reporte de nuevo.")
+                return
+            monto = float(message.text.strip().replace(".", "").replace(",", ""))
+            self._generar_y_enviar_reporte_por_hoja(message, nombre_hoja, descuento=monto)
+        except ValueError:
+            self.bot.reply_to(
+                message,
+                "❌ El monto debe ser numérico. Operación cancelada.\n"
+                "Ejecutá /reporte para intentar de nuevo."
+            )
+
+    def _generar_y_enviar_reporte_por_hoja(self, message_obj, nombre_hoja: str, descuento: float):
+        """Genera y envía el PDF para una hoja específica por nombre."""
+        self.bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF...")
+        ruta_pdf, msg_pdf = self.agente_excel.generar_reporte_pdf(
+            nombre_hoja=nombre_hoja,
+            descuento=descuento
+        )
         if ruta_pdf:
             with open(ruta_pdf, 'rb') as f:
                 self.bot.send_document(
