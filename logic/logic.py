@@ -245,8 +245,8 @@ class AgenteAutonomoHoras:
 
             total_decimal = sum(self._parsear_horas_a_decimal(f[col_horas]) for f in filas_datos if col_horas < len(f))
             h_enteras = int(total_decimal)
-            m_resto = (total_decimal - h_enteras)
-            total_str = f"{h_enteras},{m_resto:02d}"
+            m_resto = int(round((total_decimal - h_enteras) * 60))
+            total_str = f"{h_enteras}h {m_resto:02d}m"
 
             salario_bruto = total_decimal * self.MONTO_POR_HORA
             salario_neto = salario_bruto - float(descuento)
