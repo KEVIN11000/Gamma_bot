@@ -626,3 +626,113 @@ class AgenteAutonomoHoras:
         except Exception as e:
             self._guardar_log(f"❌ Error en obtener_nombres_hojas: {e}")
             return []
+
+class AgenteAsistenciaMaterias:
+    SPREADSHEET_ID = "1VJe98WHoL5U7aDiGLIw55ZHnG-M6bAuLmIZx9LNbWnY"
+    HORARIOS_MATERIAS = {
+        "Electricidad y Magnetismo": {
+            "dia": "Viernes",
+            "teoria": ("13:00", "16:00"),
+            "practica": ("16:00", "18:00")
+        },
+        "Ecuaciones diferenciales": {
+            "dia": "Sábado",
+            "teoria": ("11:30", "13:30"),
+            "practica": ("13:30", "15:30")
+        },
+        "Estática": {
+            "dia": "Viernes",
+            "teoria": ("07:30", "10:30"),
+            "practica": ("10:30", "12:30")
+        },
+        "Probabilidad": {
+            "dia": "Sábado",
+            "teoria": ("07:30", "09:30"),
+            "practica": ("09:30", "11:30")
+        }
+    }
+
+    def __init__(self):
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        base_path = "/home/kevin11000/mysite"
+        path_json = os.path.join(base_path, "credentials.json")
+        try:
+            credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
+            self.cliente = gspread.authorize(credenciales)
+            self.wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
+        except Exception as e:
+            self._guardar_log(f"❌ Error al conectar a Sheets de materias: {e}")
+            raise
+
+    def _guardar_log(self, mensaje):
+        timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
+        path = os.path.join("/home/kevin11000/mysite", "gen_log.txt")
+        otpt = f"[{timestamp}] {mensaje}\n"
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(otpt)
+        print(otpt.strip())
+
+    def obtener_materia_actual(self, ahora):
+        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        dia_actual = dias_semana[ahora.weekday()]
+        hora_actual = ahora.time()
+
+        for materia, datos in self.HORARIOS_MATERIAS.items():
+            if datos["dia"] == dia_actual:
+                start_t = datetime.strptime(datos["teoria"][0], "%H:%M").time()
+                end_t = datetime.strptime(datos["teoria"][1], "%H:%M").time()
+                if start_t <= hora_actual <= end_t:
+                    return materia, "teoria"
+
+                start_p = datetime.strptime(datos["practica"][0], "%H:%M").time()
+                end_p = datetime.strptime(datos["practica"][1], "%H:%M").time()
+                if start_p <= hora_actual <= end_p:
+                    return materia, "practica"
+        return None, None
+
+    def marcar_asistencia(self):
+        try:
+            ahora = datetime.now(tz_py)
+            materia, tipo = self.obtener_materia_actual(ahora)
+            if not materia:
+                return "ℹ️ No hay ninguna clase en curso en este momento según el horario."
+
+            # Verificar si existe la hoja de la materia, si no, crearla
+            titulos_existentes = [h.title for h in self.wb.worksheets()]
+            if materia not in titulos_existentes:
+                ws = self.wb.add_worksheet(title=materia, rows="100", cols="6")
+                ws.update("A1:F1", [["Día", "Fecha", "Hora Teoría", "Asistencia Teoría", "Hora Práctica", "Asistencia Práctica"]])
+            else:
+                ws = self.wb.worksheet(materia)
+            
+            hoy_str = ahora.strftime("%d/%m/%Y")
+            dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            dia_actual = dias_semana[ahora.weekday()]
+            
+            fechas_col = ws.col_values(2)
+            fila = None
+            for i, fecha in enumerate(fechas_col):
+                if fecha == hoy_str:
+                    fila = i + 1
+                    break
+            
+            if fila is None:
+                fila = len(fechas_col) + 1
+                if fila == 1:
+                    ws.update("A1:F1", [["Día", "Fecha", "Hora Teoría", "Asistencia Teoría", "Hora Práctica", "Asistencia Práctica"]])
+                    fila = 2
+                ws.update(f"A{fila}:B{fila}", [[dia_actual, hoy_str]])
+
+            hora_str = ahora.strftime("%H:%M")
+            if tipo == "teoria":
+                ws.update(f"C{fila}:D{fila}", [[hora_str, "x"]])
+            else:
+                ws.update(f"E{fila}:F{fila}", [[hora_str, "x"]])
+
+            log_msg = f"Asistencia marcada para {materia} ({tipo}) a las {hora_str} en fila {fila}"
+            self._guardar_log(log_msg)
+            return f"✅ Asistencia de *{materia}* ({tipo}) registrada exitosamente a las {hora_str}."
+            
+        except Exception as e:
+            self._guardar_log(f"❌ Error marcando materia: {e}")
+            return f"❌ Error interno al marcar asistencia: {str(e)}"

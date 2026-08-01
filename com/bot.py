@@ -2,7 +2,7 @@ import telebot
 import os
 import pytz
 from dotenv import load_dotenv
-from logic.logic import AgenteAutonomoHoras
+from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from datetime import datetime
 
@@ -28,6 +28,7 @@ class GAMMA:
         self.avisos_pendientes = {}
 
         self.agente_excel = AgenteAutonomoHoras(spreadsheet_id=self.sheet_id)
+        self.agente_materias = AgenteAsistenciaMaterias()
         self._registrar_manejadores()
 
     def _guardar_log(self, mensaje):
@@ -150,10 +151,21 @@ class GAMMA:
                 return
             self._procesar_callback_borrar_aviso(call)
 
+        # ── Comando MARCAR MATERIA ─────────────────────────────────────────────
+        @self.bot.message_handler(commands=['marcar_materia'])
+        def comando_marcar_materia(message):
+            if not self._es_autorizado(message.from_user.id):
+                self._rechazar(message)
+                return
+            msg = self.bot.reply_to(message, "⚙️ Registrando asistencia en la materia actual...")
+            resultado = self.agente_materias.marcar_asistencia()
+            self.bot.edit_message_text(resultado, message.chat.id, msg.message_id, parse_mode="Markdown")
+
     def _registrar_comandos_menu(self):
         """Sincroniza el menú '/' de Telegram con los comandos del bot."""
         comandos = [
             BotCommand("marcar",   "Registra hora de marcación."),
+            BotCommand("marcar_materia", "Registrar asistencia a materia actual."),
             BotCommand("reporte",  "Generar reporte PDF de un período anterior."),
             BotCommand("aviso",    "Agendar un hito o recordatorio con IA."),
             BotCommand("avisos",   "Ver lista de avisos activos."),
@@ -172,6 +184,7 @@ class GAMMA:
                 "Menú de comandos sincronizado ✅\n\n"
                 "*Comandos disponibles:*\n"
                 "▶️ /marcar  — Registrar entrada o salida\n"
+                "📚 /marcar_materia — Marcar asistencia a materias\n"
                 "📄 /reporte — Generar PDF de un período anterior\n"
                 "✍️ /aviso   — Agendar recordatorios con lenguaje natural\n"
                 "📋 /avisos  — Gestionar recordatorios activos\n"
