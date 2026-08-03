@@ -30,6 +30,7 @@ class GAMMA:
         self.agente_excel = AgenteAutonomoHoras(spreadsheet_id=self.sheet_id)
         self.agente_materias = AgenteAsistenciaMaterias()
         self._registrar_manejadores()
+        self._registrar_comandos_menu()
 
     def _guardar_log(self, mensaje):
         """Registra un mensaje en el archivo de log del sistema con timestamp."""
