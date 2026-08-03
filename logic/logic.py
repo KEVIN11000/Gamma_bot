@@ -641,28 +641,7 @@ class AgenteAutonomoHoras:
 
 class AgenteAsistenciaMaterias:
     SPREADSHEET_ID = "1VJe98WHoL5U7aDiGLIw55ZHnG-M6bAuLmIZx9LNbWnY"
-    HORARIOS_MATERIAS = {
-        "Electricidad y Magnetismo": {
-            "dia": "Viernes",
-            "teoria": ("13:00", "16:00"),
-            "practica": ("16:00", "18:00")
-        },
-        "Ecuaciones diferenciales": {
-            "dia": "Sábado",
-            "teoria": ("11:30", "13:30"),
-            "practica": ("13:30", "15:30")
-        },
-        "Estática": {
-            "dia": "Viernes",
-            "teoria": ("07:30", "10:30"),
-            "practica": ("10:30", "12:30")
-        },
-        "Probabilidad": {
-            "dia": "Sábado",
-            "teoria": ("07:30", "09:30"),
-            "practica": ("09:30", "11:30")
-        }
-    }
+    HORARIOS_MATERIAS = {}
 
     def __init__(self):
         try:
@@ -671,7 +650,50 @@ class AgenteAsistenciaMaterias:
         except Exception as e:
             guardar_log(f"❌ Error al conectar a Sheets de materias: {e}")
             raise
+        self._cargar_horarios()
 
+
+
+
+    def _cargar_horarios(self):
+        try:
+            ws = self.wb.worksheet("Config_bot")
+            filas = ws.get_all_values()[1:]  # Ignorar encabezados
+            self.HORARIOS_MATERIAS = {}
+            for fila in filas:
+                if len(fila) < 6:
+                    continue
+                materia = str(fila[0]).strip()
+                dia = str(fila[1]).strip()
+                inicio_teo = str(fila[2]).strip()
+                fin_teo = str(fila[3]).strip()
+                inicio_prac = str(fila[4]).strip()
+                fin_prac = str(fila[5]).strip()
+                
+                # Ignorar filas vacías o sin horarios completos
+                if not materia or not dia or not inicio_teo or not fin_teo or not inicio_prac or not fin_prac:
+                    continue
+                
+                # Asegurar formato HH:MM (Sheets a veces retorna "HH:MM:SS")
+                inicio_teo = inicio_teo[:5]
+                fin_teo = fin_teo[:5]
+                inicio_prac = inicio_prac[:5]
+                fin_prac = fin_prac[:5]
+                
+                # Tratar caracteres extraños en los días (ej. tildes) estandarizando a los de Python
+                dia = dia.capitalize()
+                if 'bad' in dia.lower(): dia = 'Sábado'
+                if 'rcol' in dia.lower(): dia = 'Miércoles'
+
+                self.HORARIOS_MATERIAS[materia] = {
+                    "dia": dia,
+                    "teoria": (inicio_teo, fin_teo),
+                    "practica": (inicio_prac, fin_prac)
+                }
+            guardar_log(f"✅ Horarios cargados desde Config_bot: {len(self.HORARIOS_MATERIAS)} materias.")
+        except Exception as e:
+            guardar_log(f"❌ Error al cargar horarios desde Config_bot: {e}")
+            self.HORARIOS_MATERIAS = {}
 
 
     def obtener_materia_actual(self, ahora):
