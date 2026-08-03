@@ -23,24 +23,34 @@ def guardar_log(mensaje):
         f.write(otpt)
     print(otpt.strip())
 
+
+class ConexionSheets:
+    _cliente = None
+
+    @classmethod
+    def obtener_cliente(cls):
+        if cls._cliente is None:
+            scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+            path_json = os.path.join(BASE_DIR, "credentials.json")
+            from google.oauth2.service_account import Credentials
+            import gspread
+            credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
+            cls._cliente = gspread.authorize(credenciales)
+            guardar_log("🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton).")
+        return cls._cliente
+
+
 class AgenteAutonomoHoras:
     MONTO_POR_HORA = 14634
 
     def __init__(self, spreadsheet_id, mes="Mayo"):
         self.mes = mes
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-
-        # Ruta absoluta para PythonAnywhere
-        base_path = BASE_DIR
-        path_json = os.path.join(base_path, "credentials.json")
-
         try:
-            credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
-            self.cliente = gspread.authorize(credenciales)
+            self.cliente = ConexionSheets.obtener_cliente()
             self.wb = self.cliente.open_by_key(spreadsheet_id)
             self._cargar_hoja_activa()
         except Exception as e:
-            msj = f"❌ Error al abrir credenciales en {path_json}: {e}"
+            msj = f"❌ Error al obtener conexión de Sheets: {e}"
             guardar_log(msj)
             print(msj)
             raise
@@ -655,12 +665,8 @@ class AgenteAsistenciaMaterias:
     }
 
     def __init__(self):
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        base_path = BASE_DIR
-        path_json = os.path.join(base_path, "credentials.json")
         try:
-            credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
-            self.cliente = gspread.authorize(credenciales)
+            self.cliente = ConexionSheets.obtener_cliente()
             self.wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
         except Exception as e:
             guardar_log(f"❌ Error al conectar a Sheets de materias: {e}")
