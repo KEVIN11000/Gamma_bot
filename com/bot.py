@@ -184,7 +184,7 @@ class GAMMA:
                 "Menú de comandos sincronizado ✅\n\n"
                 "*Comandos disponibles:*\n"
                 "▶️ /marcar  — Registrar entrada o salida\n"
-                "📚 /marcar_materia — Marcar asistencia a materias\n"
+                "📚 /marcar\_materia — Marcar asistencia a materias\n"
                 "📄 /reporte — Generar PDF de un período anterior\n"
                 "✍️ /aviso   — Agendar recordatorios con lenguaje natural\n"
                 "📋 /avisos  — Gestionar recordatorios activos\n"
