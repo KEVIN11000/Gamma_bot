@@ -10,8 +10,8 @@ import json
 from google import genai
 from google.genai import types
 
-base_path = "/home/kevin11000/mysite"
-load_dotenv(os.path.join(base_path, ".env"))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 tz_py = pytz.timezone('America/Buenos_Aires')
 
@@ -23,7 +23,7 @@ class AgenteAutonomoHoras:
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
         # Ruta absoluta para PythonAnywhere
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_json = os.path.join(base_path, "credentials.json")
 
         try:
@@ -39,7 +39,7 @@ class AgenteAutonomoHoras:
 
     def _guardar_log(self, mensaje):
         timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join("/home/kevin11000/mysite", "gen_log.txt")
+        path = os.path.join(BASE_DIR, "gen_log.txt")
         otpt = f"[{timestamp}] {mensaje}\n"
         with open(path, "a", encoding="utf-8") as f:
             f.write(otpt)
@@ -58,7 +58,7 @@ class AgenteAutonomoHoras:
 
     def _cargar_hoja_activa(self):
         """Lee el archivo local para saber qué hoja está abierta para registros."""
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_txt = os.path.join(base_path, "periodo_actual.txt")
 
         if not os.path.exists(path_txt):
@@ -153,7 +153,7 @@ class AgenteAutonomoHoras:
         return "ℹ️ Ya completaste todos los registros of hoy."
 
     def ejecutar_cierre_periodo_manual(self):
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_txt = os.path.join(base_path, "periodo_actual.txt")
 
         if os.path.exists(path_txt):
@@ -272,7 +272,7 @@ class AgenteAutonomoHoras:
             def gs(n):
                 return f"Gs. {int(n):,}".replace(",", ".")
 
-            directorio = "/home/kevin11000/mysite/reportes"
+            directorio = os.path.join(BASE_DIR, "reportes")
             os.makedirs(directorio, exist_ok=True)
             nombre_archivo = f"reporte_{nombre_periodo.replace(' ', '_').replace('/', '-')}.pdf"
             ruta_pdf = f"{directorio}/{nombre_archivo}"
@@ -370,7 +370,7 @@ class AgenteAutonomoHoras:
         y arma un bloque de texto formateado si coincide con los hitos de tiempo
         (30, 7, 5, 3 o 1 día antes del evento). Evita repetir alertas ya enviadas.
         """
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_json = os.path.join(base_path, "avisos.json")
 
         if not os.path.exists(path_json):
@@ -507,7 +507,7 @@ class AgenteAutonomoHoras:
         Recibe los datos validados del bot de Telegram tras la confirmación del usuario,
         los adapta al esquema requerido por verificar_avisos_activos y los guarda en avisos.json.
         """
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_json = os.path.join(base_path, "avisos.json")
 
         # Combinar fecha y hora para el formato estándar del lector de la Fase 1
@@ -553,7 +553,7 @@ class AgenteAutonomoHoras:
 
     def obtener_lista_avisos(self):
         """Devuelve la lista completa de todos los avisos programados haciendo antes una limpieza de expirados."""
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_json = os.path.join(base_path, "avisos.json")
         if not os.path.exists(path_json):
             return []
@@ -589,7 +589,7 @@ class AgenteAutonomoHoras:
 
     def eliminar_aviso_por_indice(self, index: int):
         """Elimina un aviso específico por su posición en la lista y persiste el cambio."""
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_json = os.path.join(base_path, "avisos.json")
         if not os.path.exists(path_json):
             return None
@@ -613,7 +613,7 @@ class AgenteAutonomoHoras:
         Se usa para el comando /reporte para que el usuario elija el período.
         """
         try:
-            base_path = "/home/kevin11000/mysite"
+            base_path = BASE_DIR
             path_txt = os.path.join(base_path, "periodo_actual.txt")
             hoja_activa = ""
             if os.path.exists(path_txt):
@@ -654,7 +654,7 @@ class AgenteAsistenciaMaterias:
 
     def __init__(self):
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        base_path = "/home/kevin11000/mysite"
+        base_path = BASE_DIR
         path_json = os.path.join(base_path, "credentials.json")
         try:
             credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
@@ -666,7 +666,7 @@ class AgenteAsistenciaMaterias:
 
     def _guardar_log(self, mensaje):
         timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join("/home/kevin11000/mysite", "gen_log.txt")
+        path = os.path.join(BASE_DIR, "gen_log.txt")
         otpt = f"[{timestamp}] {mensaje}\n"
         with open(path, "a", encoding="utf-8") as f:
             f.write(otpt)
@@ -739,7 +739,7 @@ class AgenteAsistenciaMaterias:
 
 class EstadoGestor:
     """Clase para guardar y recuperar estado temporal (evita pérdida de memoria RAM)."""
-    PATH_JSON = os.path.join("/home/kevin11000/mysite", "estado_temporal.json")
+    PATH_JSON = os.path.join(BASE_DIR, "estado_temporal.json")
 
     @classmethod
     def _cargar(cls):

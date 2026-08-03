@@ -7,7 +7,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from datetime import datetime
 
 tz_py = pytz.timezone('America/Buenos_Aires')
-load_dotenv(dotenv_path="/home/kevin11000/.env")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 
 class GAMMA:
     def __init__(self):
@@ -33,7 +34,7 @@ class GAMMA:
     def _guardar_log(self, mensaje):
         """Registra un mensaje en el archivo de log del sistema con timestamp."""
         timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join("/home/kevin11000/mysite", "gen_log.txt")
+        path = os.path.join(BASE_DIR, "gen_log.txt")
         otpt = f"[{timestamp}] {mensaje}\n"
         with open(path, "a", encoding="utf-8") as f:
             f.write(otpt)
