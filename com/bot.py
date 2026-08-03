@@ -2,7 +2,7 @@ import telebot
 import os
 import pytz
 from dotenv import load_dotenv
-from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias
+from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias, EstadoGestor
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from datetime import datetime
 
@@ -24,8 +24,7 @@ class GAMMA:
         print(f"✅ Usuarios autorizados: {self.usuarios_permitidos}", flush=True)
 
         # 🆕 CACHÉ TEMPORAL DE AVISOS (Fase 3)
-        # Almacena los JSON de la IA indexados por el chat_id del usuario
-        self.avisos_pendientes = {}
+        # El caché en memoria (self.avisos_pendientes) fue reemplazado por EstadoGestor (JSON persistente)
 
         self.agente_excel = AgenteAutonomoHoras(spreadsheet_id=self.sheet_id)
         self.agente_materias = AgenteAsistenciaMaterias()
@@ -184,7 +183,7 @@ class GAMMA:
                 "Menú de comandos sincronizado ✅\n\n"
                 "*Comandos disponibles:*\n"
                 "▶️ /marcar  — Registrar entrada o salida\n"
-                "📚 /marcar\_materia — Marcar asistencia a materias\n"
+                "📚 /marcar\\_materia — Marcar asistencia a materias\n"
                 "📄 /reporte — Generar PDF de un período anterior\n"
                 "✍️ /aviso   — Agendar recordatorios con lenguaje natural\n"
                 "📋 /avisos  — Gestionar recordatorios activos\n"
@@ -341,8 +340,8 @@ class GAMMA:
             # ── Elección de hoja ─────────────────────────────────────────
             if data.startswith("reporte_hoja_"):
                 nombre_hoja = data[len("reporte_hoja_"):]
-                # Guardamos la hoja elegida en el caché reutilizando avisos_pendientes
-                self.avisos_pendientes[f"reporte_{chat_id}"] = nombre_hoja
+                # Guardamos la hoja elegida en el caché persistente
+                EstadoGestor.set(f"reporte_{chat_id}", nombre_hoja)
 
                 teclado = InlineKeyboardMarkup()
                 teclado.row(
@@ -360,7 +359,7 @@ class GAMMA:
 
             # ── Sin descuento ─────────────────────────────────────────
             if data == "reporte_desc_no":
-                nombre_hoja = self.avisos_pendientes.pop(f"reporte_{chat_id}", None)
+                nombre_hoja = EstadoGestor.pop(f"reporte_{chat_id}")
                 if not nombre_hoja:
                     self.bot.edit_message_text("❌ Sesión expirada. Ejecutá /reporte de nuevo.", chat_id, msg_id)
                     return
@@ -386,7 +385,7 @@ class GAMMA:
         """Captura el monto de descuento ingresado y genera el PDF."""
         try:
             chat_id = message.chat.id
-            nombre_hoja = self.avisos_pendientes.pop(f"reporte_{chat_id}", None)
+            nombre_hoja = EstadoGestor.pop(f"reporte_{chat_id}")
             if not nombre_hoja:
                 self.bot.reply_to(message, "❌ Sesión expirada. Ejecutá /reporte de nuevo.")
                 return
@@ -431,7 +430,7 @@ class GAMMA:
             self.bot.edit_message_text(f"❌ {datos_ia['error']}", message.chat.id, msg_espera.message_id)
             return
 
-        self.avisos_pendientes[message.chat.id] = datos_ia
+        EstadoGestor.set(message.chat.id, datos_ia)
 
         teclado = InlineKeyboardMarkup()
         teclado.row(
@@ -463,11 +462,11 @@ class GAMMA:
             chat_id = call.message.chat.id
 
             if call.data == "aviso_cancelar":
-                self.avisos_pendientes.pop(chat_id, None)
+                EstadoGestor.pop(chat_id)
                 self.bot.edit_message_text("❌ Registro de aviso cancelado.", chat_id, call.message.message_id)
                 return
 
-            datos_evento = self.avisos_pendientes.get(chat_id)
+            datos_evento = EstadoGestor.get(chat_id)
 
             if not datos_evento:
                 self.bot.edit_message_text("❌ Error: Expiró la sesión del aviso. Por favor, intentá de nuevo.", chat_id, call.message.message_id)
@@ -475,7 +474,7 @@ class GAMMA:
 
             self.bot.edit_message_text("💾 Escribiendo en la base de datos de Google Sheets...", chat_id, call.message.message_id)
             resultado_escritura = self.agente_excel.guardar_nuevo_aviso_en_sheets(datos_evento)
-            self.avisos_pendientes.pop(chat_id, None)
+            EstadoGestor.pop(chat_id)
             self.bot.edit_message_text(resultado_escritura, chat_id, call.message.message_id, parse_mode="Markdown")
 
         except Exception as e:

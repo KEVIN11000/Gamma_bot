@@ -736,3 +736,42 @@ class AgenteAsistenciaMaterias:
         except Exception as e:
             self._guardar_log(f"❌ Error marcando materia: {e}")
             return f"❌ Error interno al marcar asistencia: {str(e)}"
+
+class EstadoGestor:
+    """Clase para guardar y recuperar estado temporal (evita pérdida de memoria RAM)."""
+    PATH_JSON = os.path.join("/home/kevin11000/mysite", "estado_temporal.json")
+
+    @classmethod
+    def _cargar(cls):
+        if not os.path.exists(cls.PATH_JSON):
+            return {}
+        try:
+            with open(cls.PATH_JSON, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    @classmethod
+    def _guardar(cls, datos):
+        with open(cls.PATH_JSON, "w", encoding="utf-8") as f:
+            json.dump(datos, f, ensure_ascii=False)
+
+    @classmethod
+    def set(cls, clave, valor):
+        datos = cls._cargar()
+        datos[str(clave)] = valor
+        cls._guardar(datos)
+
+    @classmethod
+    def get(cls, clave, default=None):
+        datos = cls._cargar()
+        return datos.get(str(clave), default)
+
+    @classmethod
+    def pop(cls, clave, default=None):
+        datos = cls._cargar()
+        if str(clave) in datos:
+            valor = datos.pop(str(clave))
+            cls._guardar(datos)
+            return valor
+        return default
