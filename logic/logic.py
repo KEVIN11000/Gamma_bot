@@ -49,6 +49,11 @@ class AgenteAutonomoHoras:
             self.cliente = ConexionSheets.obtener_cliente()
             self.wb = self.cliente.open_by_key(spreadsheet_id)
             self._cargar_hoja_activa()
+        except gspread.exceptions.APIError as e:
+            msj = f"❌ Error de API de Google Sheets en horas: {e}"
+            guardar_log(msj)
+            print(msj)
+            raise
         except Exception as e:
             msj = f"❌ Error al obtener conexión de Sheets: {e}"
             guardar_log(msj)
@@ -647,6 +652,9 @@ class AgenteAsistenciaMaterias:
         try:
             self.cliente = ConexionSheets.obtener_cliente()
             self.wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
+        except gspread.exceptions.APIError as e:
+            guardar_log(f"❌ Error de API de Google Sheets en materias: {e}")
+            raise
         except Exception as e:
             guardar_log(f"❌ Error al conectar a Sheets de materias: {e}")
             raise
@@ -772,6 +780,9 @@ class EstadoGestor:
         try:
             with open(cls.PATH_JSON, "r", encoding="utf-8") as f:
                 return json.load(f)
+        except json.JSONDecodeError as e:
+            guardar_log(f"⚠️ Error al decodificar JSON en EstadoGestor: {e}")
+            return {}
         except Exception:
             return {}
 

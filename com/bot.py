@@ -504,6 +504,9 @@ class GAMMA:
             texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
             self.bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
 
+        except telebot.apihelper.ApiTelegramException as tel_e:
+            guardar_log(f"⚠️ Error de red/API en Telegram: {str(tel_e)}")
+            self.bot.reply_to(message, "⚠️ No pude enviarte la lista por un error de conexión con Telegram.")
         except Exception as e:
             guardar_log(f"❌ Error en _cmd_avisos: {str(e)}")
             self.bot.reply_to(message, f"❌ Error al cargar el panel de avisos: {str(e)}")
