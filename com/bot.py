@@ -2,7 +2,7 @@ import telebot
 import os
 import pytz
 from dotenv import load_dotenv
-from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias, EstadoGestor
+from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias, EstadoGestor, guardar_log
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from datetime import datetime
 
@@ -32,15 +32,6 @@ class GAMMA:
         self._registrar_manejadores()
         self._registrar_comandos_menu()
 
-    def _guardar_log(self, mensaje):
-        """Registra un mensaje en el archivo de log del sistema con timestamp."""
-        timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join(BASE_DIR, "gen_log.txt")
-        otpt = f"[{timestamp}] {mensaje}\n"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(otpt)
-        print(otpt.strip())
-
     def _es_autorizado(self, user_id: int) -> bool:
         return user_id in self.usuarios_permitidos
 
@@ -52,7 +43,7 @@ class GAMMA:
             f"Nombre: {user.first_name} {user.last_name or ''}"
         )
         print(alerta, flush=True)
-        self._guardar_log(alerta)
+        guardar_log(alerta)
         self.bot.reply_to(message, "🚫 No tenés acceso a este bot.")
 
     def _registrar_manejadores(self):
@@ -485,7 +476,7 @@ class GAMMA:
     def _cmd_avisos(self, message):
         """Muestra el panel interactivo con la lista de recordatorios y botones de borrado."""
         user = message.from_user
-        self._guardar_log(f"[/avisos] Panel de gestión solicitado por ID: {user.id}")
+        guardar_log(f"[/avisos] Panel de gestión solicitado por ID: {user.id}")
         try:
             lista_avisos = self.agente_excel.obtener_lista_avisos()
 
@@ -514,7 +505,7 @@ class GAMMA:
             self.bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
 
         except Exception as e:
-            self._guardar_log(f"❌ Error en _cmd_avisos: {str(e)}")
+            guardar_log(f"❌ Error en _cmd_avisos: {str(e)}")
             self.bot.reply_to(message, f"❌ Error al cargar el panel de avisos: {str(e)}")
 
     def _procesar_callback_borrar_aviso(self, call):

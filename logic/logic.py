@@ -15,6 +15,14 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 tz_py = pytz.timezone('America/Buenos_Aires')
 
+def guardar_log(mensaje):
+    timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
+    path = os.path.join(BASE_DIR, "gen_log.txt")
+    otpt = f"[{timestamp}] {mensaje}\n"
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(otpt)
+    print(otpt.strip())
+
 class AgenteAutonomoHoras:
     MONTO_POR_HORA = 14634
 
@@ -33,17 +41,11 @@ class AgenteAutonomoHoras:
             self._cargar_hoja_activa()
         except Exception as e:
             msj = f"❌ Error al abrir credenciales en {path_json}: {e}"
-            self._guardar_log(msj)
+            guardar_log(msj)
             print(msj)
             raise
 
-    def _guardar_log(self, mensaje):
-        timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join(BASE_DIR, "gen_log.txt")
-        otpt = f"[{timestamp}] {mensaje}\n"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(otpt)
-        print(otpt.strip())
+
 
     def fin_de(self):
         ahora = datetime.now(tz_py)
@@ -111,14 +113,14 @@ class AgenteAutonomoHoras:
         fila = self._obtener_o_crear_fila_hoy()
         if not fila:
             msg = "❌ Límite de filas alcanzado o error en fecha."
-            self._guardar_log(msg)
+            guardar_log(msg)
             return msg
 
         hora_ahora = datetime.now(tz_py).strftime("%H:%M")
 
         if hasattr(self, 'fin_de') and self.fin_de():
             log_msg = f"{hora_ahora} Dia libre, no hay marcas que hacer!!!"
-            self._guardar_log(log_msg)
+            guardar_log(log_msg)
             return "ℹ️ Hoy es tu día libre, no es necesario registrar marcas."
 
         COLUMNAS_NORMAL  = [(3, "Entrada"), (4, "S. Almuerzo"), (5, "V. Almuerzo"), (6, "Salida")]
@@ -147,7 +149,7 @@ class AgenteAutonomoHoras:
 
                 log_msg = f"Marcado [{modo}] {nombre}: {hora_ahora} en fila {fila}"
                 print(f"✅ {log_msg}")
-                self._guardar_log(log_msg)
+                guardar_log(log_msg)
                 return f"✅ *{nombre}* registrado a las {hora_ahora}."
 
         return "ℹ️ Ya completaste todos los registros of hoy."
@@ -189,7 +191,7 @@ class AgenteAutonomoHoras:
             if hoja_ya_existia:
                 # La hoja ya fue creada (cierre previo parcial): la reutilizamos
                 nueva_hoja = self.wb.worksheet(nombre_hoja_nueva)
-                self._guardar_log(f"⚠️ La hoja '{nombre_hoja_nueva}' ya existía. Reutilizando sin recrear encabezados.")
+                guardar_log(f"⚠️ La hoja '{nombre_hoja_nueva}' ya existía. Reutilizando sin recrear encabezados.")
                 mensaje_creacion = f"⚠️ La pestaña *{nombre_hoja_nueva}* ya existía y fue reutilizada."
             else:
                 # Flujo normal: crear hoja nueva con encabezados
@@ -202,7 +204,7 @@ class AgenteAutonomoHoras:
             with open(path_txt, "w", encoding="utf-8") as f:
                 f.write(nombre_hoja_nueva)
 
-            self._guardar_log(f"🔄 CIERRE PROCESADO: Finalizado '{hoja_actual}'. Activo '{nombre_hoja_nueva}'")
+            guardar_log(f"🔄 CIERRE PROCESADO: Finalizado '{hoja_actual}'. Activo '{nombre_hoja_nueva}'")
             return (
                 f"✅ Cierre de período exitoso.\n\n"
                 f"{mensaje_creacion} "
@@ -211,7 +213,7 @@ class AgenteAutonomoHoras:
 
         except Exception as e:
             # ── Si falla algo inesperado, aún así intentamos salvar el período ─
-            self._guardar_log(f"❌ Error inesperado en cierre: {e}")
+            guardar_log(f"❌ Error inesperado en cierre: {e}")
             return f"❌ Error al ejecutar el cierre: {e}"
 
     def _parsear_horas_a_decimal(self, valor_str: str) -> float:
@@ -380,7 +382,7 @@ class AgenteAutonomoHoras:
             with open(path_json, "r", encoding="utf-8") as f:
                 avisos = json.load(f)
         except Exception as e:
-            self._guardar_log(f"❌ Error al leer avisos.json: {e}")
+            guardar_log(f"❌ Error al leer avisos.json: {e}")
             return ""
 
         ahora = datetime.now(tz_py)
@@ -404,7 +406,7 @@ class AgenteAutonomoHoras:
             # 1. 🗑️ AUTO-LIMPIEZA: Si la fecha y hora del evento ya pasaron, se elimina del JSON
             if ahora > fecha_ev:
                 modificado = True
-                self._guardar_log(f"🗑️ Aviso auto-eliminado por expiración: '{aviso['titulo']}'")
+                guardar_log(f"🗑️ Aviso auto-eliminado por expiración: '{aviso['titulo']}'")
                 continue
 
             # Calcular la diferencia de días exactos (basado puramente en fechas)
@@ -432,7 +434,7 @@ class AgenteAutonomoHoras:
                 with open(path_json, "w", encoding="utf-8") as f:
                     json.dump(avisos_actualizados, f, indent=2, ensure_ascii=False)
             except Exception as e:
-                self._guardar_log(f"❌ Error al guardar modificaciones en avisos.json: {e}")
+                guardar_log(f"❌ Error al guardar modificaciones en avisos.json: {e}")
 
         # 3. 📝 FORMATEO DEL MENSAJE PARA TELEGRAM
         if not alertas_a_mostrar:
@@ -459,7 +461,7 @@ class AgenteAutonomoHoras:
         """
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            self._guardar_log("❌ Error: No se encontró GEMINI_API_KEY en el entorno.")
+            guardar_log("❌ Error: No se encontró GEMINI_API_KEY en el entorno.")
             return {"error": "Configuración de IA incompleta en el servidor."}
 
         # 📅 ANCLAJE TEMPORAL DINÁMICO
@@ -492,14 +494,14 @@ class AgenteAutonomoHoras:
             )
 
             datos_formateados = json.loads(respuesta_ia.text)
-            self._guardar_log(f"🤖 IA interpretó con éxito: {datos_formateados}")
+            guardar_log(f"🤖 IA interpretó con éxito: {datos_formateados}")
             return datos_formateados
 
         except json.JSONDecodeError as jde:
-            self._guardar_log(f"❌ Error al decodificar JSON de la IA: {jde}. Respuesta cruda: {respuesta_ia.text}")
+            guardar_log(f"❌ Error al decodificar JSON de la IA: {jde}. Respuesta cruda: {respuesta_ia.text}")
             return {"error": "La IA devolvió un formato ilegible. Intentá refrasear."}
         except Exception as e:
-            self._guardar_log(f"❌ Error en la llamada a Gemini API: {e}")
+            guardar_log(f"❌ Error en la llamada a Gemini API: {e}")
             return {"error": f"No se pudo conectar con el motor de IA: {str(e)}"}
 
     def guardar_nuevo_aviso_en_sheets(self, datos_evento: dict) -> str:
@@ -539,7 +541,7 @@ class AgenteAutonomoHoras:
             with open(path_json, "w", encoding="utf-8") as f:
                 json.dump(lista_avisos, f, indent=2, ensure_ascii=False)
 
-            self._guardar_log(f"💾 Nuevo aviso guardado en json: '{datos_evento['titulo']}' para el {fecha_evento_completa}")
+            guardar_log(f"💾 Nuevo aviso guardado en json: '{datos_evento['titulo']}' para el {fecha_evento_completa}")
 
             return (
                 f"✅ *¡Aviso guardado con éxito!*\n\n"
@@ -548,7 +550,7 @@ class AgenteAutonomoHoras:
                 f"🔔 _Las alertas se dispararán automáticamente a los 30, 7, 5, 3 y 1 días antes._"
             )
         except Exception as e:
-            self._guardar_log(f"❌ Error al persistir el nuevo aviso en avisos.json: {e}")
+            guardar_log(f"❌ Error al persistir el nuevo aviso en avisos.json: {e}")
             return f"❌ Error interno al guardar en la base de datos: {str(e)}"
 
     def obtener_lista_avisos(self):
@@ -583,7 +585,7 @@ class AgenteAutonomoHoras:
                 with open(path_json, "w", encoding="utf-8") as f:
                     json.dump(avisos_filtrados, f, indent=2, ensure_ascii=False)
             except Exception as e:
-                self._guardar_log(f"❌ Error al guardar en obtener_lista_avisos: {e}")
+                guardar_log(f"❌ Error al guardar en obtener_lista_avisos: {e}")
 
         return avisos_filtrados
 
@@ -603,7 +605,7 @@ class AgenteAutonomoHoras:
                     json.dump(avisos, f, indent=2, ensure_ascii=False)
                 return aviso_eliminado["titulo"]
         except Exception as e:
-            self._guardar_log(f"❌ Error al eliminar aviso por índice: {e}")
+            guardar_log(f"❌ Error al eliminar aviso por índice: {e}")
         return None
 
     def obtener_nombres_hojas(self, limite: int = 6) -> list:
@@ -624,7 +626,7 @@ class AgenteAutonomoHoras:
             nombres = [h.title for h in hojas if h.title != hoja_activa]
             return nombres[-limite:][::-1]  # Las más recientes primero
         except Exception as e:
-            self._guardar_log(f"❌ Error en obtener_nombres_hojas: {e}")
+            guardar_log(f"❌ Error en obtener_nombres_hojas: {e}")
             return []
 
 class AgenteAsistenciaMaterias:
@@ -661,16 +663,10 @@ class AgenteAsistenciaMaterias:
             self.cliente = gspread.authorize(credenciales)
             self.wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
         except Exception as e:
-            self._guardar_log(f"❌ Error al conectar a Sheets de materias: {e}")
+            guardar_log(f"❌ Error al conectar a Sheets de materias: {e}")
             raise
 
-    def _guardar_log(self, mensaje):
-        timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join(BASE_DIR, "gen_log.txt")
-        otpt = f"[{timestamp}] {mensaje}\n"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(otpt)
-        print(otpt.strip())
+
 
     def obtener_materia_actual(self, ahora):
         dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
@@ -730,11 +726,11 @@ class AgenteAsistenciaMaterias:
                 ws.update(f"E{fila}:F{fila}", [[hora_str, "x"]])
 
             log_msg = f"Asistencia marcada para {materia} ({tipo}) a las {hora_str} en fila {fila}"
-            self._guardar_log(log_msg)
+            guardar_log(log_msg)
             return f"✅ Asistencia de *{materia}* ({tipo}) registrada exitosamente a las {hora_str}."
             
         except Exception as e:
-            self._guardar_log(f"❌ Error marcando materia: {e}")
+            guardar_log(f"❌ Error marcando materia: {e}")
             return f"❌ Error interno al marcar asistencia: {str(e)}"
 
 class EstadoGestor:
