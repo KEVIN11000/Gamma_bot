@@ -383,9 +383,8 @@ class AgenteAutonomoHoras:
 
     def verificar_avisos_activos(self):
         """
-        Escanea los avisos agendados, elimina automáticamente los que ya vencieron
-        y arma un bloque de texto formateado si coincide con los hitos de tiempo
-        (30, 7, 5, 3 o 1 día antes del evento). Evita repetir alertas ya enviadas.
+        Escanea los avisos agendados, calcula la diferencia en minutos respecto a ahora,
+        y dispara alertas específicas (24h, 2h, 1h, 15m, AHORA).
         """
         base_path = BASE_DIR
         path_json = os.path.join(base_path, "avisos.json")
@@ -401,16 +400,23 @@ class AgenteAutonomoHoras:
             return ""
 
         ahora = datetime.now(tz_py)
-        hoy_date = ahora.date()
 
         avisos_actualizados = []
         alertas_a_mostrar = []
-        hitos_objetivo = [30, 7, 5, 3, 1]
+        
+        # Hitos en minutos: 24h = 1440, 2h = 120, 1h = 60, 15m = 15, AHORA = 0
+        HITOS = {
+            1440: "24 horas",
+            120: "2 horas",
+            60: "1 hora",
+            15: "15 minutos",
+            0: "AHORA"
+        }
         modificado = False
 
         for aviso in avisos:
             try:
-                # Parseamos la fecha del evento guardada (Formato esperado: DD/MM/AAAA HH:MM)
+                # Parseamos la fecha del evento guardada (Formato: DD/MM/AAAA HH:MM)
                 fecha_ev = datetime.strptime(aviso["fecha_evento"], "%d/%m/%Y %H:%M")
                 fecha_ev = tz_py.localize(fecha_ev) if fecha_ev.tzinfo is None else fecha_ev
             except Exception:
@@ -418,32 +424,34 @@ class AgenteAutonomoHoras:
                 modificado = True
                 continue
 
-            # 1. 🗑️ AUTO-LIMPIEZA: Si la fecha y hora del evento ya pasaron, se elimina del JSON
-            if ahora > fecha_ev:
+            diferencia = fecha_ev - ahora
+            # total_seconds() puede ser negativo si el evento ya pasó
+            minutos_restantes = int(diferencia.total_seconds() / 60)
+
+            # 1. 🗑️ AUTO-LIMPIEZA: Si ya pasaron más de 5 minutos desde el evento, se elimina del JSON
+            if minutos_restantes < -5:
                 modificado = True
-                guardar_log(f"🗑️ Aviso auto-eliminado por expiración: '{aviso['titulo']}'")
+                guardar_log(f"🗑️ Aviso eliminado por expiración: '{aviso['titulo']}'")
                 continue
 
-            # Calcular la diferencia de días exactos (basado puramente en fechas)
-            dias_restantes = (fecha_ev.date() - hoy_date).days
-
             # 2. 🛡️ CONTROL DE HITOS Y ANTI-SPAM
-            if dias_restantes in hitos_objetivo:
-                hito_str = str(dias_restantes)
-
-                # Si este hito en particular no fue disparado anteriormente para este aviso
-                if hito_str not in aviso.get("alertas_disparadas", []):
-                    alertas_a_mostrar.append((dias_restantes, aviso["titulo"], aviso["fecha_evento"]))
-
-                    if "alertas_disparadas" not in aviso:
-                        aviso["alertas_disparadas"] = []
-
-                    aviso["alertas_disparadas"].append(hito_str)
-                    modificado = True
+            alertas_disparadas = aviso.get("alertas_disparadas", [])
+            
+            for hito_minutos, hito_texto in HITOS.items():
+                hito_key = str(hito_minutos)
+                
+                # Verificamos si estamos dentro de la ventana de disparo (margen de 30 mins)
+                # Si hito=15m y faltan 10m, la resta es 5m (entra en el margen de 0 a 30)
+                if hito_key not in alertas_disparadas:
+                    if 0 <= (hito_minutos - minutos_restantes) <= 30:
+                        alertas_a_mostrar.append((hito_minutos, hito_texto, aviso["titulo"], aviso["fecha_evento"]))
+                        alertas_disparadas.append(hito_key)
+                        aviso["alertas_disparadas"] = alertas_disparadas
+                        modificado = True
 
             avisos_actualizados.append(aviso)
 
-        # Si hubo alertas disparadas o registros borrados por vencimiento, guardamos los cambios
+        # Si hubo alertas disparadas o registros borrados, guardamos los cambios
         if modificado:
             try:
                 with open(path_json, "w", encoding="utf-8") as f:
@@ -455,13 +463,16 @@ class AgenteAutonomoHoras:
         if not alertas_a_mostrar:
             return ""
 
-        # Ordenamos las alertas para poner primero las más urgentes (1 día, luego 3, etc.)
-        alertas_a_mostrar.sort(key=lambda x: x[0])
+        # Ordenamos las alertas para que "AHORA" (0) quede al final o al principio.
+        # Las de más tiempo (1440) primero, urgentes (0) al final.
+        alertas_a_mostrar.sort(key=lambda x: x[0], reverse=True)
 
-        lineas = ["\n\n─── 📢 *RECORDATORIOS ACTIVOS* ───"]
-        for dias, titulo, fecha_str in alertas_a_mostrar:
-            txt_dias = f"{dias} día" if dias == 1 else f"{dias} días"
-            lineas.append(f"⏳ *Faltan {txt_dias}:* {titulo} ({fecha_str})")
+        lineas = ["\n\n─── 📢 *ALERTAS DE AGENDA* ───"]
+        for _, texto_tiempo, titulo, fecha_str in alertas_a_mostrar:
+            if texto_tiempo == "AHORA":
+                lineas.append(f"🔴 *¡ES EL MOMENTO!* 🔴\n➡️ *{titulo}*")
+            else:
+                lineas.append(f"⏳ *Faltan {texto_tiempo}:* {titulo} ({fecha_str})")
 
         return "\n".join(lineas)
 
