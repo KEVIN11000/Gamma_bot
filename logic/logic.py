@@ -505,12 +505,21 @@ class AgenteAutonomoHoras:
 
         try:
             servicio = ConexionSheets.obtener_servicio_calendar()
-            ahora_iso = datetime.now(tz_py).isoformat()
+            ahora = datetime.now(tz_py)
+            ahora_iso = ahora.isoformat()
+            
+            # 🆕 Limitar la búsqueda al mes actual (próximos 30 días)
+            limite_mes = ahora + timedelta(days=30)
+            limite_iso = limite_mes.isoformat()
             
             eventos_result = servicio.events().list(
-                calendarId=calendar_id, timeMin=ahora_iso,
-                maxResults=10, singleEvents=True,
-                orderBy='startTime').execute()
+                calendarId=calendar_id, 
+                timeMin=ahora_iso, 
+                timeMax=limite_iso,
+                maxResults=15, 
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
             
             eventos = eventos_result.get('items', [])
             

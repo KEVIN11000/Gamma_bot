@@ -47,6 +47,24 @@ class GAMMA:
         self.bot.reply_to(message, "🚫 No tenés acceso a este bot.")
 
     def _registrar_manejadores(self):
+        # ── COMANDO DEBUG ─────────────────────────────────────────────────────
+        @self.bot.message_handler(commands=['debug'])
+        def comando_debug(message):
+            if not self._es_autorizado(message.from_user.id):
+                self._rechazar(message)
+                return
+            try:
+                # Leemos las últimas líneas del log (gen_log.txt)
+                if os.path.exists("gen_log.txt"):
+                    with open("gen_log.txt", "r", encoding="utf-8", errors="replace") as f:
+                        lineas = f.readlines()
+                        ultimas = "".join(lineas[-15:])
+                    self.bot.reply_to(message, f"🛠️ *ÚLTIMOS LOGS:*\n```\n{ultimas}\n```", parse_mode="Markdown")
+                else:
+                    self.bot.reply_to(message, "📭 El archivo de log está vacío o no existe.")
+            except Exception as e:
+                self.bot.reply_to(message, f"❌ Error al leer logs: {str(e)}")
+
         # ── Comando START ─────────────────────────────────────────────────────
         @self.bot.message_handler(commands=['start'])
         def comando_start(message):
@@ -163,6 +181,7 @@ class GAMMA:
             BotCommand("avisos",   "Ver lista de avisos activos."),
             BotCommand("cierre",   "Ejecutar cierre de período de marcaciones."),
             BotCommand("start",    "Actualizar menú de comandos"),
+            BotCommand("debug",    "Ver logs recientes del sistema.")
         ]
         self.bot.set_my_commands(comandos)
         print("✅ Menú de comandos actualizado.", flush=True)
@@ -180,6 +199,7 @@ class GAMMA:
                 "📄 /reporte — Generar PDF de un período anterior\n"
                 "✍️ /aviso   — Agendar recordatorios con lenguaje natural\n"
                 "📋 /avisos  — Gestionar recordatorios activos\n"
+                "🛠️ /debug   — Ver logs de errores internos\n"
                 "🔒 /cierre  — Ejecutar cierre de período\n"
                 "🔄 /start   — Reestablecer este menú\n"
                 "━━━━━━━━━━━━━━━━━━━━━"
