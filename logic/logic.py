@@ -1,6 +1,6 @@
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 import pytz
@@ -26,6 +26,7 @@ def guardar_log(mensaje):
 
 class ConexionSheets:
     _cliente = None
+    _servicio_calendar = None
 
     @classmethod
     def obtener_cliente(cls):
@@ -38,6 +39,18 @@ class ConexionSheets:
             cls._cliente = gspread.authorize(credenciales)
             guardar_log("🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton).")
         return cls._cliente
+
+    @classmethod
+    def obtener_servicio_calendar(cls):
+        if cls._servicio_calendar is None:
+            scopes = ["https://www.googleapis.com/auth/calendar"]
+            path_json = os.path.join(BASE_DIR, "credentials.json")
+            from google.oauth2.service_account import Credentials
+            from googleapiclient.discovery import build
+            credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
+            cls._servicio_calendar = build('calendar', 'v3', credentials=credenciales)
+            guardar_log("📅 Nueva conexión a Google Calendar establecida exitosamente (Singleton).")
+        return cls._servicio_calendar
 
 
 class AgenteAutonomoHoras:
@@ -381,101 +394,6 @@ class AgenteAutonomoHoras:
         except Exception as e:
             return None, f"❌ Error al generar reporte: {type(e).__name__} - {str(e)}"
 
-    def verificar_avisos_activos(self):
-        """
-        Escanea los avisos agendados, calcula la diferencia en minutos respecto a ahora,
-        y dispara alertas específicas (24h, 2h, 1h, 15m, AHORA).
-        """
-        base_path = BASE_DIR
-        path_json = os.path.join(base_path, "avisos.json")
-
-        if not os.path.exists(path_json):
-            return ""
-
-        try:
-            with open(path_json, "r", encoding="utf-8") as f:
-                avisos = json.load(f)
-        except Exception as e:
-            guardar_log(f"❌ Error al leer avisos.json: {e}")
-            return ""
-
-        ahora = datetime.now(tz_py)
-
-        avisos_actualizados = []
-        alertas_a_mostrar = []
-        
-        # Hitos en minutos: 24h = 1440, 2h = 120, 1h = 60, 15m = 15, AHORA = 0
-        HITOS = {
-            1440: "24 horas",
-            120: "2 horas",
-            60: "1 hora",
-            15: "15 minutos",
-            0: "AHORA"
-        }
-        modificado = False
-
-        for aviso in avisos:
-            try:
-                # Parseamos la fecha del evento guardada (Formato: DD/MM/AAAA HH:MM)
-                fecha_ev = datetime.strptime(aviso["fecha_evento"], "%d/%m/%Y %H:%M")
-                fecha_ev = tz_py.localize(fecha_ev) if fecha_ev.tzinfo is None else fecha_ev
-            except Exception:
-                # Si algún registro está corrupto por error manual, lo salta para no romper el bucle
-                modificado = True
-                continue
-
-            diferencia = fecha_ev - ahora
-            # total_seconds() puede ser negativo si el evento ya pasó
-            minutos_restantes = int(diferencia.total_seconds() / 60)
-
-            # 1. 🗑️ AUTO-LIMPIEZA: Si ya pasaron más de 5 minutos desde el evento, se elimina del JSON
-            if minutos_restantes < -5:
-                modificado = True
-                guardar_log(f"🗑️ Aviso eliminado por expiración: '{aviso['titulo']}'")
-                continue
-
-            # 2. 🛡️ CONTROL DE HITOS Y ANTI-SPAM
-            alertas_disparadas = aviso.get("alertas_disparadas", [])
-            
-            for hito_minutos, hito_texto in HITOS.items():
-                hito_key = str(hito_minutos)
-                
-                # Verificamos si estamos dentro de la ventana de disparo (margen de 30 mins)
-                # Si hito=15m y faltan 10m, la resta es 5m (entra en el margen de 0 a 30)
-                if hito_key not in alertas_disparadas:
-                    if 0 <= (hito_minutos - minutos_restantes) <= 30:
-                        alertas_a_mostrar.append((hito_minutos, hito_texto, aviso["titulo"], aviso["fecha_evento"]))
-                        alertas_disparadas.append(hito_key)
-                        aviso["alertas_disparadas"] = alertas_disparadas
-                        modificado = True
-
-            avisos_actualizados.append(aviso)
-
-        # Si hubo alertas disparadas o registros borrados, guardamos los cambios
-        if modificado:
-            try:
-                with open(path_json, "w", encoding="utf-8") as f:
-                    json.dump(avisos_actualizados, f, indent=2, ensure_ascii=False)
-            except Exception as e:
-                guardar_log(f"❌ Error al guardar modificaciones en avisos.json: {e}")
-
-        # 3. 📝 FORMATEO DEL MENSAJE PARA TELEGRAM
-        if not alertas_a_mostrar:
-            return ""
-
-        # Ordenamos las alertas para que "AHORA" (0) quede al final o al principio.
-        # Las de más tiempo (1440) primero, urgentes (0) al final.
-        alertas_a_mostrar.sort(key=lambda x: x[0], reverse=True)
-
-        lineas = ["\n\n─── 📢 *ALERTAS DE AGENDA* ───"]
-        for _, texto_tiempo, titulo, fecha_str in alertas_a_mostrar:
-            if texto_tiempo == "AHORA":
-                lineas.append(f"🔴 *¡ES EL MOMENTO!* 🔴\n➡️ *{titulo}*")
-            else:
-                lineas.append(f"⏳ *Faltan {texto_tiempo}:* {titulo} ({fecha_str})")
-
-        return "\n".join(lineas)
-
     # ─────────────────────────────────────────────────────────────────────────
     # 🧠 MÉTODOS DE LA FASE 3: INTEGRACIÓN CON GEMINI 2.5 Y PERSISTENCIA DE AVISOS
     # ─────────────────────────────────────────────────────────────────────────
@@ -530,109 +448,105 @@ class AgenteAutonomoHoras:
             guardar_log(f"❌ Error en la llamada a Gemini API: {e}")
             return {"error": f"No se pudo conectar con el motor de IA: {str(e)}"}
 
-    def guardar_nuevo_aviso_en_sheets(self, datos_evento: dict) -> str:
+    def guardar_aviso_calendar(self, datos_evento: dict) -> str:
         """
-        Recibe los datos validados del bot de Telegram tras la confirmación del usuario,
-        los adapta al esquema requerido por verificar_avisos_activos y los guarda en avisos.json.
+        Guarda el aviso interpretado por Gemini directamente en Google Calendar.
         """
-        base_path = BASE_DIR
-        path_json = os.path.join(base_path, "avisos.json")
-
-        # Combinar fecha y hora para el formato estándar del lector de la Fase 1
-        fecha_evento_completa = f"{datos_evento['fecha']} {datos_evento['hora']}"
-
-        nuevo_registro = {
-            "titulo": datos_evento["titulo"],
-            "fecha_evento": fecha_evento_completa,
-            "alertas_disparadas": []
-        }
+        calendar_id = os.getenv("CALENDAR_ID")
+        if not calendar_id:
+            return "❌ Error: Falta configurar CALENDAR_ID en tu archivo .env."
 
         try:
-            # Leer registros existentes
-            if os.path.exists(path_json):
-                with open(path_json, "r", encoding="utf-8") as f:
-                    try:
-                        lista_avisos = json.load(f)
-                        if not isinstance(lista_avisos, list):
-                            lista_avisos = []
-                    except json.JSONDecodeError:
-                        lista_avisos = []
-            else:
-                lista_avisos = []
+            servicio = ConexionSheets.obtener_servicio_calendar()
+            fecha_hora_str = f"{datos_evento['fecha']} {datos_evento['hora']}"
+            dt_inicio = datetime.strptime(fecha_hora_str, "%d/%m/%Y %H:%M")
+            dt_inicio = tz_py.localize(dt_inicio)
+            dt_fin = dt_inicio + timedelta(hours=1)
 
-            # Insertar el nuevo hito
-            lista_avisos.append(nuevo_registro)
+            evento = {
+                'summary': datos_evento['titulo'],
+                'start': {
+                    'dateTime': dt_inicio.isoformat(),
+                    'timeZone': 'America/Buenos_Aires',
+                },
+                'end': {
+                    'dateTime': dt_fin.isoformat(),
+                    'timeZone': 'America/Buenos_Aires',
+                },
+                'reminders': {
+                    'useDefault': False,
+                    'overrides': [
+                        {'method': 'popup', 'minutes': 24 * 60},
+                        {'method': 'popup', 'minutes': 2 * 60},
+                        {'method': 'popup', 'minutes': 60},
+                        {'method': 'popup', 'minutes': 15},
+                    ],
+                },
+            }
 
-            # Persistir los cambios en disco
-            with open(path_json, "w", encoding="utf-8") as f:
-                json.dump(lista_avisos, f, indent=2, ensure_ascii=False)
-
-            guardar_log(f"💾 Nuevo aviso guardado en json: '{datos_evento['titulo']}' para el {fecha_evento_completa}")
+            evento_creado = servicio.events().insert(calendarId=calendar_id, body=evento).execute()
+            guardar_log(f"📅 Nuevo aviso guardado en Calendar: '{datos_evento['titulo']}'")
 
             return (
-                f"✅ *¡Aviso guardado con éxito!*\n\n"
+                f"✅ *¡Aviso guardado en Google Calendar!*\n\n"
                 f"📌 *{datos_evento['titulo']}*\n"
                 f"📅 Agendado: {datos_evento['fecha']} a las {datos_evento['hora']} hs.\n\n"
-                f"🔔 _Las alertas se dispararán automáticamente a los 30, 7, 5, 3 y 1 días antes._"
+                f"🔔 _Recibirás notificaciones nativas en tu teléfono._"
             )
         except Exception as e:
-            guardar_log(f"❌ Error al persistir el nuevo aviso en avisos.json: {e}")
-            return f"❌ Error interno al guardar en la base de datos: {str(e)}"
+            guardar_log(f"❌ Error al guardar en Google Calendar: {e}")
+            return f"❌ Error interno de Google Calendar: {str(e)}"
 
-    def obtener_lista_avisos(self):
-        """Devuelve la lista completa de todos los avisos programados haciendo antes una limpieza de expirados."""
-        base_path = BASE_DIR
-        path_json = os.path.join(base_path, "avisos.json")
-        if not os.path.exists(path_json):
-            return []
-        try:
-            with open(path_json, "r", encoding="utf-8") as f:
-                avisos = json.load(f)
-        except Exception:
+    def obtener_lista_avisos_calendar(self):
+        """Devuelve la lista de los próximos 10 eventos desde Google Calendar."""
+        calendar_id = os.getenv("CALENDAR_ID")
+        if not calendar_id:
             return []
 
-        ahora = datetime.now(tz_py)
-        avisos_filtrados = []
-        modificado = False
-
-        for aviso in avisos:
-            try:
-                fecha_ev = datetime.strptime(aviso["fecha_evento"], "%d/%m/%Y %H:%M")
-                fecha_ev = tz_py.localize(fecha_ev) if fecha_ev.tzinfo is None else fecha_ev
-                if ahora <= fecha_ev:
-                    avisos_filtrados.append(aviso)
-                else:
-                    modificado = True
-            except Exception:
-                modificado = True
-
-        if modificado:
-            try:
-                with open(path_json, "w", encoding="utf-8") as f:
-                    json.dump(avisos_filtrados, f, indent=2, ensure_ascii=False)
-            except Exception as e:
-                guardar_log(f"❌ Error al guardar en obtener_lista_avisos: {e}")
-
-        return avisos_filtrados
-
-    def eliminar_aviso_por_indice(self, index: int):
-        """Elimina un aviso específico por su posición en la lista y persiste el cambio."""
-        base_path = BASE_DIR
-        path_json = os.path.join(base_path, "avisos.json")
-        if not os.path.exists(path_json):
-            return None
         try:
-            with open(path_json, "r", encoding="utf-8") as f:
-                avisos = json.load(f)
-
-            if 0 <= index < len(avisos):
-                aviso_eliminado = avisos.pop(index)
-                with open(path_json, "w", encoding="utf-8") as f:
-                    json.dump(avisos, f, indent=2, ensure_ascii=False)
-                return aviso_eliminado["titulo"]
+            servicio = ConexionSheets.obtener_servicio_calendar()
+            ahora_iso = datetime.now(tz_py).isoformat()
+            
+            eventos_result = servicio.events().list(
+                calendarId=calendar_id, timeMin=ahora_iso,
+                maxResults=10, singleEvents=True,
+                orderBy='startTime').execute()
+            
+            eventos = eventos_result.get('items', [])
+            
+            avisos_formateados = []
+            for evento in eventos:
+                start = evento['start'].get('dateTime', evento['start'].get('date'))
+                # Formatear la fecha para que sea legible en Telegram
+                try:
+                    dt = datetime.fromisoformat(start)
+                    fecha_str = dt.strftime("%d/%m/%Y %H:%M")
+                except:
+                    fecha_str = start
+                
+                avisos_formateados.append({
+                    "id": evento['id'],
+                    "titulo": evento.get('summary', 'Sin título'),
+                    "fecha_evento": fecha_str
+                })
+            return avisos_formateados
         except Exception as e:
-            guardar_log(f"❌ Error al eliminar aviso por índice: {e}")
-        return None
+            guardar_log(f"❌ Error al obtener eventos de Calendar: {e}")
+            return []
+
+    def eliminar_aviso_calendar(self, event_id: str):
+        """Elimina un evento de Google Calendar por su ID."""
+        calendar_id = os.getenv("CALENDAR_ID")
+        if not calendar_id:
+            return None
+            
+        try:
+            servicio = ConexionSheets.obtener_servicio_calendar()
+            servicio.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+            return True
+        except Exception as e:
+            guardar_log(f"❌ Error al eliminar evento en Calendar: {e}")
+            return None
 
     def obtener_nombres_hojas(self, limite: int = 6) -> list:
         """

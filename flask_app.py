@@ -99,28 +99,4 @@ def deploy():
     except Exception as e:
         return f"❌ Error en deploy: {e}", 500
 
-# ── Endpoint para Cron-Job (Alertas Proactivas) ──────────────────────────────
-@app.route('/cron/revisar_avisos/<secret>')
-def cron_revisar_avisos(secret):
-    """
-    Endpoint visitado periódicamente por cron-job.org.
-    Evalúa la agenda y envía notificaciones PUSH al usuario.
-    """
-    cron_secret = os.environ.get('CRON_SECRET', '')
-    if not cron_secret or secret != cron_secret:
-        abort(403, "Acceso denegado: Secret incorrecto o no configurado.")
-
-    # Ejecutamos la validación de tiempos
-    mensaje_alerta = bot_instance.agente_excel.verificar_avisos_activos()
-
-    if mensaje_alerta:
-        chat_id = os.environ.get("CHAT_ID")
-        if chat_id:
-            try:
-                bot_instance.bot.send_message(chat_id, mensaje_alerta, parse_mode="Markdown")
-                print(f"[Cron] Alertas enviadas a {chat_id}", flush=True)
-            except Exception as e:
-                print(f"[Cron] Error enviando alertas por Telegram: {e}", flush=True)
-                return "Error enviando alerta", 500
-
-    return "OK", 200
+

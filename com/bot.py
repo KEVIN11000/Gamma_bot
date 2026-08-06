@@ -466,7 +466,7 @@ class GAMMA:
                 return
 
             self.bot.edit_message_text("💾 Escribiendo en la base de datos de Google Sheets...", chat_id, call.message.message_id)
-            resultado_escritura = self.agente_excel.guardar_nuevo_aviso_en_sheets(datos_evento)
+            resultado_escritura = self.agente_excel.guardar_aviso_calendar(datos_evento)
             EstadoGestor.pop(chat_id)
             self.bot.edit_message_text(resultado_escritura, chat_id, call.message.message_id, parse_mode="Markdown")
 
@@ -478,7 +478,7 @@ class GAMMA:
         user = message.from_user
         guardar_log(f"[/avisos] Panel de gestión solicitado por ID: {user.id}")
         try:
-            lista_avisos = self.agente_excel.obtener_lista_avisos()
+            lista_avisos = self.agente_excel.obtener_lista_avisos_calendar()
 
             if not lista_avisos:
                 self.bot.reply_to(message, "📭 No tenés ningún aviso programado en este momento.")
@@ -519,16 +519,21 @@ class GAMMA:
             msg_id = call.message.message_id
 
             indice = int(call.data.split("_")[1])
-            titulo_eliminado = self.agente_excel.eliminar_aviso_por_indice(indice)
-
-            if titulo_eliminado:
-                self.bot.send_message(chat_id, f"🗑️ El aviso *'{titulo_eliminado}'* fue eliminado correctamente.", parse_mode="Markdown")
+            lista_avisos_actual = self.agente_excel.obtener_lista_avisos_calendar()
+            
+            if 0 <= indice < len(lista_avisos_actual):
+                evento_a_borrar = lista_avisos_actual[indice]
+                exito = self.agente_excel.eliminar_aviso_calendar(evento_a_borrar["id"])
+                
+                if exito:
+                    self.bot.send_message(chat_id, f"🗑️ El aviso *'{evento_a_borrar['titulo']}'* fue eliminado correctamente.", parse_mode="Markdown")
+                else:
+                    self.bot.send_message(chat_id, "❌ Hubo un error al eliminar el evento de Calendar.")
             else:
                 self.bot.send_message(chat_id, "❌ El aviso seleccionado ya no existe.")
-                return
 
             # RE-RENDERIZADO: Volvemos a leer y a actualizar la misma tarjeta visual
-            lista_avisos = self.agente_excel.obtener_lista_avisos()
+            lista_avisos = self.agente_excel.obtener_lista_avisos_calendar()
             if not lista_avisos:
                 self.bot.edit_message_text("📭 No te quedan más avisos programados.", chat_id, msg_id)
                 return
