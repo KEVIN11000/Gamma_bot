@@ -85,6 +85,17 @@ def deploy():
             os.utime(wsgi_path, None)
             print("[deploy] WSGI tocado — app recargando...", flush=True)
 
+        chat_id = os.environ.get("CHAT_ID")
+        if chat_id:
+            try:
+                bot_instance.bot.send_message(
+                    chat_id, 
+                    "🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión (v1.3.1) y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.", 
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                print(f"[deploy] Error enviando aviso de deploy: {e}", flush=True)
+
         return f"✅ Deploy exitoso y app recargada:\n{salida}", 200
 
     except subprocess.TimeoutExpired:
