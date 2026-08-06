@@ -33,10 +33,6 @@ def set_webhook():
 def home():
     return "Bot de Marcación Activo", 200
 
-@app.route('/ping')
-def ping():
-    return "✅ Autodeploy funcionando correctamente! (V1.3.1)", 200
-
 # ── Auto-deploy desde GitHub ──────────────────────────────────────────────────
 @app.route('/deploy', methods=['POST'])
 def deploy():
