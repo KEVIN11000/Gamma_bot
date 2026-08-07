@@ -1,6 +1,7 @@
 from flask import Flask, request, abort
 import telebot
 import os
+import time
 import threading
 import subprocess
 import hmac
@@ -85,11 +86,25 @@ def deploy():
         chat_id = os.environ.get("CHAT_ID")
         if chat_id:
             try:
-                bot_instance.bot.send_message(
-                    chat_id, 
-                    "🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión (V1.6.0 - Cron Jobs Proactivos) y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.", 
+                # Leer versión desde archivo VERSION (ya actualizado por git pull)
+                version_path = os.path.join(base_path, "VERSION")
+                version = open(version_path).read().strip() if os.path.exists(version_path) else "desconocida"
+
+                msg = bot_instance.bot.send_message(
+                    chat_id,
+                    f"🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión *({version})* y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.",
                     parse_mode="Markdown"
                 )
+
+                # Auto-borrado del mensaje de deploy a los 30 segundos
+                def _borrar_msg(cid, mid):
+                    time.sleep(30)
+                    try:
+                        bot_instance.bot.delete_message(cid, mid)
+                    except Exception:
+                        pass
+                threading.Thread(target=_borrar_msg, args=(chat_id, msg.message_id), daemon=True).start()
+
             except Exception as e:
                 print(f"[deploy] Error enviando aviso de deploy: {e}", flush=True)
 
