@@ -597,6 +597,28 @@ class AgenteAsistenciaMaterias:
 
 
 
+    def _normalizar_hora(self, hora_str: str) -> str:
+        if not hora_str: return ""
+        hora_str = str(hora_str).replace('\u202f', ' ').strip().lower()
+        
+        es_pm = 'p' in hora_str
+        es_am = 'a' in hora_str
+        
+        import re
+        match = re.search(r'(\d{1,2}):(\d{2})', hora_str)
+        if not match:
+            return hora_str[:5]
+            
+        hh, mm = match.groups()
+        hh_int = int(hh)
+        
+        if es_pm and hh_int < 12:
+            hh_int += 12
+        elif es_am and hh_int == 12:
+            hh_int = 0
+            
+        return f"{hh_int:02d}:{mm}"
+
     def _cargar_horarios(self):
         try:
             ws = self.wb.worksheet("Config_bot")
@@ -616,11 +638,11 @@ class AgenteAsistenciaMaterias:
                 if not materia or not dia or not inicio_teo or not fin_teo or not inicio_prac or not fin_prac:
                     continue
                 
-                # Asegurar formato HH:MM (Sheets a veces retorna "HH:MM:SS")
-                inicio_teo = inicio_teo[:5]
-                fin_teo = fin_teo[:5]
-                inicio_prac = inicio_prac[:5]
-                fin_prac = fin_prac[:5]
+                # Asegurar formato HH:MM (convertir de AM/PM a 24h si es necesario)
+                inicio_teo = self._normalizar_hora(inicio_teo)
+                fin_teo = self._normalizar_hora(fin_teo)
+                inicio_prac = self._normalizar_hora(inicio_prac)
+                fin_prac = self._normalizar_hora(fin_prac)
                 
                 # Tratar caracteres extraños en los días (ej. tildes) estandarizando a los de Python
                 dia = dia.capitalize()
