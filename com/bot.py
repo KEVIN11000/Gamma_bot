@@ -53,15 +53,36 @@ class GAMMA:
             if not self._es_autorizado(message.from_user.id):
                 self._rechazar(message)
                 return
+                
             try:
-                # Leemos las últimas líneas del log (gen_log.txt)
-                if os.path.exists("gen_log.txt"):
-                    with open("gen_log.txt", "r", encoding="utf-8", errors="replace") as f:
+                # Extraer el argumento (si existe)
+                partes = message.text.split(" ", 1)
+                tipo_log = partes[1].strip().lower() if len(partes) > 1 else "app"
+                
+                # Definir los archivos a consultar
+                archivos = {
+                    "app": "gen_log.txt",
+                    "error": "/var/log/kevin11000.pythonanywhere.com.error.log",
+                    "server": "/var/log/kevin11000.pythonanywhere.com.server.log",
+                    "access": "/var/log/kevin11000.pythonanywhere.com.access.log"
+                }
+                
+                if tipo_log not in archivos:
+                    msg = "⚠️ *Comando incorrecto.*\nUsa:\n`/debug app` (logs internos)\n`/debug error` (logs de PythonAnywhere)\n`/debug server` (logs del servidor PA)\n`/debug access` (logs web)"
+                    self.bot.reply_to(message, msg, parse_mode="Markdown")
+                    return
+                    
+                ruta_archivo = archivos[tipo_log]
+                
+                if os.path.exists(ruta_archivo):
+                    with open(ruta_archivo, "r", encoding="utf-8", errors="replace") as f:
                         lineas = f.readlines()
-                        ultimas = "".join(lineas[-15:])
-                    self.bot.reply_to(message, f"🛠️ *ÚLTIMOS LOGS:*\n```\n{ultimas}\n```", parse_mode="Markdown")
+                        ultimas = "".join(lineas[-20:])
+                    if not ultimas.strip():
+                        ultimas = "[El archivo existe pero está vacío]"
+                    self.bot.reply_to(message, f"🛠️ *ÚLTIMOS LOGS ({tipo_log.upper()}):*\n```text\n{ultimas[-3000:]}\n```", parse_mode="Markdown")
                 else:
-                    self.bot.reply_to(message, "📭 El archivo de log está vacío o no existe.")
+                    self.bot.reply_to(message, f"📭 El archivo `{ruta_archivo}` no existe.\n_(Normal si estás corriendo el bot en Windows localmente)_", parse_mode="Markdown")
             except Exception as e:
                 self.bot.reply_to(message, f"❌ Error al leer logs: {str(e)}")
 
