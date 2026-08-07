@@ -54,6 +54,12 @@ class GAMMA:
                 self._rechazar(message)
                 return
                 
+            # Validar si estamos en entorno de desarrollo (White-label feature)
+            modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
+            if not modo_dev:
+                self.bot.reply_to(message, "🔒 El comando de depuración está desactivado en este entorno de producción.")
+                return
+                
             try:
                 # Extraer el argumento (si existe)
                 partes = message.text.split(" ", 1)
