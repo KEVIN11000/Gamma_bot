@@ -207,15 +207,22 @@ class GAMMA:
             BotCommand("aviso",    "Agendar un hito o recordatorio con IA."),
             BotCommand("avisos",   "Ver lista de avisos activos."),
             BotCommand("cierre",   "Ejecutar cierre de período de marcaciones."),
-            BotCommand("start",    "Actualizar menú de comandos"),
-            BotCommand("debug",    "Ver logs recientes del sistema.")
+            BotCommand("start",    "Actualizar menú de comandos")
         ]
+        
+        if os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true":
+            comandos.append(BotCommand("debug", "Ver logs recientes del sistema."))
+            
         self.bot.set_my_commands(comandos)
         print("✅ Menú de comandos actualizado.", flush=True)
 
     def _cmd_start(self, message):
         try:
             self._registrar_comandos_menu()
+            
+            modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
+            texto_debug = "🛠️ /debug   — Ver logs de errores internos\n" if modo_dev else ""
+            
             texto = (
                 "🤖 *Bot de Gestión Avanzada (GAMMA)*\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -226,7 +233,7 @@ class GAMMA:
                 "📄 /reporte — Generar PDF de un período anterior\n"
                 "✍️ /aviso   — Agendar recordatorios con lenguaje natural\n"
                 "📋 /avisos  — Gestionar recordatorios activos\n"
-                "🛠️ /debug   — Ver logs de errores internos\n"
+                f"{texto_debug}"
                 "🔒 /cierre  — Ejecutar cierre de período\n"
                 "🔄 /start   — Reestablecer este menú\n"
                 "━━━━━━━━━━━━━━━━━━━━━"
