@@ -3,7 +3,7 @@ from flask_app import app, bot_instance
 
 if __name__ == "__main__":
     print("======================================================")
-    print("🚀 INICIANDO SERVIDOR LOCAL PARA PRUEBAS (V1.4.1)")
+    print("🚀 INICIANDO SERVIDOR LOCAL PARA PRUEBAS (V1.5.0)")
     print("======================================================")
     
     # Nos aseguramos de que el bot quite cualquier webhook anterior

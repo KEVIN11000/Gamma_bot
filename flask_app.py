@@ -85,8 +85,8 @@ def deploy():
         if chat_id:
             try:
                 bot_instance.bot.send_message(
-                    chat_id, 
-                    "🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión (V1.4.1 - Hotfix Horarios AM/PM) y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.", 
+                    chat_id,
+                    "🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión (V1.5.0 - Debug Multilog) y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.",
                     parse_mode="Markdown"
                 )
             except Exception as e:
@@ -98,4 +98,3 @@ def deploy():
         return "❌ Timeout en git pull", 500
     except Exception as e:
         return f"❌ Error en deploy: {e}", 500
-
