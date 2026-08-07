@@ -98,5 +98,4 @@ def deploy():
         return "❌ Timeout en git pull", 500
     except Exception as e:
         return f"❌ Error en deploy: {e}", 500
-
 
