@@ -84,9 +84,17 @@ def deploy():
         chat_id = os.environ.get("CHAT_ID")
         if chat_id:
             try:
+                # Leer la versión del archivo VERSION (ya actualizado por git pull)
+                version_path = os.path.join(base_path, "VERSION")
+                if os.path.exists(version_path):
+                    with open(version_path, "r") as vf:
+                        version = vf.read().strip()
+                else:
+                    version = "desconocida"
+
                 bot_instance.bot.send_message(
                     chat_id,
-                    "🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión (V1.5.0 - Debug Multilog) y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.",
+                    f"🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión *({version})* y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.",
                     parse_mode="Markdown"
                 )
             except Exception as e:
