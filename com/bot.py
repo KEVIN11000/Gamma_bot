@@ -258,9 +258,8 @@ class GAMMA:
             self.bot.edit_message_text("⚙️ Comando recibido. Abriendo Google Sheets...", call.message.chat.id, call.message.message_id)
 
             respuesta = self.agente_excel.ejecutar_marcado_para_bot(modo=modo)
-            bloque_avisos = self.agente_excel.verificar_avisos_activos()
 
-            self.bot.edit_message_text(f"{respuesta}{bloque_avisos}", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            self.bot.edit_message_text(respuesta, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
         except Exception as e:
             self.bot.send_message(call.message.chat.id, f"❌ Error interno: {type(e).__name__} - {str(e)}")
 
