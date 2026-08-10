@@ -155,4 +155,3 @@ def cron_rotar_logs():
         abort(403, "Token inválido")
     exito = rotar_logs()
     return ("✅ Logs rotados correctamente.", 200) if exito else ("❌ Error al rotar logs.", 500)
->>>>>>> feat/V1.6.0
