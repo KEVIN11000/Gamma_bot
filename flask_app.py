@@ -1,11 +1,13 @@
 from flask import Flask, request, abort
 import telebot
 import os
+import time
 import threading
 import subprocess
 import hmac
 import hashlib
 from com.bot import GAMMA
+from logic.cron_jobs import resumen_semanal, notificacion_clima, rotar_logs
 
 app = Flask(__name__)
 bot_instance = GAMMA()
@@ -84,19 +86,25 @@ def deploy():
         chat_id = os.environ.get("CHAT_ID")
         if chat_id:
             try:
-                # Leer la versión del archivo VERSION (ya actualizado por git pull)
+                # Leer versión desde archivo VERSION (ya actualizado por git pull)
                 version_path = os.path.join(base_path, "VERSION")
-                if os.path.exists(version_path):
-                    with open(version_path, "r") as vf:
-                        version = vf.read().strip()
-                else:
-                    version = "desconocida"
+                version = open(version_path).read().strip() if os.path.exists(version_path) else "desconocida"
 
-                bot_instance.bot.send_message(
+                msg = bot_instance.bot.send_message(
                     chat_id,
                     f"🚀 *¡Actualización completada!*\nEl autodeploy descargó la nueva versión *({version})* y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.",
                     parse_mode="Markdown"
                 )
+
+                # Auto-borrado del mensaje de deploy a los 30 segundos
+                def _borrar_msg(cid, mid):
+                    time.sleep(30)
+                    try:
+                        bot_instance.bot.delete_message(cid, mid)
+                    except Exception:
+                        pass
+                threading.Thread(target=_borrar_msg, args=(chat_id, msg.message_id), daemon=True).start()
+
             except Exception as e:
                 print(f"[deploy] Error enviando aviso de deploy: {e}", flush=True)
 
@@ -106,3 +114,45 @@ def deploy():
         return "❌ Timeout en git pull", 500
     except Exception as e:
         return f"❌ Error en deploy: {e}", 500
+
+
+# ── Cron Jobs (llamados por cron-job.org) ────────────────────────────────────
+def _validar_cron_secret():
+    """Verifica el token secreto en el header o query param para proteger los endpoints de cron."""
+    secret = os.environ.get('CRON_SECRET', '')
+    if not secret:
+        return True  # Sin secret configurado, se permite (solo para desarrollo local)
+    token_enviado = request.headers.get('X-Cron-Secret', '') or request.args.get('secret', '')
+    return token_enviado == secret
+
+
+@app.route('/cron/resumen-semanal', methods=['GET', 'POST'])
+def cron_resumen_semanal():
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
+    chat_id = os.environ.get('CHAT_ID')
+    spreadsheet_id = os.environ.get('SPREADSHEET_ID')
+    if not chat_id or not spreadsheet_id:
+        return "❌ CHAT_ID o SPREADSHEET_ID no configurados.", 500
+    exito = resumen_semanal(bot_instance.bot, chat_id, spreadsheet_id)
+    return ("✅ Resumen semanal enviado.", 200) if exito else ("❌ Error en resumen semanal.", 500)
+
+
+@app.route('/cron/clima', methods=['GET', 'POST'])
+def cron_clima():
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
+    chat_id = os.environ.get('CHAT_ID')
+    if not chat_id:
+        return "❌ CHAT_ID no configurado.", 500
+    exito = notificacion_clima(bot_instance.bot, chat_id)
+    return ("✅ Notificación climática enviada.", 200) if exito else ("❌ Error en clima.", 500)
+
+
+@app.route('/cron/rotar-logs', methods=['GET', 'POST'])
+def cron_rotar_logs():
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
+    exito = rotar_logs()
+    return ("✅ Logs rotados correctamente.", 200) if exito else ("❌ Error al rotar logs.", 500)
+>>>>>>> feat/V1.6.0
