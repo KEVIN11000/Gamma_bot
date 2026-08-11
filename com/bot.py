@@ -253,6 +253,92 @@ class GAMMA:
             )
             self.bot.reply_to(message, msg, parse_mode="Markdown")
 
+        # ── COMANDO OCR FACTURAS (Fase 2) ──────────────────────────────────────
+        @self.bot.message_handler(content_types=['photo'])
+        def manejar_foto_ticket(message):
+            if not self._es_autorizado(message.from_user.id):
+                self._rechazar(message)
+                return
+
+            msg_carga = self.bot.reply_to(message, "⏳ Descargando y analizando imagen con OCR (Gemini 2.5)...")
+            
+            try:
+                file_info = self.bot.get_file(message.photo[-1].file_id)
+                downloaded_file = self.bot.download_file(file_info.file_path)
+                
+                datos = self.agente_financiero.analizar_ticket_con_ia(downloaded_file, mime_type="image/jpeg")
+                
+                if "error" in datos:
+                    self.bot.edit_message_text(f"❌ Error: {datos['error']}", message.chat.id, msg_carga.message_id)
+                    return
+                
+                datos['file_id'] = message.photo[-1].file_id
+                
+                # Guardar en caché temporal para esperar confirmación
+                cache_key = f"ocr_{msg_carga.message_id}"
+                EstadoGestor.set(cache_key, datos)
+                
+                # Formatear montos para mostrar
+                neto = "{:,}".format(int(datos.get('neto', 0))).replace(",", ".")
+                iva = "{:,}".format(int(datos.get('iva', 0))).replace(",", ".")
+                total = "{:,}".format(int(datos.get('total', 0))).replace(",", ".")
+                
+                texto_confirmacion = (
+                    "🧾 *Ticket Analizado*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🏢 *Proveedor:* {datos.get('proveedor_cliente')}\n"
+                    f"📄 *Factura:* {datos.get('nro_factura')}\n"
+                    f"💰 *Neto:* Gs. {neto}\n"
+                    f"⚖️ *IVA:* Gs. {iva}\n"
+                    f"💵 *Total:* Gs. {total}\n"
+                    f"🏷 *Categoría:* {datos.get('categoria')}\n"
+                    f"📝 *Tipo:* {datos.get('comprobante')}\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "¿Deseas guardar este gasto?"
+                )
+                
+                teclado = InlineKeyboardMarkup()
+                teclado.row(
+                    InlineKeyboardButton("✅ Confirmar", callback_data=f"ocr_ok_{msg_carga.message_id}"),
+                    InlineKeyboardButton("❌ Cancelar", callback_data=f"ocr_no_{msg_carga.message_id}")
+                )
+                
+                self.bot.edit_message_text(texto_confirmacion, message.chat.id, msg_carga.message_id, parse_mode="Markdown", reply_markup=teclado)
+                
+            except Exception as e:
+                guardar_log(f"❌ Error procesando foto OCR: {e}")
+                self.bot.edit_message_text(f"❌ Hubo un problema al procesar la imagen: {e}", message.chat.id, msg_carga.message_id)
+
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith("ocr_"))
+        def callback_ocr(call):
+            if not self._es_autorizado(call.from_user.id):
+                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
+                return
+                
+            try:
+                self.bot.answer_callback_query(call.id)
+                accion, _, msg_id = call.data.split("_")
+                cache_key = f"ocr_{msg_id}"
+                
+                if accion == "no":
+                    EstadoGestor.pop(cache_key)
+                    self.bot.edit_message_text("❌ Gasto descartado.", call.message.chat.id, call.message.message_id)
+                    return
+                
+                if accion == "ok":
+                    datos = EstadoGestor.pop(cache_key)
+                    if not datos:
+                        self.bot.edit_message_text("❌ Error: Los datos del ticket expiraron. Vuelve a enviar la imagen.", call.message.chat.id, call.message.message_id)
+                        return
+                        
+                    self.bot.edit_message_text("⏳ Guardando en Libro Diario...", call.message.chat.id, call.message.message_id)
+                    resultado = self.agente_financiero.registrar_movimiento(datos)
+                    self.bot.edit_message_text(resultado, call.message.chat.id, call.message.message_id)
+                    
+            except Exception as e:
+                guardar_log(f"❌ Error en callback OCR: {e}")
+                self.bot.send_message(call.message.chat.id, f"❌ Error interno OCR: {str(e)}")
+
     def _registrar_comandos_menu(self):
         """Sincroniza el menú '/' de Telegram con los comandos del bot."""
         comandos = [

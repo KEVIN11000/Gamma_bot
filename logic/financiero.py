@@ -82,6 +82,64 @@ class AgenteFinanciero:
             guardar_log(f"❌ Error API Gemini: {e}")
             return {"error": str(e)}
 
+    def analizar_ticket_con_ia(self, imagen_bytes: bytes, mime_type: str = "image/jpeg"):
+        """
+        Envía la imagen del ticket a Gemini 2.5 Flash para extraer los datos de gasto.
+        """
+        api_key = os.getenv("GEMINI_API_KEY")
+        mi_ruc = os.getenv("MI_RUC", "Sin RUC")
+        mi_nombre = os.getenv("MI_NOMBRE_FACTURA", "Sin Nombre")
+        if not api_key:
+            return {"error": "Configuración de IA incompleta en el servidor."}
+
+        ahora = datetime.now(tz_py)
+        fecha_hoy_str = ahora.strftime("%d/%m")
+        mes_actual = ahora.strftime("%B")
+
+        prompt_sistema = (
+            f"Eres un experto contador público y analista financiero en Paraguay.\n"
+            f"Tu tarea es analizar el ticket o factura provisto en la imagen y extraer los datos del gasto.\n"
+            f"REGLA CRÍTICA PARA 'comprobante':\n"
+            f"1. Si el documento dice explícitamente 'Factura Virtual' y está a nombre de '{mi_nombre}' o RUC '{mi_ruc}', pon 'Virtual Legal'.\n"
+            f"2. Si es una factura impresa o normal válida a nombre de '{mi_nombre}' o RUC '{mi_ruc}', pon 'Física Legal'.\n"
+            f"3. Si es un ticket común de supermercado/despensa que dice 'Sin Nombre', o RUC 'XXXXX', o no es factura válida, pon 'No Legal'.\n\n"
+            f"Devuelve obligatoriamente un objeto JSON con las siguientes llaves (todas strings):\n"
+            f"1. 'proveedor_cliente': Nombre de la empresa o comercio que emite el ticket.\n"
+            f"2. 'nro_factura': Número de factura si existe, sino 'S/N'.\n"
+            f"3. 'neto': Monto antes del IVA (Total - IVA). Si no hay desglose, repite el Total (solo números).\n"
+            f"4. 'iva': Monto total del IVA (suma de IVA 5% e IVA 10%). Si no hay, pon '0' (solo números).\n"
+            f"5. 'total': Monto total a pagar (solo números, sin puntos ni comas).\n"
+            f"6. 'categoria': Categoriza en una palabra (ej. Supermercado, Combustible, Farmacia, Comida, Varios).\n"
+            f"7. 'comprobante': Aplica la REGLA CRÍTICA estrictamente ('Virtual Legal', 'Física Legal' o 'No Legal').\n"
+            f"Solo devuelve el JSON, sin markdown ni explicaciones adicionales."
+        )
+
+        try:
+            client = genai.Client(api_key=api_key)
+            imagen_part = types.Part.from_bytes(data=imagen_bytes, mime_type=mime_type)
+            
+            respuesta_ia = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[imagen_part, prompt_sistema],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+
+            datos = json.loads(respuesta_ia.text)
+            datos['fecha'] = fecha_hoy_str
+            datos['mes'] = mes_actual
+            datos['tipo_movimiento'] = "Gasto"
+            guardar_log(f"🤖 IA Financiera OCR extrajo: {datos}")
+            return datos
+
+        except json.JSONDecodeError as e:
+            guardar_log(f"❌ Error OCR al decodificar JSON: {e}")
+            return {"error": "La IA devolvió un formato ilegible del ticket."}
+        except Exception as e:
+            guardar_log(f"❌ Error OCR API Gemini: {e}")
+            return {"error": str(e)}
+
     def registrar_movimiento(self, datos: dict) -> str:
         """
         Inserta la fila en Libro_Diario.
