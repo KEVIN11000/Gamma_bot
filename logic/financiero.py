@@ -149,18 +149,25 @@ class AgenteFinanciero:
             col_fechas = self.ws.col_values(1)
             fila = len(col_fechas) + 1
             
+            # Sanitizar valores contra inyección de fórmulas (Reporte AppSec)
+            def sanitizar(val):
+                s = str(val)
+                if s.startswith(('=', '+', '-', '@')):
+                    return f"'{s}"
+                return s
+
             valores = [
-                datos.get('fecha', ''),
-                datos.get('tipo_movimiento', ''),
-                datos.get('proveedor_cliente', ''),
-                datos.get('nro_factura', 'S/N'),
-                str(datos.get('neto', '0')),
-                str(datos.get('iva', '0')),
-                str(datos.get('total', '0')),
-                datos.get('categoria', 'Varios'),
-                datos.get('comprobante', 'No Legal'),
-                datos.get('file_id', 'null'),
-                datos.get('mes', '')
+                sanitizar(datos.get('fecha', '')),
+                sanitizar(datos.get('tipo_movimiento', 'Desconocido')),
+                sanitizar(datos.get('proveedor_cliente', '')),
+                sanitizar(datos.get('nro_factura', '')),
+                sanitizar(datos.get('neto', 0)),
+                sanitizar(datos.get('iva', 0)),
+                sanitizar(datos.get('total', 0)),
+                sanitizar(datos.get('categoria', '')),
+                sanitizar(datos.get('comprobante', '')),
+                sanitizar(datos.get('file_id', '')),
+                sanitizar(datos.get('mes', ''))
             ]
             
             self.ws.update(f"A{fila}:K{fila}", [valores])
