@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 import pytz
 import json
+import sqlite3
 
 # 🆕 IMPORTS DE LA FASE 2 & 3 (Google GenAI moderno)
 from google import genai
@@ -15,13 +16,10 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 tz_py = pytz.timezone('America/Buenos_Aires')
 
-def guardar_log(mensaje):
-    timestamp = datetime.now(tz_py).strftime("%Y-%m-%d %H:%M:%S")
-    path = os.path.join(BASE_DIR, "gen_log.txt")
-    otpt = f"[{timestamp}] {mensaje}\n"
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(otpt)
-    print(otpt.strip())
+from logger_config import setup_logger
+logger = setup_logger('logic')
+
+
 
 
 class ConexionSheets:
@@ -37,7 +35,7 @@ class ConexionSheets:
             import gspread
             credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
             cls._cliente = gspread.authorize(credenciales)
-            guardar_log("🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton).")
+            logger.info("🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton).")
         return cls._cliente
 
     @classmethod
@@ -49,7 +47,7 @@ class ConexionSheets:
             from googleapiclient.discovery import build
             credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
             cls._servicio_calendar = build('calendar', 'v3', credentials=credenciales)
-            guardar_log("📅 Nueva conexión a Google Calendar establecida exitosamente (Singleton).")
+            logger.info("📅 Nueva conexión a Google Calendar establecida exitosamente (Singleton).")
         return cls._servicio_calendar
 
 
@@ -64,12 +62,12 @@ class AgenteAutonomoHoras:
             self._cargar_hoja_activa()
         except gspread.exceptions.APIError as e:
             msj = f"❌ Error de API de Google Sheets en horas: {e}"
-            guardar_log(msj)
+            logger.info(msj)
             print(msj)
             raise
         except Exception as e:
             msj = f"❌ Error al obtener conexión de Sheets: {e}"
-            guardar_log(msj)
+            logger.info(msj)
             print(msj)
             raise
 
@@ -141,14 +139,14 @@ class AgenteAutonomoHoras:
         fila = self._obtener_o_crear_fila_hoy()
         if not fila:
             msg = "❌ Límite de filas alcanzado o error en fecha."
-            guardar_log(msg)
+            logger.info(msg)
             return msg
 
         hora_ahora = datetime.now(tz_py).strftime("%H:%M")
 
         if hasattr(self, 'fin_de') and self.fin_de():
             log_msg = f"{hora_ahora} Dia libre, no hay marcas que hacer!!!"
-            guardar_log(log_msg)
+            logger.info(log_msg)
             return "ℹ️ Hoy es tu día libre, no es necesario registrar marcas."
 
         COLUMNAS_NORMAL  = [(3, "Entrada"), (4, "S. Almuerzo"), (5, "V. Almuerzo"), (6, "Salida")]
@@ -177,7 +175,7 @@ class AgenteAutonomoHoras:
 
                 log_msg = f"Marcado [{modo}] {nombre}: {hora_ahora} en fila {fila}"
                 print(f"✅ {log_msg}")
-                guardar_log(log_msg)
+                logger.info(log_msg)
                 return f"✅ *{nombre}* registrado a las {hora_ahora}."
 
         return "ℹ️ Ya completaste todos los registros of hoy."
@@ -219,7 +217,7 @@ class AgenteAutonomoHoras:
             if hoja_ya_existia:
                 # La hoja ya fue creada (cierre previo parcial): la reutilizamos
                 nueva_hoja = self.wb.worksheet(nombre_hoja_nueva)
-                guardar_log(f"⚠️ La hoja '{nombre_hoja_nueva}' ya existía. Reutilizando sin recrear encabezados.")
+                logger.error(f"⚠️ La hoja '{nombre_hoja_nueva}' ya existía. Reutilizando sin recrear encabezados.")
                 mensaje_creacion = f"⚠️ La pestaña *{nombre_hoja_nueva}* ya existía y fue reutilizada."
             else:
                 # Flujo normal: crear hoja nueva con encabezados
@@ -232,7 +230,7 @@ class AgenteAutonomoHoras:
             with open(path_txt, "w", encoding="utf-8") as f:
                 f.write(nombre_hoja_nueva)
 
-            guardar_log(f"🔄 CIERRE PROCESADO: Finalizado '{hoja_actual}'. Activo '{nombre_hoja_nueva}'")
+            logger.info(f"🔄 CIERRE PROCESADO: Finalizado '{hoja_actual}'. Activo '{nombre_hoja_nueva}'")
             return (
                 f"✅ Cierre de período exitoso.\n\n"
                 f"{mensaje_creacion} "
@@ -241,7 +239,7 @@ class AgenteAutonomoHoras:
 
         except Exception as e:
             # ── Si falla algo inesperado, aún así intentamos salvar el período ─
-            guardar_log(f"❌ Error inesperado en cierre: {e}")
+            logger.error(f"❌ Error inesperado en cierre: {e}")
             return f"❌ Error al ejecutar el cierre: {e}"
 
     def _parsear_horas_a_decimal(self, valor_str: str) -> float:
@@ -405,7 +403,7 @@ class AgenteAutonomoHoras:
         """
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            guardar_log("❌ Error: No se encontró GEMINI_API_KEY en el entorno.")
+            logger.error("❌ Error: No se encontró GEMINI_API_KEY en el entorno.")
             return {"error": "Configuración de IA incompleta en el servidor."}
 
         # 📅 ANCLAJE TEMPORAL DINÁMICO
@@ -438,14 +436,14 @@ class AgenteAutonomoHoras:
             )
 
             datos_formateados = json.loads(respuesta_ia.text)
-            guardar_log(f"🤖 IA interpretó con éxito: {datos_formateados}")
+            logger.info(f"🤖 IA interpretó con éxito: {datos_formateados}")
             return datos_formateados
 
         except json.JSONDecodeError as jde:
-            guardar_log(f"❌ Error al decodificar JSON de la IA: {jde}. Respuesta cruda: {respuesta_ia.text}")
+            logger.error(f"❌ Error al decodificar JSON de la IA: {jde}. Respuesta cruda: {respuesta_ia.text}")
             return {"error": "La IA devolvió un formato ilegible. Intentá refrasear."}
         except Exception as e:
-            guardar_log(f"❌ Error en la llamada a Gemini API: {e}")
+            logger.error(f"❌ Error en la llamada a Gemini API: {e}")
             return {"error": f"No se pudo conectar con el motor de IA: {str(e)}"}
 
     def guardar_aviso_calendar(self, datos_evento: dict) -> str:
@@ -485,7 +483,7 @@ class AgenteAutonomoHoras:
             }
 
             evento_creado = servicio.events().insert(calendarId=calendar_id, body=evento).execute()
-            guardar_log(f"📅 Nuevo aviso guardado en Calendar: '{datos_evento['titulo']}'")
+            logger.info(f"📅 Nuevo aviso guardado en Calendar: '{datos_evento['titulo']}'")
 
             return (
                 f"✅ *¡Aviso guardado en Google Calendar!*\n\n"
@@ -494,7 +492,7 @@ class AgenteAutonomoHoras:
                 f"🔔 _Recibirás notificaciones nativas en tu teléfono._"
             )
         except Exception as e:
-            guardar_log(f"❌ Error al guardar en Google Calendar: {e}")
+            logger.error(f"❌ Error al guardar en Google Calendar: {e}")
             return f"❌ Error interno de Google Calendar: {str(e)}"
 
     def obtener_lista_avisos_calendar(self):
@@ -540,7 +538,7 @@ class AgenteAutonomoHoras:
                 })
             return avisos_formateados
         except Exception as e:
-            guardar_log(f"❌ Error al obtener eventos de Calendar: {e}")
+            logger.error(f"❌ Error al obtener eventos de Calendar: {e}")
             return []
 
     def eliminar_aviso_calendar(self, event_id: str):
@@ -554,7 +552,7 @@ class AgenteAutonomoHoras:
             servicio.events().delete(calendarId=calendar_id, eventId=event_id).execute()
             return True
         except Exception as e:
-            guardar_log(f"❌ Error al eliminar evento en Calendar: {e}")
+            logger.error(f"❌ Error al eliminar evento en Calendar: {e}")
             return None
 
     def obtener_nombres_hojas(self, limite: int = 6) -> list:
@@ -575,7 +573,7 @@ class AgenteAutonomoHoras:
             nombres = [h.title for h in hojas if h.title != hoja_activa]
             return nombres[-limite:][::-1]  # Las más recientes primero
         except Exception as e:
-            guardar_log(f"❌ Error en obtener_nombres_hojas: {e}")
+            logger.error(f"❌ Error en obtener_nombres_hojas: {e}")
             return []
 
 class AgenteAsistenciaMaterias:
@@ -587,10 +585,10 @@ class AgenteAsistenciaMaterias:
             self.cliente = ConexionSheets.obtener_cliente()
             self.wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
         except gspread.exceptions.APIError as e:
-            guardar_log(f"❌ Error de API de Google Sheets en materias: {e}")
+            logger.error(f"❌ Error de API de Google Sheets en materias: {e}")
             raise
         except Exception as e:
-            guardar_log(f"❌ Error al conectar a Sheets de materias: {e}")
+            logger.error(f"❌ Error al conectar a Sheets de materias: {e}")
             raise
         self._cargar_horarios()
 
@@ -654,9 +652,9 @@ class AgenteAsistenciaMaterias:
                     "teoria": (inicio_teo, fin_teo),
                     "practica": (inicio_prac, fin_prac)
                 }
-            guardar_log(f"✅ Horarios cargados desde Config_bot: {len(self.HORARIOS_MATERIAS)} materias.")
+            logger.info(f"✅ Horarios cargados desde Config_bot: {len(self.HORARIOS_MATERIAS)} materias.")
         except Exception as e:
-            guardar_log(f"❌ Error al cargar horarios desde Config_bot: {e}")
+            logger.error(f"❌ Error al cargar horarios desde Config_bot: {e}")
             self.HORARIOS_MATERIAS = {}
 
 
@@ -718,51 +716,59 @@ class AgenteAsistenciaMaterias:
                 ws.update(f"E{fila}:F{fila}", [[hora_str, "x"]])
 
             log_msg = f"Asistencia marcada para {materia} ({tipo}) a las {hora_str} en fila {fila}"
-            guardar_log(log_msg)
+            logger.info(log_msg)
             return f"✅ Asistencia de *{materia}* ({tipo}) registrada exitosamente a las {hora_str}."
             
         except Exception as e:
-            guardar_log(f"❌ Error marcando materia: {e}")
+            logger.error(f"❌ Error marcando materia: {e}")
             return f"❌ Error interno al marcar asistencia: {str(e)}"
 
 class EstadoGestor:
-    """Clase para guardar y recuperar estado temporal (evita pérdida de memoria RAM)."""
-    PATH_JSON = os.path.join(BASE_DIR, "estado_temporal.json")
+    """Clase para guardar y recuperar estado temporal usando SQLite para soportar múltiples workers en PythonAnywhere."""
+    PATH_DB = os.path.join(BASE_DIR, "estado_temporal.db")
 
     @classmethod
-    def _cargar(cls):
-        if not os.path.exists(cls.PATH_JSON):
-            return {}
-        try:
-            with open(cls.PATH_JSON, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError as e:
-            guardar_log(f"⚠️ Error al decodificar JSON en EstadoGestor: {e}")
-            return {}
-        except Exception:
-            return {}
-
-    @classmethod
-    def _guardar(cls, datos):
-        with open(cls.PATH_JSON, "w", encoding="utf-8") as f:
-            json.dump(datos, f, ensure_ascii=False)
+    def _get_conn(cls):
+        conn = sqlite3.connect(cls.PATH_DB, timeout=5.0)
+        conn.execute("CREATE TABLE IF NOT EXISTS estado (clave TEXT PRIMARY KEY, valor TEXT)")
+        return conn
 
     @classmethod
     def set(cls, clave, valor):
-        datos = cls._cargar()
-        datos[str(clave)] = valor
-        cls._guardar(datos)
+        conn = cls._get_conn()
+        try:
+            valor_str = json.dumps(valor, ensure_ascii=False)
+            conn.execute("INSERT OR REPLACE INTO estado (clave, valor) VALUES (?, ?)", (str(clave), valor_str))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error escribiendo en EstadoGestor: {e}")
+        finally:
+            conn.close()
 
     @classmethod
     def get(cls, clave, default=None):
-        datos = cls._cargar()
-        return datos.get(str(clave), default)
+        conn = cls._get_conn()
+        try:
+            cur = conn.execute("SELECT valor FROM estado WHERE clave = ?", (str(clave),))
+            row = cur.fetchone()
+            if row:
+                return json.loads(row[0])
+            return default
+        except Exception as e:
+            logger.error(f"Error leyendo en EstadoGestor: {e}")
+            return default
+        finally:
+            conn.close()
 
     @classmethod
     def pop(cls, clave, default=None):
-        datos = cls._cargar()
-        if str(clave) in datos:
-            valor = datos.pop(str(clave))
-            cls._guardar(datos)
-            return valor
-        return default
+        valor = cls.get(clave, default)
+        conn = cls._get_conn()
+        try:
+            conn.execute("DELETE FROM estado WHERE clave = ?", (str(clave),))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error borrando en EstadoGestor: {e}")
+        finally:
+            conn.close()
+        return valor

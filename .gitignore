@@ -4,6 +4,6 @@ avisos.json
 periodo_actual.txt
 gen_log.txt
 sheet.xlsx
-estado_temporal.json
+estado_temporal.db
 __pycache__/
 *.pyc

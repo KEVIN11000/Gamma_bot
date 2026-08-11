@@ -6,9 +6,11 @@ import threading
 import subprocess
 import hmac
 import hashlib
+from logger_config import setup_logger
 from com.bot import GAMMA
 from logic.cron_jobs import resumen_semanal, notificacion_clima, rotar_logs
 
+logger = setup_logger("flask")
 app = Flask(__name__)
 bot_instance = GAMMA()
 
@@ -72,7 +74,7 @@ def deploy():
             timeout=30
         )
         salida = resultado.stdout.strip() or resultado.stderr.strip()
-        print(f"[deploy] git pull: {salida}", flush=True)
+        logger.info(f"[deploy] git pull: {salida}")
 
         if resultado.returncode != 0:
             return f"❌ git pull falló:\n{salida}", 500
@@ -81,7 +83,7 @@ def deploy():
         # (equivalente a hacer click en "Reload" en el panel web)
         if os.path.exists(wsgi_path):
             os.utime(wsgi_path, None)
-            print("[deploy] WSGI tocado — app recargando...", flush=True)
+            logger.info("[deploy] WSGI tocado - app recargando...")
 
         chat_id = os.environ.get("CHAT_ID")
         if chat_id:
@@ -97,12 +99,12 @@ def deploy():
                 )
 
                 # Auto-borrado del mensaje mediante un proceso independiente que sobrevive al reinicio
-                codigo = f"import time, telebot; time.sleep(30); bot = telebot.TeleBot('{bot_instance.token}'); " \\
+                codigo = f"import time, telebot; time.sleep(30); bot = telebot.TeleBot('{bot_instance.token}'); " \
                          f"try: bot.delete_message('{chat_id}', {msg.message_id})\nexcept: pass"
                 subprocess.Popen(["python", "-c", codigo])
 
             except Exception as e:
-                print(f"[deploy] Error enviando aviso de deploy: {e}", flush=True)
+                logger.error(f"[deploy] Error enviando aviso de deploy: {e}")
 
         return f"✅ Deploy exitoso y app recargada:\n{salida}", 200
 

@@ -1,8 +1,11 @@
 import telebot
 import os
 import pytz
+
+from logger_config import setup_logger
+logger = setup_logger("bot")
 from dotenv import load_dotenv
-from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias, EstadoGestor, guardar_log
+from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias, EstadoGestor
 from logic.financiero import AgenteFinanciero
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from datetime import datetime
@@ -45,16 +48,25 @@ class GAMMA:
             f"Nombre: {user.first_name} {user.last_name or ''}"
         )
         print(alerta, flush=True)
-        guardar_log(alerta)
+        logger.info(alerta)
         self.bot.reply_to(message, "🚫 No tenés acceso a este bot.")
 
     def _registrar_manejadores(self):
+        def auth_required(func):
+            def wrapper(obj):
+                if not self._es_autorizado(obj.from_user.id):
+                    if hasattr(obj, 'data'):
+                        self.bot.answer_callback_query(obj.id, "No estas autorizado.", show_alert=True)
+                    else:
+                        self._rechazar(obj)
+                    return
+                return func(obj)
+            return wrapper
+
         # ── COMANDO DEBUG ─────────────────────────────────────────────────────
         @self.bot.message_handler(commands=['debug'])
+        @auth_required
         def comando_debug(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
                 
             # Validar si estamos en entorno de desarrollo (White-label feature)
             modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
@@ -96,63 +108,47 @@ class GAMMA:
 
         # ── Comando START ─────────────────────────────────────────────────────
         @self.bot.message_handler(commands=['start'])
+        @auth_required
         def comando_start(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             self._cmd_start(message)
 
         # ── Comando MARCAR ────────────────────────────────────────────────────
         @self.bot.message_handler(commands=['marcar'])
+        @auth_required
         def wrapper_registro(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             self._mostrar_opciones_marcado(message)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("marcar_"))
+        @auth_required
         def callback_marcado(call):
-            if not self._es_autorizado(call.from_user.id):
-                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
-                return
             self._procesar_callback_marcado(call)
 
         # ── Comando CIERRE ────────────────────────────────────────────────────
         @self.bot.message_handler(commands=['cierre'])
+        @auth_required
         def comando_cierre(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             self._mostrar_confirmacion_cierre(message)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("cierre_"))
+        @auth_required
         def callback_cierre(call):
-            if not self._es_autorizado(call.from_user.id):
-                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
-                return
             self._procesar_callback_cierre(call)
 
         # ── Comando REPORTE ──────────────────────────────────────────────────
         @self.bot.message_handler(commands=['reporte'])
+        @auth_required
         def comando_reporte(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             self._mostrar_selector_hojas(message)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("reporte_"))
+        @auth_required
         def callback_reporte(call):
-            if not self._es_autorizado(call.from_user.id):
-                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
-                return
             self._procesar_callback_reporte(call)
 
         # ── 🆕 COMANDO AVISO (Fase 3) ─────────────────────────────────────────
         @self.bot.message_handler(commands=['aviso'])
+        @auth_required
         def comando_aviso(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
 
             # Extrae la frase que viene después del comando /aviso
             partes = message.text.split(maxsplit=1)
@@ -169,43 +165,33 @@ class GAMMA:
                 self.bot.register_next_step_handler(msg, self._capturar_frase_aviso_secuencial)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("aviso_"))
+        @auth_required
         def callback_aviso(call):
-            if not self._es_autorizado(call.from_user.id):
-                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
-                return
             self._procesar_callback_aviso(call)
 
         # ── Comando AVISOS (CORREGIDO Y INTEGRADO) ─────────────────────────────
         @self.bot.message_handler(commands=['avisos'])
+        @auth_required
         def comando_avisos(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             self._cmd_avisos(message)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("borrar_"))
+        @auth_required
         def callback_borrar_aviso(call):
-            if not self._es_autorizado(call.from_user.id):
-                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
-                return
             self._procesar_callback_borrar_aviso(call)
 
         # ── Comando MARCAR MATERIA ─────────────────────────────────────────────
         @self.bot.message_handler(commands=['marcar_materia'])
+        @auth_required
         def comando_marcar_materia(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             msg = self.bot.reply_to(message, "⚙️ Registrando asistencia en la materia actual...")
             resultado = self.agente_materias.marcar_asistencia()
             self.bot.edit_message_text(resultado, message.chat.id, msg.message_id, parse_mode="Markdown")
 
         # ── COMANDOS FINANCIEROS (V1.7.0) ──────────────────────────────────────
         @self.bot.message_handler(commands=['gasto', 'ingreso'])
+        @auth_required
         def comando_movimiento_financiero(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             
             comando = message.text.split()[0].replace('/', '').lower()
             tipo_mov = "Gasto" if comando == "gasto" else "Ingreso"
@@ -227,10 +213,8 @@ class GAMMA:
             self.bot.edit_message_text(resultado, message.chat.id, msg_carga.message_id)
 
         @self.bot.message_handler(commands=['balance'])
+        @auth_required
         def comando_balance(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
             
             balance_data = self.agente_financiero.obtener_balance()
             if not balance_data:
@@ -255,10 +239,8 @@ class GAMMA:
 
         # ── COMANDO OCR FACTURAS (Fase 2) ──────────────────────────────────────
         @self.bot.message_handler(content_types=['photo'])
+        @auth_required
         def manejar_foto_ticket(message):
-            if not self._es_autorizado(message.from_user.id):
-                self._rechazar(message)
-                return
 
             msg_carga = self.bot.reply_to(message, "⏳ Descargando y analizando imagen con OCR (Gemini 2.5)...")
             
@@ -306,18 +288,16 @@ class GAMMA:
                 self.bot.edit_message_text(texto_confirmacion, message.chat.id, msg_carga.message_id, parse_mode="Markdown", reply_markup=teclado)
                 
             except Exception as e:
-                guardar_log(f"❌ Error procesando foto OCR: {e}")
+                logger.error(f"❌ Error procesando foto OCR: {e}")
                 self.bot.edit_message_text(f"❌ Hubo un problema al procesar la imagen: {e}", message.chat.id, msg_carga.message_id)
 
         @self.bot.callback_query_handler(func=lambda call: call.data.startswith("ocr_"))
+        @auth_required
         def callback_ocr(call):
-            if not self._es_autorizado(call.from_user.id):
-                self.bot.answer_callback_query(call.id, "🚫 No estás autorizado.", show_alert=True)
-                return
                 
             try:
                 self.bot.answer_callback_query(call.id)
-                accion, _, msg_id = call.data.split("_")
+                _, accion, msg_id = call.data.split("_")
                 cache_key = f"ocr_{msg_id}"
                 
                 if accion == "no":
@@ -336,7 +316,7 @@ class GAMMA:
                     self.bot.edit_message_text(resultado, call.message.chat.id, call.message.message_id)
                     
             except Exception as e:
-                guardar_log(f"❌ Error en callback OCR: {e}")
+                logger.error(f"❌ Error en callback OCR: {e}")
                 self.bot.send_message(call.message.chat.id, f"❌ Error interno OCR: {str(e)}")
 
     def _registrar_comandos_menu(self):
@@ -463,6 +443,8 @@ class GAMMA:
             self.bot.send_message(call.message.chat.id, f"❌ Error interno en cierre: {str(e)}")
 
     def _capturar_monto_descuento(self, message):
+        if not self._es_autorizado(message.from_user.id): return
+
         try:
             texto_ingresado = message.text.strip().replace(".", "").replace(",", "")
             monto_descuento = float(texto_ingresado)
@@ -573,6 +555,8 @@ class GAMMA:
 
     def _capturar_descuento_reporte(self, message):
         """Captura el monto de descuento ingresado y genera el PDF."""
+        if not self._es_autorizado(message.from_user.id): return
+
         try:
             chat_id = message.chat.id
             nombre_hoja = EstadoGestor.pop(f"reporte_{chat_id}")
@@ -607,6 +591,8 @@ class GAMMA:
             self.bot.send_message(message_obj.chat.id, msg_pdf)
 
     def _capturar_frase_aviso_secuencial(self, message):
+        if not self._es_autorizado(message.from_user.id): return
+
         if not message.text or message.text.startswith('/'):
             self.bot.reply_to(message, "❌ Operación cancelada. No enviaste una frase válida.")
             return
@@ -673,7 +659,7 @@ class GAMMA:
     def _cmd_avisos(self, message):
         """Muestra el panel interactivo con la lista de recordatorios y botones de borrado."""
         user = message.from_user
-        guardar_log(f"[/avisos] Panel de gestión solicitado por ID: {user.id}")
+        logger.info(f"[/avisos] Panel de gestión solicitado por ID: {user.id}")
         try:
             lista_avisos = self.agente_excel.obtener_lista_avisos_calendar()
 
@@ -702,10 +688,10 @@ class GAMMA:
             self.bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
 
         except telebot.apihelper.ApiTelegramException as tel_e:
-            guardar_log(f"⚠️ Error de red/API en Telegram: {str(tel_e)}")
+            logger.error(f"⚠️ Error de red/API en Telegram: {str(tel_e)}")
             self.bot.reply_to(message, "⚠️ No pude enviarte la lista por un error de conexión con Telegram.")
         except Exception as e:
-            guardar_log(f"❌ Error en _cmd_avisos: {str(e)}")
+            logger.error(f"❌ Error en _cmd_avisos: {str(e)}")
             self.bot.reply_to(message, f"❌ Error al cargar el panel de avisos: {str(e)}")
 
     def _procesar_callback_borrar_aviso(self, call):

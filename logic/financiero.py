@@ -1,11 +1,14 @@
 import os
 import json
+
+from logger_config import setup_logger
+logger = setup_logger("financiero")
 from datetime import datetime
 import pytz
 from google import genai
 from google.genai import types
 
-from logic.logic import ConexionSheets, guardar_log
+from logic.logic import ConexionSheets
 
 tz_py = pytz.timezone('America/Buenos_Aires')
 
@@ -17,7 +20,7 @@ class AgenteFinanciero:
             self.wb = self.cliente.open_by_key(self.spreadsheet_id)
             self._obtener_o_crear_hoja_libro_diario()
         except Exception as e:
-            guardar_log(f"❌ Error al conectar a Sheets en AgenteFinanciero: {e}")
+            logger.error(f"❌ Error al conectar a Sheets en AgenteFinanciero: {e}")
             raise
 
     def _obtener_o_crear_hoja_libro_diario(self):
@@ -27,7 +30,7 @@ class AgenteFinanciero:
             self.ws = self.wb.add_worksheet(title=nombre_hoja, rows="1000", cols="11")
             encabezados = ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes"]
             self.ws.update("A1:K1", [encabezados])
-            guardar_log(f"✅ Se creó la pestaña {nombre_hoja} en Google Sheets.")
+            logger.info(f"✅ Se creó la pestaña {nombre_hoja} en Google Sheets.")
         else:
             self.ws = self.wb.worksheet(nombre_hoja)
 
@@ -72,14 +75,14 @@ class AgenteFinanciero:
             datos['fecha'] = fecha_hoy_str
             datos['mes'] = mes_actual
             datos['tipo_movimiento'] = tipo_movimiento.capitalize()
-            guardar_log(f"🤖 IA Financiera interpretó: {datos}")
+            logger.info(f"🤖 IA Financiera interpretó: {datos}")
             return datos
 
         except json.JSONDecodeError as e:
-            guardar_log(f"❌ Error al decodificar JSON financiero: {e}")
+            logger.error(f"❌ Error al decodificar JSON financiero: {e}")
             return {"error": "La IA devolvió un formato ilegible."}
         except Exception as e:
-            guardar_log(f"❌ Error API Gemini: {e}")
+            logger.error(f"❌ Error API Gemini: {e}")
             return {"error": str(e)}
 
     def analizar_ticket_con_ia(self, imagen_bytes: bytes, mime_type: str = "image/jpeg"):
@@ -130,14 +133,14 @@ class AgenteFinanciero:
             datos['fecha'] = fecha_hoy_str
             datos['mes'] = mes_actual
             datos['tipo_movimiento'] = "Gasto"
-            guardar_log(f"🤖 IA Financiera OCR extrajo: {datos}")
+            logger.info(f"🤖 IA Financiera OCR extrajo: {datos}")
             return datos
 
         except json.JSONDecodeError as e:
-            guardar_log(f"❌ Error OCR al decodificar JSON: {e}")
+            logger.error(f"❌ Error OCR al decodificar JSON: {e}")
             return {"error": "La IA devolvió un formato ilegible del ticket."}
         except Exception as e:
-            guardar_log(f"❌ Error OCR API Gemini: {e}")
+            logger.error(f"❌ Error OCR API Gemini: {e}")
             return {"error": str(e)}
 
     def registrar_movimiento(self, datos: dict) -> str:
@@ -176,7 +179,7 @@ class AgenteFinanciero:
             monto_fmt = "{:,}".format(int(datos.get('total', 0))).replace(",", ".")
             return f"✅ Movimiento guardado en Libro Diario:\n{icono} {datos.get('tipo_movimiento')} por Gs. {monto_fmt}\nCategoría: {datos.get('categoria')}"
         except Exception as e:
-            guardar_log(f"❌ Error registrando movimiento: {e}")
+            logger.error(f"❌ Error registrando movimiento: {e}")
             return f"❌ Hubo un error al guardar en la planilla: {str(e)}"
 
     def obtener_balance(self) -> dict:
@@ -209,5 +212,5 @@ class AgenteFinanciero:
                 "flujo_neto": flujo_neto
             }
         except Exception as e:
-            guardar_log(f"❌ Error al obtener balance: {e}")
+            logger.error(f"❌ Error al obtener balance: {e}")
             return None
