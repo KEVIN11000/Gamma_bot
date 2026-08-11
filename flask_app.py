@@ -96,14 +96,10 @@ def deploy():
                     parse_mode="Markdown"
                 )
 
-                # Auto-borrado del mensaje de deploy a los 30 segundos
-                def _borrar_msg(cid, mid):
-                    time.sleep(30)
-                    try:
-                        bot_instance.bot.delete_message(cid, mid)
-                    except Exception:
-                        pass
-                threading.Thread(target=_borrar_msg, args=(chat_id, msg.message_id), daemon=True).start()
+                # Auto-borrado del mensaje mediante un proceso independiente que sobrevive al reinicio
+                codigo = f"import time, telebot; time.sleep(30); bot = telebot.TeleBot('{bot_instance.token}'); " \\
+                         f"try: bot.delete_message('{chat_id}', {msg.message_id})\nexcept: pass"
+                subprocess.Popen(["python", "-c", codigo])
 
             except Exception as e:
                 print(f"[deploy] Error enviando aviso de deploy: {e}", flush=True)
