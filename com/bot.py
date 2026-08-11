@@ -3,6 +3,7 @@ import os
 import pytz
 from dotenv import load_dotenv
 from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias, EstadoGestor, guardar_log
+from logic.financiero import AgenteFinanciero
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from datetime import datetime
 
@@ -29,6 +30,7 @@ class GAMMA:
 
         self.agente_excel = AgenteAutonomoHoras(spreadsheet_id=self.sheet_id)
         self.agente_materias = AgenteAsistenciaMaterias()
+        self.agente_financiero = AgenteFinanciero(spreadsheet_id=self.sheet_id)
         self._registrar_manejadores()
         self._registrar_comandos_menu()
 
@@ -198,9 +200,65 @@ class GAMMA:
             resultado = self.agente_materias.marcar_asistencia()
             self.bot.edit_message_text(resultado, message.chat.id, msg.message_id, parse_mode="Markdown")
 
+        # ── COMANDOS FINANCIEROS (V1.7.0) ──────────────────────────────────────
+        @self.bot.message_handler(commands=['gasto', 'ingreso'])
+        def comando_movimiento_financiero(message):
+            if not self._es_autorizado(message.from_user.id):
+                self._rechazar(message)
+                return
+            
+            comando = message.text.split()[0].replace('/', '').lower()
+            tipo_mov = "Gasto" if comando == "gasto" else "Ingreso"
+            
+            partes = message.text.split(maxsplit=1)
+            if len(partes) < 2:
+                self.bot.reply_to(message, f"❌ Falta descripción. Ejemplo:\n`/{comando} 50000 Hamburguesa`", parse_mode="Markdown")
+                return
+                
+            texto_usuario = partes[1]
+            msg_carga = self.bot.reply_to(message, f"⏳ Procesando {tipo_mov.lower()} con IA...")
+            
+            datos = self.agente_financiero.procesar_movimiento_con_ia(texto_usuario, tipo_movimiento=tipo_mov)
+            if "error" in datos:
+                self.bot.edit_message_text(f"❌ Error: {datos['error']}", message.chat.id, msg_carga.message_id)
+                return
+                
+            resultado = self.agente_financiero.registrar_movimiento(datos)
+            self.bot.edit_message_text(resultado, message.chat.id, msg_carga.message_id)
+
+        @self.bot.message_handler(commands=['balance'])
+        def comando_balance(message):
+            if not self._es_autorizado(message.from_user.id):
+                self._rechazar(message)
+                return
+            
+            balance_data = self.agente_financiero.obtener_balance()
+            if not balance_data:
+                self.bot.reply_to(message, "❌ No se pudo calcular el balance.")
+                return
+            
+            ingresos = "{:,}".format(balance_data['ingresos']).replace(",", ".")
+            gastos = "{:,}".format(balance_data['gastos']).replace(",", ".")
+            neto = "{:,}".format(balance_data['flujo_neto']).replace(",", ".")
+            
+            emoji_neto = "🟢" if balance_data['flujo_neto'] >= 0 else "🔴"
+            
+            msg = (
+                "⚖️ *Balance General (Libro Diario)*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📈 Ingresos Totales: Gs. {ingresos}\n"
+                f"📉 Gastos Totales: Gs. {gastos}\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                f"{emoji_neto} *Flujo Neto: Gs. {neto}*"
+            )
+            self.bot.reply_to(message, msg, parse_mode="Markdown")
+
     def _registrar_comandos_menu(self):
         """Sincroniza el menú '/' de Telegram con los comandos del bot."""
         comandos = [
+            BotCommand("gasto",    "Registrar un gasto (texto)."),
+            BotCommand("ingreso",  "Registrar un ingreso (texto)."),
+            BotCommand("balance",  "Ver flujo neto de caja."),
             BotCommand("marcar",   "Registra hora de marcación."),
             BotCommand("marcar_materia", "Registrar asistencia a materia actual."),
             BotCommand("reporte",  "Generar reporte PDF de un período anterior."),
