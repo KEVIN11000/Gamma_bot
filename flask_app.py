@@ -7,6 +7,7 @@ import subprocess
 import sys
 import hmac
 import hashlib
+import json
 from logger_config import setup_logger
 from com.bot import GAMMA
 from logic.cron_jobs import resumen_semanal, notificacion_clima, rotar_logs
@@ -14,9 +15,25 @@ from logic.cron_jobs import resumen_semanal, notificacion_clima, rotar_logs
 logger = setup_logger("flask")
 app = Flask(__name__)
 bot_instance = GAMMA()
+base_path = os.path.dirname(os.path.abspath(__file__))
 
 @app.route('/' + os.environ.get('TOKEN'), methods=['POST'])
 def webhook():
+    # Piggyback: Borrar mensaje de deploy si existe
+    deploy_file = os.path.join(base_path, "deploy_msg.json")
+    if os.path.exists(deploy_file):
+        try:
+            with open(deploy_file, "r") as f:
+                data = json.load(f)
+            # Borrar si pasaron más de 10 segundos
+            if time.time() - data.get("time", 0) > 10:
+                bot_instance.bot.delete_message(data["chat_id"], data["msg_id"])
+                os.remove(deploy_file)
+        except Exception as e:
+            logger.error(f"Error borrando mensaje de deploy atrasado: {e}")
+            try: os.remove(deploy_file) 
+            except: pass
+
     json_string = request.get_data().decode('utf-8')
     update = telebot.types.Update.de_json(json_string)
 
@@ -64,7 +81,6 @@ def deploy():
         return f"Push en '{ref}' ignorado (no es Main-stable)", 200
 
     # 3. Ejecutar git pull
-    base_path = "/home/kevin11000/mysite"
     wsgi_path = "/var/www/kevin11000_pythonanywhere_com_wsgi.py"
     try:
         resultado = subprocess.run(
@@ -99,10 +115,23 @@ def deploy():
                     parse_mode="Markdown"
                 )
 
-                # Auto-borrado del mensaje mediante un proceso independiente que sobrevive al reinicio
-                codigo = f"import time, telebot; time.sleep(30); bot = telebot.TeleBot('{bot_instance.token}'); " \
-                         f"try: bot.delete_message('{chat_id}', {msg.message_id})\nexcept: pass"
-                subprocess.Popen([sys.executable, "-c", codigo], start_new_session=True)
+                # Guardar el ID del mensaje para que el webhook lo borre en la próxima interacción
+                deploy_data = {
+                    "chat_id": chat_id,
+                    "msg_id": msg.message_id,
+                    "time": time.time()
+                }
+                with open(os.path.join(base_path, "deploy_msg.json"), "w") as f:
+                    json.dump(deploy_data, f)
+
+                # También intentamos borrar cualquier mensaje de deploy anterior huérfano
+                old_deploy_file = os.path.join(base_path, "last_deploy_msg.txt")
+                if os.path.exists(old_deploy_file):
+                    try:
+                        old_id = open(old_deploy_file).read().strip()
+                        bot_instance.bot.delete_message(chat_id, int(old_id))
+                        os.remove(old_deploy_file)
+                    except: pass
 
             except Exception as e:
                 logger.error(f"[deploy] Error enviando aviso de deploy: {e}")
