@@ -4,6 +4,7 @@ import os
 import time
 import threading
 import subprocess
+import sys
 import hmac
 import hashlib
 from logger_config import setup_logger
@@ -101,7 +102,7 @@ def deploy():
                 # Auto-borrado del mensaje mediante un proceso independiente que sobrevive al reinicio
                 codigo = f"import time, telebot; time.sleep(30); bot = telebot.TeleBot('{bot_instance.token}'); " \
                          f"try: bot.delete_message('{chat_id}', {msg.message_id})\nexcept: pass"
-                subprocess.Popen(["python", "-c", codigo])
+                subprocess.Popen([sys.executable, "-c", codigo], start_new_session=True)
 
             except Exception as e:
                 logger.error(f"[deploy] Error enviando aviso de deploy: {e}")
