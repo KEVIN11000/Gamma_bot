@@ -2,6 +2,9 @@ import os
 import requests
 from datetime import datetime, timedelta
 import pytz
+from logger_config import setup_logger
+
+logger = setup_logger("cron_jobs")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 tz_py = pytz.timezone('America/Asuncion')
@@ -17,7 +20,7 @@ def resumen_semanal(bot, chat_id, spreadsheet_id):
     Llamado por cron-job.org todos los viernes a las 18:00 hs (Asunción).
     """
     try:
-        from logic.logic import ConexionSheets, guardar_log
+        from logic.logic import ConexionSheets
         import gspread
 
         MONTO_POR_HORA = 14634  # Gs. por hora
@@ -28,7 +31,7 @@ def resumen_semanal(bot, chat_id, spreadsheet_id):
         # Obtener la ÚLTIMA hoja del Spreadsheet (la más reciente)
         hojas = wb.worksheets()
         ws = hojas[-1]
-        guardar_log(f"[CRON] Leyendo hoja activa para resumen semanal: '{ws.title}'")
+        logger.info(f"Leyendo hoja activa para resumen semanal: '{ws.title}'")
 
         # Calcular rango de la semana actual (lunes → hoy viernes)
         hoy = datetime.now(tz_py)
@@ -73,12 +76,11 @@ def resumen_semanal(bot, chat_id, spreadsheet_id):
         )
 
         bot.send_message(chat_id, mensaje, parse_mode="Markdown")
-        guardar_log(f"[CRON] Resumen semanal enviado. Horas: {total_horas:.1f} | Monto: Gs. {total_monto:,}")
+        logger.info(f"Resumen semanal enviado. Horas: {total_horas:.1f} | Monto: Gs. {total_monto:,}")
         return True
 
     except Exception as e:
-        from logic.logic import guardar_log
-        guardar_log(f"[CRON ERROR] resumen_semanal: {e}")
+        logger.error(f"resumen_semanal: {e}")
         bot.send_message(chat_id, f"❌ Error al generar el resumen semanal: {e}")
         return False
 
@@ -120,7 +122,6 @@ def notificacion_clima(bot, chat_id):
     del día para Asunción a las 07:00 AM.
     """
     try:
-        from logic.logic import guardar_log
 
         url = (
             f"https://api.open-meteo.com/v1/forecast"
@@ -166,12 +167,11 @@ def notificacion_clima(bot, chat_id):
         )
 
         bot.send_message(chat_id, mensaje, parse_mode="Markdown")
-        guardar_log(f"[CRON] Notificación climática enviada. {descripcion}, {temp_max}°C, {precip_pct}% lluvia.")
+        logger.info(f"Notificación climática enviada. {descripcion}, {temp_max}°C, {precip_pct}% lluvia.")
         return True
 
     except Exception as e:
-        from logic.logic import guardar_log
-        guardar_log(f"[CRON ERROR] notificacion_clima: {e}")
+        logger.error(f"notificacion_clima: {e}")
         return False
 
 
@@ -185,7 +185,6 @@ def rotar_logs():
     Llamado por cron-job.org el 1° de enero a las 00:01 AM.
     """
     try:
-        from logic.logic import guardar_log
 
         path_actual = os.path.join(BASE_DIR, "gen_log.txt")
         anio_anterior = datetime.now(tz_py).year - 1
@@ -198,10 +197,9 @@ def rotar_logs():
         with open(path_actual, "w", encoding="utf-8") as f:
             f.write(f"[LOG INICIADO] {datetime.now(tz_py).strftime('%Y-%m-%d %H:%M:%S')} — Rotación anual completada.\n")
 
-        guardar_log(f"[CRON] Log rotado: gen_log_{anio_anterior}.txt guardado. Nuevo gen_log.txt creado.")
+        logger.info(f"Log rotado: gen_log_{anio_anterior}.txt guardado. Nuevo gen_log.txt creado.")
         return True
 
     except Exception as e:
-        from logic.logic import guardar_log
-        guardar_log(f"[CRON ERROR] rotar_logs: {e}")
+        logger.error(f"rotar_logs: {e}")
         return False
