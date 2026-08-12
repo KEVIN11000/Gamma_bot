@@ -56,20 +56,33 @@ class AgenteAutonomoHoras:
 
     def __init__(self, spreadsheet_id, mes="Mayo"):
         self.mes = mes
-        try:
-            self.cliente = ConexionSheets.obtener_cliente()
-            self.wb = self.cliente.open_by_key(spreadsheet_id)
-            self._cargar_hoja_activa()
-        except gspread.exceptions.APIError as e:
-            msj = f"❌ Error de API de Google Sheets en horas: {e}"
-            logger.info(msj)
-            print(msj)
-            raise
-        except Exception as e:
-            msj = f"❌ Error al obtener conexión de Sheets: {e}"
-            logger.info(msj)
-            print(msj)
-            raise
+        self.spreadsheet_id = spreadsheet_id
+        self._wb = None
+        self._ws = None
+
+    @property
+    def cliente(self):
+        return ConexionSheets.obtener_cliente()
+
+    @property
+    def wb(self):
+        if self._wb is None:
+            self._wb = self.cliente.open_by_key(self.spreadsheet_id)
+        return self._wb
+
+    @property
+    def ws(self):
+        if self._ws is None:
+            base_path = BASE_DIR
+            path_txt = os.path.join(base_path, "periodo_actual.txt")
+            if not os.path.exists(path_txt):
+                nombre_inicial = self.mes if self.mes else "Mayo 2026"
+                with open(path_txt, "w", encoding="utf-8") as f:
+                    f.write(nombre_inicial)
+            with open(path_txt, "r", encoding="utf-8") as f:
+                nombre_hoja = f.read().strip()
+            self._ws = self.wb.worksheet(nombre_hoja)
+        return self._ws
 
 
 
@@ -85,19 +98,8 @@ class AgenteAutonomoHoras:
             return 1
 
     def _cargar_hoja_activa(self):
-        """Lee el archivo local para saber qué hoja está abierta para registros."""
-        base_path = BASE_DIR
-        path_txt = os.path.join(base_path, "periodo_actual.txt")
-
-        if not os.path.exists(path_txt):
-            nombre_inicial = self.mes if self.mes else "Mayo 2026"
-            with open(path_txt, "w", encoding="utf-8") as f:
-                f.write(nombre_inicial)
-
-        with open(path_txt, "r", encoding="utf-8") as f:
-            nombre_hoja = f.read().strip()
-
-        self.ws = self.wb.worksheet(nombre_hoja)
+        self._ws = None  # Force reload next time ws is accessed
+        _ = self.ws
 
     def _obtener_o_crear_fila_hoy(self):
         """Busca la fecha de hoy en la hoja del período activo actual."""
@@ -581,16 +583,24 @@ class AgenteAsistenciaMaterias:
     HORARIOS_MATERIAS = {}
 
     def __init__(self):
-        try:
-            self.cliente = ConexionSheets.obtener_cliente()
-            self.wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
-        except gspread.exceptions.APIError as e:
-            logger.error(f"❌ Error de API de Google Sheets en materias: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"❌ Error al conectar a Sheets de materias: {e}")
-            raise
-        self._cargar_horarios()
+        self._wb = None
+        self._horarios_materias = None
+
+    @property
+    def cliente(self):
+        return ConexionSheets.obtener_cliente()
+
+    @property
+    def wb(self):
+        if self._wb is None:
+            self._wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
+        return self._wb
+
+    @property
+    def HORARIOS_MATERIAS(self):
+        if self._horarios_materias is None:
+            self._cargar_horarios()
+        return self._horarios_materias
 
 
 
@@ -621,7 +631,7 @@ class AgenteAsistenciaMaterias:
         try:
             ws = self.wb.worksheet("Config_bot")
             filas = ws.get_all_values()[1:]  # Ignorar encabezados
-            self.HORARIOS_MATERIAS = {}
+            self._horarios_materias = {}
             for fila in filas:
                 if len(fila) < 6:
                     continue
@@ -647,15 +657,15 @@ class AgenteAsistenciaMaterias:
                 if 'bad' in dia.lower(): dia = 'Sábado'
                 if 'rcol' in dia.lower(): dia = 'Miércoles'
 
-                self.HORARIOS_MATERIAS[materia] = {
+                self._horarios_materias[materia] = {
                     "dia": dia,
                     "teoria": (inicio_teo, fin_teo),
                     "practica": (inicio_prac, fin_prac)
                 }
-            logger.info(f"✅ Horarios cargados desde Config_bot: {len(self.HORARIOS_MATERIAS)} materias.")
+            logger.info(f"✅ Horarios cargados desde Config_bot: {len(self._horarios_materias)} materias.")
         except Exception as e:
             logger.error(f"❌ Error al cargar horarios desde Config_bot: {e}")
-            self.HORARIOS_MATERIAS = {}
+            self._horarios_materias = {}
 
 
     def obtener_materia_actual(self, ahora):

@@ -15,24 +15,38 @@ tz_py = pytz.timezone('America/Buenos_Aires')
 class AgenteFinanciero:
     def __init__(self, spreadsheet_id):
         self.spreadsheet_id = spreadsheet_id
-        try:
-            self.cliente = ConexionSheets.obtener_cliente()
-            self.wb = self.cliente.open_by_key(self.spreadsheet_id)
-            self._obtener_o_crear_hoja_libro_diario()
-        except Exception as e:
-            logger.error(f"❌ Error al conectar a Sheets en AgenteFinanciero: {e}")
-            raise
+        self._wb = None
+        self._ws = None
+
+    @property
+    def cliente(self):
+        return ConexionSheets.obtener_cliente()
+
+    @property
+    def wb(self):
+        if self._wb is None:
+            self._wb = self.cliente.open_by_key(self.spreadsheet_id)
+        return self._wb
+
+    @property
+    def ws(self):
+        if self._ws is None:
+            titulos_existentes = [h.title for h in self.wb.worksheets()]
+            modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
+            nombre_hoja = "Libro_Diario_Test" if modo_dev else "Libro_Diario"
+            
+            if nombre_hoja not in titulos_existentes:
+                self._ws = self.wb.add_worksheet(title=nombre_hoja, rows=1000, cols=11)
+                encabezados = ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes"]
+                self._ws.update("A1:K1", [encabezados])
+                logger.info(f"✅ Se creó la pestaña {nombre_hoja} en Google Sheets.")
+            else:
+                self._ws = self.wb.worksheet(nombre_hoja)
+        return self._ws
 
     def _obtener_o_crear_hoja_libro_diario(self):
-        titulos_existentes = [h.title for h in self.wb.worksheets()]
-        nombre_hoja = "Libro_Diario"
-        if nombre_hoja not in titulos_existentes:
-            self.ws = self.wb.add_worksheet(title=nombre_hoja, rows="1000", cols="11")
-            encabezados = ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes"]
-            self.ws.update("A1:K1", [encabezados])
-            logger.info(f"✅ Se creó la pestaña {nombre_hoja} en Google Sheets.")
-        else:
-            self.ws = self.wb.worksheet(nombre_hoja)
+        self._ws = None
+        _ = self.ws
 
     def procesar_movimiento_con_ia(self, texto_usuario: str, tipo_movimiento: str):
         """
@@ -148,6 +162,14 @@ class AgenteFinanciero:
         Inserta la fila en Libro_Diario.
         """
         try:
+            nro_factura = str(datos.get('nro_factura', '')).strip()
+            
+            # Evitar facturas duplicadas si tienen un número válido
+            if nro_factura and nro_factura.upper() not in ["S/N", "SIN NUMERO", "SIN NÚMERO", "NO ESPECIFICADO"]:
+                facturas_registradas = self.ws.col_values(4) # Columna D
+                if nro_factura in facturas_registradas:
+                    return f"⚠️ Factura Duplicada: Ya existe un registro con la factura Nro: {nro_factura}. Operación cancelada."
+
             # Obtener próxima fila vacía
             col_fechas = self.ws.col_values(1)
             fila = len(col_fechas) + 1
