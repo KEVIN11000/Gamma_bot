@@ -17,21 +17,6 @@ base_path = os.path.dirname(os.path.abspath(__file__))
 
 @app.route('/' + os.environ.get('TOKEN'), methods=['POST'])
 def webhook():
-    # Piggyback: Borrar mensaje de deploy si existe
-    deploy_file = os.path.join(base_path, "deploy_msg.json")
-    if os.path.exists(deploy_file):
-        try:
-            with open(deploy_file, "r") as f:
-                data = json.load(f)
-            # Borrar si pasaron más de 10 segundos
-            if time.time() - data.get("time", 0) > 10:
-                bot_instance.bot.delete_message(data["chat_id"], data["msg_id"])
-                os.remove(deploy_file)
-        except Exception as e:
-            logger.error(f"Error borrando mensaje de deploy atrasado: {e}")
-            try: os.remove(deploy_file) 
-            except: pass
-
     json_string = request.get_data().decode('utf-8')
     update = telebot.types.Update.de_json(json_string)
 
@@ -116,14 +101,7 @@ def deploy():
                     parse_mode="Markdown"
                 )
 
-                # Guardar el ID del mensaje para que el webhook lo borre en la próxima interacción
-                deploy_data = {
-                    "chat_id": chat_id,
-                    "msg_id": msg.message_id,
-                    "time": time.time()
-                }
-                with open(os.path.join(base_path, "deploy_msg.json"), "w") as f:
-                    json.dump(deploy_data, f)
+
 
                 # También intentamos borrar cualquier mensaje de deploy anterior huérfano
                 old_deploy_file = os.path.join(base_path, "last_deploy_msg.txt")
