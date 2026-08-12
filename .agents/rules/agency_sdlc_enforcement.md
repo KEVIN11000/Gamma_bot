@@ -14,3 +14,4 @@ Cuando trabajes en este proyecto u otros que referencien la arquitectura de `age
    - Fase 5 (Pruebas): `qa_engineer`.
    - Fase 6 (Despliegue): `git_workflow_master` o DevOps equivalente.
 3. **Bloqueo de Despliegue:** No debes ejecutar comandos de *merge* a ramas estables (`Main-stable`) ni iniciar despliegues hasta que los subagentes invocados hayan emitido sus reportes, corregido hallazgos y dado explícitamente su visto bueno.
+4. **Protocolo Pre-Deploy:** Además de los reportes de subagentes, DEBES completar los 4 gates definidos en la regla `pre_deploy_protocol.md` antes de cada push a `Main-stable`.

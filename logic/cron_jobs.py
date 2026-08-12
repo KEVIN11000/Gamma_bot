@@ -30,6 +30,9 @@ def resumen_semanal(bot, chat_id, spreadsheet_id):
 
         # Obtener la ÚLTIMA hoja del Spreadsheet (la más reciente)
         hojas = wb.worksheets()
+        if not hojas:
+            bot.send_message(chat_id, "⚠️ No se encontraron hojas en el Spreadsheet.")
+            return False
         ws = hojas[-1]
         logger.info(f"Leyendo hoja activa para resumen semanal: '{ws.title}'")
 

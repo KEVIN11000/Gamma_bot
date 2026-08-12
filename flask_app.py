@@ -2,9 +2,7 @@ from flask import Flask, request, abort
 import telebot
 import os
 import time
-import threading
 import subprocess
-import sys
 import hmac
 import hashlib
 import json
@@ -37,10 +35,14 @@ def webhook():
     json_string = request.get_data().decode('utf-8')
     update = telebot.types.Update.de_json(json_string)
 
-    # Procesamos el mensaje en un hilo en segundo plano para no bloquear Flask
-    threading.Thread(target=bot_instance.bot.process_new_updates, args=([update],)).start()
+    # Procesamiento síncrono: en el tier gratuito de PythonAnywhere (1 worker),
+    # un hilo en segundo plano puede ser destruido cuando la petición HTTP finaliza.
+    # El procesamiento síncrono garantiza que el mensaje se procese completamente.
+    try:
+        bot_instance.bot.process_new_updates([update])
+    except Exception as e:
+        logger.error(f"Error procesando update: {e}")
 
-    # Respuesta inmediata para que Telegram no reintente
     return "OK", 200
 
 @app.route('/set_webhook')
@@ -107,7 +109,11 @@ def deploy():
             try:
                 # Leer versión desde archivo VERSION (ya actualizado por git pull)
                 version_path = os.path.join(base_path, "VERSION")
-                version = open(version_path).read().strip() if os.path.exists(version_path) else "desconocida"
+                if os.path.exists(version_path):
+                    with open(version_path, "r") as f:
+                        version = f.read().strip()
+                else:
+                    version = "desconocida"
 
                 msg = bot_instance.bot.send_message(
                     chat_id,
@@ -128,10 +134,12 @@ def deploy():
                 old_deploy_file = os.path.join(base_path, "last_deploy_msg.txt")
                 if os.path.exists(old_deploy_file):
                     try:
-                        old_id = open(old_deploy_file).read().strip()
+                        with open(old_deploy_file, "r") as f:
+                            old_id = f.read().strip()
                         bot_instance.bot.delete_message(chat_id, int(old_id))
                         os.remove(old_deploy_file)
-                    except: pass
+                    except Exception:
+                        pass
 
             except Exception as e:
                 logger.error(f"[deploy] Error enviando aviso de deploy: {e}")
