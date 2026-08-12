@@ -98,7 +98,8 @@ def deploy():
         if resultado.returncode != 0:
             return f"❌ git pull falló:\n{salida}", 500
 
-        # 4. Enviar notificación al chat primero, ANTES de recargar        chat_id = os.environ.get("CHAT_ID")
+        # 4. Enviar notificación al chat primero, ANTES de recargar
+        chat_id = os.environ.get("CHAT_ID")
         if chat_id:
             try:
                 # Leer versión desde archivo VERSION (ya actualizado por git pull)
