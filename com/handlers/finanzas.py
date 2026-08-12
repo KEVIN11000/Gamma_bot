@@ -126,7 +126,8 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app):
             if accion == "ok":
                 datos = EstadoGestor.pop(cache_key)
                 if not datos:
-                    bot.edit_message_text("❌ Error: Los datos del ticket expiraron. Vuelve a enviar la imagen.", call.message.chat.id, call.message.message_id)
+                    bot.answer_callback_query(call.id, "❌ Este ticket ya fue procesado o ha expirado.", show_alert=True)
+                    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
                     return
                     
                 bot.edit_message_text("⏳ Guardando en Libro Diario...", call.message.chat.id, call.message.message_id)

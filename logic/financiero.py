@@ -156,11 +156,23 @@ class AgenteFinanciero:
         except Exception as e:
             logger.error(f"❌ Error OCR API Gemini: {e}")
             return {"error": str(e)}
+    def _limpiar_monto(self, valor) -> int:
+        import re
+        if not valor: return 0
+        s = str(valor)
+        s = re.sub(r'[^\d-]', '', s)
+        try: return int(s) if s else 0
+        except ValueError: return 0
 
     def registrar_movimiento(self, datos: dict) -> str:
         """
         Inserta la fila en Libro_Diario.
         """
+        # Validación de esquema básica
+        if not datos or not isinstance(datos, dict) or 'total' not in datos:
+            logger.error("JSON devuelto no contiene las llaves esenciales")
+            return "❌ Error: La IA no pudo estructurar correctamente la información."
+            
         try:
             nro_factura = str(datos.get('nro_factura', '')).strip()
             
@@ -186,9 +198,9 @@ class AgenteFinanciero:
                 sanitizar(datos.get('tipo_movimiento', 'Desconocido')),
                 sanitizar(datos.get('proveedor_cliente', '')),
                 sanitizar(datos.get('nro_factura', '')),
-                sanitizar(datos.get('neto', 0)),
-                sanitizar(datos.get('iva', 0)),
-                sanitizar(datos.get('total', 0)),
+                self._limpiar_monto(datos.get('neto', 0)),
+                self._limpiar_monto(datos.get('iva', 0)),
+                self._limpiar_monto(datos.get('total', 0)),
                 sanitizar(datos.get('categoria', '')),
                 sanitizar(datos.get('comprobante', '')),
                 sanitizar(datos.get('file_id', '')),

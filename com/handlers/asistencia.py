@@ -25,6 +25,12 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app):
     @auth_required(bot)
     @safe_handler(bot, logger)
     def callback_marcado(call):
+        import time
+        if time.time() - call.message.date > 86400: # 24 horas máximo
+            bot.answer_callback_query(call.id, "❌ Este botón ha expirado.", show_alert=True)
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+            return
+
         bot.answer_callback_query(call.id)
         modo = "directo" if call.data == "marcar_directo" else "normal"
         bot.edit_message_text("⚙️ Comando recibido. Abriendo Google Sheets...", call.message.chat.id, call.message.message_id)
@@ -55,6 +61,12 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app):
     @auth_required(bot)
     @safe_handler(bot, logger)
     def callback_cierre(call):
+        import time
+        if time.time() - call.message.date > 86400:
+            bot.answer_callback_query(call.id, "❌ Este botón ha expirado.", show_alert=True)
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+            return
+
         bot.answer_callback_query(call.id)
         chat_id = call.message.chat.id
         msg_id = call.message.message_id
@@ -175,6 +187,10 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app):
 # --- Funciones auxiliares
 def _capturar_monto_descuento(message, bot, gamma_app):
     if not gamma_app._es_autorizado(message.from_user.id): return
+    if not message.text:
+        bot.reply_to(message, "❌ Por favor, enviá un texto con el número. (No se admiten stickers ni imágenes)")
+        return
+        
     try:
         texto_ingresado = message.text.strip().replace(".", "").replace(",", "")
         monto_descuento = float(texto_ingresado)
@@ -204,6 +220,10 @@ def _generar_y_enviar_reporte(bot, gamma_app, message_obj, descuento):
 
 def _capturar_descuento_reporte(message, bot, gamma_app):
     if not gamma_app._es_autorizado(message.from_user.id): return
+    if not message.text:
+        bot.reply_to(message, "❌ Por favor, enviá un texto numérico. (No se admiten archivos)")
+        return
+        
     try:
         chat_id = message.chat.id
         nombre_hoja = EstadoGestor.pop(f"reporte_{chat_id}")
