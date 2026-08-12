@@ -98,13 +98,7 @@ def deploy():
         if resultado.returncode != 0:
             return f"❌ git pull falló:\n{salida}", 500
 
-        # 4. Tocar el WSGI para que PythonAnywhere recargue la app
-        # (equivalente a hacer click en "Reload" en el panel web)
-        if os.path.exists(wsgi_path):
-            os.utime(wsgi_path, None)
-            logger.info("[deploy] WSGI tocado - app recargando...")
-
-        chat_id = os.environ.get("CHAT_ID")
+        # 4. Enviar notificación al chat primero, ANTES de recargar        chat_id = os.environ.get("CHAT_ID")
         if chat_id:
             try:
                 # Leer versión desde archivo VERSION (ya actualizado por git pull)
@@ -143,6 +137,12 @@ def deploy():
 
             except Exception as e:
                 logger.error(f"[deploy] Error enviando aviso de deploy: {e}")
+
+        # 5. Tocar el WSGI para que PythonAnywhere recargue la app
+        # (Se hace al final para no matar el worker antes de enviar el mensaje)
+        if os.path.exists(wsgi_path):
+            os.utime(wsgi_path, None)
+            logger.info("[deploy] WSGI tocado - app recargando...")
 
         return f"✅ Deploy exitoso y app recargada:\n{salida}", 200
 
