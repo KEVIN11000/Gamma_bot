@@ -194,3 +194,27 @@ def cron_rotar_logs():
         abort(403, "Token inválido")
     exito = rotar_logs()
     return ("✅ Logs rotados correctamente.", 200) if exito else ("❌ Error al rotar logs.", 500)
+
+
+@app.route('/cron/cierre-mensual', methods=['GET', 'POST'])
+def cron_cierre_mensual():
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
+    chat_id = os.environ.get('CHAT_ID')
+    if not chat_id:
+        return "❌ CHAT_ID no configurado.", 500
+    from logic.cron_jobs import informe_estadistico_mensual
+    exito = informe_estadistico_mensual(bot_instance, chat_id)
+    return ("✅ Informe estadístico ejecutado y reportes enviados.", 200) if exito else ("❌ Error en informe.", 500)
+
+
+@app.route('/cron/asesor-ia', methods=['GET', 'POST'])
+def cron_asesor_ia():
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
+    chat_id = os.environ.get('CHAT_ID')
+    if not chat_id:
+        return "❌ CHAT_ID no configurado.", 500
+    from logic.cron_jobs import alerta_asesor_financiero
+    exito = alerta_asesor_financiero(bot_instance, chat_id)
+    return ("✅ Insights del Asesor IA enviados.", 200) if exito else ("❌ Error en Asesor IA.", 500)

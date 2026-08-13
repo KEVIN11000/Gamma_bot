@@ -206,3 +206,102 @@ def rotar_logs():
     except Exception as e:
         logger.error(f"rotar_logs: {e}")
         return False
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUNTO 5 — Informe Estadístico Mensual
+# ─────────────────────────────────────────────────────────────────────────────
+
+def informe_estadistico_mensual(gamma_app, chat_id):
+    """
+    Genera y envía automáticamente los reportes PDF (Horas y Finanzas)
+    con fines puramente estadísticos. No cierra la hoja de asistencia.
+    """
+    try:
+        from logic.pdf_service import PDFService
+        bot = gamma_app.bot
+        logger.info("[cron_mensual] Iniciando informe estadístico.")
+        
+        bot.send_message(chat_id, "📊 *[CRON]* Generando Informe Estadístico Mensual...")
+        
+        # 1. Reporte de Asistencia (Horas)
+        datos_horas, err_h = gamma_app.agente_excel.preparar_datos_reporte(descuento=0.0)
+        if err_h:
+            bot.send_message(chat_id, f"⚠️ Error en reporte de horas: {err_h}")
+        else:
+            ruta_pdf_h, msg_h = PDFService.generar_reporte_generico(datos_horas)
+            if ruta_pdf_h:
+                with open(ruta_pdf_h, 'rb') as f:
+                    bot.send_document(chat_id, f, caption=f"📊 {msg_h}")
+                os.remove(ruta_pdf_h)
+            else:
+                bot.send_message(chat_id, f"⚠️ Fallo PDF horas: {msg_h}")
+
+        # 2. Reporte Financiero (Libro Diario)
+        datos_finanzas, err_f = gamma_app.agente_financiero.preparar_datos_reporte()
+        if err_f:
+            bot.send_message(chat_id, f"⚠️ Error en reporte financiero: {err_f}")
+        else:
+            ruta_pdf_f, msg_f = PDFService.generar_reporte_generico(datos_finanzas)
+            if ruta_pdf_f:
+                with open(ruta_pdf_f, 'rb') as f:
+                    bot.send_document(chat_id, f, caption=f"📊 {msg_f}")
+                os.remove(ruta_pdf_f)
+            else:
+                bot.send_message(chat_id, f"⚠️ Fallo PDF finanzas: {msg_f}")
+
+        logger.info("[cron_mensual] Informe mensual finalizado con éxito.")
+        return True
+        
+    except Exception as e:
+        logger.error(f"informe_estadistico_mensual: {e}")
+        gamma_app.bot.send_message(chat_id, f"❌ Error en cierre mensual: {e}")
+        return False
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUNTO 6 — Asesor IA Proactivo (Fase 4)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def alerta_asesor_financiero(gamma_app, chat_id):
+    """
+    Extrae los datos financieros del Libro Diario, genera insights usando Gemini
+    y los envía al usuario de forma proactiva.
+    """
+    try:
+        from logic.ai_service import AIService
+        bot = gamma_app.bot
+        logger.info("[asesor_ia] Iniciando generación de insights proactivos.")
+        
+        datos, err = gamma_app.agente_financiero.preparar_datos_reporte()
+        if err:
+            logger.error(f"[asesor_ia] Error obteniendo datos: {err}")
+            return False
+            
+        # Extraemos totales usando obtener_balance()
+        totales = gamma_app.agente_financiero.obtener_balance() or {}
+        
+        # Armamos un resumen de las últimas 15 filas para darle contexto a la IA
+        # f es [Fecha, Tipo, Detalle, Factura, Monto, Categoría]
+        resumen_filas = ""
+        ultimas_filas = datos.filas[-15:] if len(datos.filas) > 15 else datos.filas
+        for f in ultimas_filas:
+            if len(f) >= 6:
+                resumen_filas += f"- {f[0]} | {f[1]} | {f[4]} | {f[5]} ({f[2]})\n"
+                
+        if not resumen_filas:
+            resumen_filas = "No hay movimientos recientes."
+            
+        insights = AIService.generar_insights_financieros(totales, resumen_filas)
+        
+        mensaje = (
+            f"🧠 *GAMMA Asesor IA*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{insights}"
+        )
+        
+        bot.send_message(chat_id, mensaje, parse_mode="Markdown")
+        logger.info("[asesor_ia] Insights enviados correctamente.")
+        return True
+        
+    except Exception as e:
+        logger.error(f"alerta_asesor_financiero: {e}")
+        return False

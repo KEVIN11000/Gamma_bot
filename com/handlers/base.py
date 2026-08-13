@@ -82,7 +82,7 @@ def register_base_handlers(bot: TeleBot, gamma_app):
                 version = f.read().strip()
                 
         texto = (
-            f"🤖 *Bot de Gestión Avanzada (GAMMA)* `v{version}`\n"
+            f"🤖 *Bot de Gestión Avanzada (GAMMA)* `{version}`\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "Menú de comandos sincronizado ✅\n\n"
             "*Finanzas:*\n"

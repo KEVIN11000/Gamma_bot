@@ -260,9 +260,12 @@ class AgenteAutonomoHoras:
         if nombre_hoja:
             hoja = self.wb.worksheet(nombre_hoja)
         else:
-            if len(hojas) < 2:
+            if len(hojas) >= 2:
+                hoja = hojas[-2]
+            elif len(hojas) == 1:
+                hoja = hojas[0]
+            else:
                 return None, "❌ No hay hoja de cierre disponible todavía."
-            hoja = hojas[-2]
 
         nombre_periodo = hoja.title
         datos = hoja.get_all_values()

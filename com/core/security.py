@@ -32,7 +32,6 @@ def auth_required(bot: TeleBot):
                         f"ID: {user.id} | @{user.username or 'sin username'}\n"
                         f"Nombre: {user.first_name} {user.last_name or ''}"
                     )
-                    print(alerta, flush=True)
                     logger.info(alerta)
                     bot.reply_to(obj, "🚫 No tenés acceso a este bot.")
                 return

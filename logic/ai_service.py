@@ -51,8 +51,40 @@ class AIService:
             logger.error(f"❌ Error al decodificar JSON financiero: {e}")
             return {"error": "La IA devolvió un formato ilegible."}
         except Exception as e:
-            logger.error(f"❌ Error API Gemini: {e}")
+            logger.error(f"❌ Error API Gemini OCR: {e}")
             return {"error": str(e)}
+
+    @staticmethod
+    def generar_insights_financieros(totales: dict, resumen_filas: str) -> str:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return "❌ Configuración de IA incompleta en el servidor."
+            
+        prompt_sistema = (
+            "Eres el 'Asesor Financiero Proactivo' de Gamma, un contador estricto y analítico.\n"
+            "Tu tarea es analizar el resumen del Libro Diario de tu cliente y enviarle un mensaje corto y directo a Telegram.\n"
+            "Debes:\n"
+            "1. Evaluar el balance general (Ingresos vs Gastos).\n"
+            "2. Identificar la categoría con mayor gasto y juzgar si es excesivo.\n"
+            "3. Dar exactamente UN tip accionable de ahorro o recomendación financiera agresiva.\n"
+            "Mantén un tono profesional pero muy estricto, casi como un sargento financiero.\n"
+            "Usa formato Markdown compatible con Telegram (negritas *, listas -, pero NO uses encabezados # ni tablas).\n"
+            "El mensaje no debe superar los 3 párrafos."
+        )
+        
+        contexto = f"TOTALES DEL PERÍODO:\n{json.dumps(totales, indent=2)}\n\nRESUMEN DE MOVIMIENTOS RECIENTES:\n{resumen_filas}"
+        
+        try:
+            client = genai.Client(api_key=api_key)
+            respuesta_ia = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=f"Contexto del Sistema:\n{prompt_sistema}\n\nDatos Financieros:\n{contexto}"
+            )
+            logger.info("🤖 Asesor IA generó insights exitosamente.")
+            return respuesta_ia.text.strip()
+        except Exception as e:
+            logger.error(f"❌ Error al generar insights financieros: {e}")
+            return f"❌ Error de IA: {e}"
 
     @staticmethod
     def analizar_ticket_con_ia(imagen_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
