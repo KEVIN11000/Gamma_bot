@@ -32,20 +32,6 @@ class GAMMA:
         
         self._registrar_manejadores()
 
-    def _es_autorizado(self, user_id: int) -> bool:
-        return user_id in self.usuarios_permitidos
-
-    def _rechazar(self, message):
-        user = message.from_user
-        alerta = (
-            f"🚫 Acceso no autorizado\n"
-            f"ID: {user.id} | @{user.username or 'sin username'}\n"
-            f"Nombre: {user.first_name} {user.last_name or ''}"
-        )
-        print(alerta, flush=True)
-        logger.info(alerta)
-        self.bot.reply_to(message, "🚫 No tenés acceso a este bot.")
-
     def _registrar_manejadores(self):
         from com.handlers.base import register_base_handlers
         from com.handlers.asistencia import register_asistencia_handlers

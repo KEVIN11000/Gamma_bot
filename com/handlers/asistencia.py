@@ -4,7 +4,9 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from logger_config import setup_logger
 from com.core.security import auth_required
 from com.core.errors import safe_handler
+from com.core.security import verificar_usuario_manual
 from logic.logic import EstadoGestor
+from logic.pdf_service import PDFService
 
 logger = setup_logger("asistencia_handler")
 
@@ -113,25 +115,23 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app):
     @auth_required(bot)
     @safe_handler(bot, logger)
     def comando_reporte(message):
-        nombres = gamma_app.agente_excel.obtener_nombres_hojas(limite=6)
-
-        if not nombres:
-            bot.reply_to(message, "❌ No hay períodos anteriores disponibles para generar un reporte.")
-            return
-
-        teclado = InlineKeyboardMarkup()
-        for nombre in nombres:
-            safe = nombre[:30]
-            teclado.row(InlineKeyboardButton(f"📅 {nombre}", callback_data=f"reporte_hoja_{safe}"))
-        teclado.row(InlineKeyboardButton("❌ Cancelar", callback_data="reporte_cancelar"))
-
-        bot.reply_to(
-            message,
-            "📄 *¿De qué período querés el reporte?*\n"
-            "_Se muestran los últimos períodos cerrados._",
-            parse_mode="Markdown",
-            reply_markup=teclado
-        )
+        texto = message.text.lower()
+        if "horas" in texto:
+            _iniciar_flujo_reporte_horas(message, bot, gamma_app)
+        elif "finanzas" in texto or "diario" in texto:
+            _generar_y_enviar_reporte_financiero(bot, gamma_app, message)
+        else:
+            teclado = InlineKeyboardMarkup()
+            teclado.row(
+                InlineKeyboardButton("⏱️ Horas", callback_data="reporte_tipo_horas"),
+                InlineKeyboardButton("💰 Libro Diario", callback_data="reporte_tipo_finanzas")
+            )
+            bot.reply_to(
+                message,
+                "📊 *¿Qué reporte deseas generar hoy?*",
+                parse_mode="Markdown",
+                reply_markup=teclado
+            )
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("reporte_"))
     @auth_required(bot)
@@ -144,6 +144,14 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app):
 
         if data == "reporte_cancelar":
             bot.edit_message_text("❌ Operación cancelada.", chat_id, msg_id)
+            return
+            
+        if data == "reporte_tipo_horas":
+            _iniciar_flujo_reporte_horas(call.message, bot, gamma_app, is_callback=True)
+            return
+
+        if data == "reporte_tipo_finanzas":
+            _generar_y_enviar_reporte_financiero(bot, gamma_app, call.message, is_callback=True)
             return
 
         if data.startswith("reporte_hoja_"):
@@ -185,8 +193,62 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app):
 
 
 # --- Funciones auxiliares
+def _iniciar_flujo_reporte_horas(message, bot, gamma_app, is_callback=False):
+    nombres = gamma_app.agente_excel.obtener_nombres_hojas(limite=6)
+
+    if not nombres:
+        msj = "❌ No hay períodos anteriores disponibles para generar un reporte."
+        if is_callback:
+            bot.edit_message_text(msj, message.chat.id, message.message_id)
+        else:
+            bot.reply_to(message, msj)
+        return
+
+    teclado = InlineKeyboardMarkup()
+    for nombre in nombres:
+        safe = nombre[:30]
+        teclado.row(InlineKeyboardButton(f"📅 {nombre}", callback_data=f"reporte_hoja_{safe}"))
+    teclado.row(InlineKeyboardButton("❌ Cancelar", callback_data="reporte_cancelar"))
+
+    texto = "📄 *¿De qué período querés el reporte de HORAS?*\n_Se muestran los últimos períodos cerrados._"
+    if is_callback:
+        bot.edit_message_text(texto, message.chat.id, message.message_id, parse_mode="Markdown", reply_markup=teclado)
+    else:
+        bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
+
+
+def _generar_y_enviar_reporte_financiero(bot, gamma_app, message_obj, is_callback=False):
+    chat_id = message_obj.chat.id
+    msg_id = message_obj.message_id
+    
+    if is_callback:
+        bot.edit_message_text("📄 Procesando datos financieros y armando PDF...", chat_id, msg_id)
+    else:
+        bot.send_message(chat_id, "📄 Procesando datos financieros y armando PDF...")
+        
+    datos, error = gamma_app.agente_financiero.preparar_datos_reporte()
+    
+    if error:
+        bot.send_message(chat_id, error)
+        return
+        
+    from logic.pdf_service import PDFService
+    ruta_pdf, msg_pdf = PDFService.generar_reporte_generico(datos)
+
+    if ruta_pdf:
+        with open(ruta_pdf, 'rb') as f:
+            bot.send_document(
+                chat_id,
+                f,
+                caption=f"📊 {msg_pdf}",
+                visible_file_name=os.path.basename(ruta_pdf)
+            )
+    else:
+        bot.send_message(chat_id, msg_pdf)
+
+
 def _capturar_monto_descuento(message, bot, gamma_app):
-    if not gamma_app._es_autorizado(message.from_user.id): return
+    if not verificar_usuario_manual(bot, message): return
     if not message.text:
         bot.reply_to(message, "❌ Por favor, enviá un texto con el número. (No se admiten stickers ni imágenes)")
         return
@@ -204,8 +266,15 @@ def _capturar_monto_descuento(message, bot, gamma_app):
         )
 
 def _generar_y_enviar_reporte(bot, gamma_app, message_obj, descuento):
-    bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF...")
-    ruta_pdf, msg_pdf = gamma_app.agente_excel.generar_reporte_pdf(descuento=descuento)
+    bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF de horas...")
+    
+    datos, error = gamma_app.agente_excel.preparar_datos_reporte(descuento=descuento)
+    if error:
+        bot.send_message(message_obj.chat.id, error)
+        return
+        
+    from logic.pdf_service import PDFService
+    ruta_pdf, msg_pdf = PDFService.generar_reporte_generico(datos)
 
     if ruta_pdf:
         with open(ruta_pdf, 'rb') as f:
@@ -219,7 +288,7 @@ def _generar_y_enviar_reporte(bot, gamma_app, message_obj, descuento):
         bot.send_message(message_obj.chat.id, msg_pdf)
 
 def _capturar_descuento_reporte(message, bot, gamma_app):
-    if not gamma_app._es_autorizado(message.from_user.id): return
+    if not verificar_usuario_manual(bot, message): return
     if not message.text:
         bot.reply_to(message, "❌ Por favor, enviá un texto numérico. (No se admiten archivos)")
         return
@@ -240,11 +309,16 @@ def _capturar_descuento_reporte(message, bot, gamma_app):
         )
 
 def _generar_y_enviar_reporte_por_hoja(bot, gamma_app, message_obj, nombre_hoja: str, descuento: float):
-    bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF...")
-    ruta_pdf, msg_pdf = gamma_app.agente_excel.generar_reporte_pdf(
-        nombre_hoja=nombre_hoja,
-        descuento=descuento
-    )
+    bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF de horas...")
+    
+    datos, error = gamma_app.agente_excel.preparar_datos_reporte(nombre_hoja=nombre_hoja, descuento=descuento)
+    if error:
+        bot.send_message(message_obj.chat.id, error)
+        return
+        
+    from logic.pdf_service import PDFService
+    ruta_pdf, msg_pdf = PDFService.generar_reporte_generico(datos)
+    
     if ruta_pdf:
         with open(ruta_pdf, 'rb') as f:
             bot.send_document(

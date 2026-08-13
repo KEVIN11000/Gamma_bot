@@ -5,7 +5,9 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from logger_config import setup_logger
 from com.core.security import auth_required
 from com.core.errors import safe_handler
+from com.core.security import verificar_usuario_manual
 from logic.logic import EstadoGestor
+from logic.ai_service import AIService
 
 logger = setup_logger("avisos_handler")
 
@@ -144,7 +146,7 @@ def register_avisos_handlers(bot: TeleBot, gamma_app):
 
 
 def _capturar_frase_aviso_secuencial(message, bot, gamma_app):
-    if not gamma_app._es_autorizado(message.from_user.id): return
+    if not verificar_usuario_manual(bot, message): return
 
     if not message.text or message.text.startswith('/'):
         bot.reply_to(message, "❌ Operación cancelada. No enviaste una frase válida.")
@@ -153,7 +155,7 @@ def _capturar_frase_aviso_secuencial(message, bot, gamma_app):
 
 def _procesar_frase_aviso(message, frase: str, bot, gamma_app):
     msg_espera = bot.send_message(message.chat.id, "🧠 Analizando frase con Gemini...")
-    datos_ia = gamma_app.agente_excel.interpretar_frase_con_ia(frase)
+    datos_ia = AIService.interpretar_frase_con_ia(frase)
 
     if "error" in datos_ia:
         bot.edit_message_text(f"❌ {datos_ia['error']}", message.chat.id, msg_espera.message_id)

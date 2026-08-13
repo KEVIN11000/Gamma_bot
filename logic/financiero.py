@@ -48,114 +48,6 @@ class AgenteFinanciero:
         self._ws = None
         _ = self.ws
 
-    def procesar_movimiento_con_ia(self, texto_usuario: str, tipo_movimiento: str):
-        """
-        Llama a Gemini para extraer los datos de un gasto o ingreso enviado por texto.
-        """
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            return {"error": "Configuración de IA incompleta en el servidor."}
-
-        ahora = datetime.now(tz_py)
-        fecha_hoy_str = ahora.strftime("%d/%m")
-        mes_actual = ahora.strftime("%B")
-
-        prompt_sistema = (
-            f"Eres un experto analista financiero personal.\n"
-            f"Tu tarea es analizar la frase enviada y extraer los datos de un movimiento financiero.\n"
-            f"El movimiento es de tipo: {tipo_movimiento.upper()}.\n"
-            f"Debes devolver obligatoriamente un objeto JSON con las siguientes llaves (todas strings):\n"
-            f"1. 'proveedor_cliente': Nombre de la empresa o persona involucrada.\n"
-            f"2. 'nro_factura': Si no se menciona, devuelve 'S/N'.\n"
-            f"3. 'neto': Monto antes de impuestos (si no se especifica IVA, pon el total aquí también, sin puntos ni comas).\n"
-            f"4. 'iva': Monto del impuesto (si no se especifica, pon '0').\n"
-            f"5. 'total': Monto total del movimiento (solo números, sin puntos ni comas).\n"
-            f"6. 'categoria': Categoriza en una palabra (ej. Comida, Transporte, Honorarios, Sueldo, Ocio, Varios).\n"
-            f"7. 'comprobante': Si no especifica que es virtual, pon 'No Legal' por defecto si es Gasto, o 'Física Legal' si tiene sentido.\n"
-            f"Solo devuelve el JSON, sin markdown ni explicaciones adicionales."
-        )
-
-        try:
-            client = genai.Client(api_key=api_key)
-            respuesta_ia = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"Contexto del Sistema:\n{prompt_sistema}\n\nMensaje del Usuario: {texto_usuario}",
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-
-            datos = json.loads(respuesta_ia.text)
-            datos['fecha'] = fecha_hoy_str
-            datos['mes'] = mes_actual
-            datos['tipo_movimiento'] = tipo_movimiento.capitalize()
-            logger.info(f"🤖 IA Financiera interpretó: {datos}")
-            return datos
-
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Error al decodificar JSON financiero: {e}")
-            return {"error": "La IA devolvió un formato ilegible."}
-        except Exception as e:
-            logger.error(f"❌ Error API Gemini: {e}")
-            return {"error": str(e)}
-
-    def analizar_ticket_con_ia(self, imagen_bytes: bytes, mime_type: str = "image/jpeg"):
-        """
-        Envía la imagen del ticket a Gemini 2.5 Flash para extraer los datos de gasto.
-        """
-        api_key = os.getenv("GEMINI_API_KEY")
-        mi_ruc = os.getenv("MI_RUC", "Sin RUC")
-        mi_nombre = os.getenv("MI_NOMBRE_FACTURA", "Sin Nombre")
-        if not api_key:
-            return {"error": "Configuración de IA incompleta en el servidor."}
-
-        ahora = datetime.now(tz_py)
-        fecha_hoy_str = ahora.strftime("%d/%m")
-        mes_actual = ahora.strftime("%B")
-
-        prompt_sistema = (
-            f"Eres un experto contador público y analista financiero en Paraguay.\n"
-            f"Tu tarea es analizar el ticket o factura provisto en la imagen y extraer los datos del gasto.\n"
-            f"REGLA CRÍTICA PARA 'comprobante':\n"
-            f"1. Si el documento dice explícitamente 'Factura Virtual' y está a nombre de '{mi_nombre}' o RUC '{mi_ruc}', pon 'Virtual Legal'.\n"
-            f"2. Si es una factura impresa o normal válida a nombre de '{mi_nombre}' o RUC '{mi_ruc}', pon 'Física Legal'.\n"
-            f"3. Si es un ticket común de supermercado/despensa que dice 'Sin Nombre', o RUC 'XXXXX', o no es factura válida, pon 'No Legal'.\n\n"
-            f"Devuelve obligatoriamente un objeto JSON con las siguientes llaves (todas strings):\n"
-            f"1. 'proveedor_cliente': Nombre de la empresa o comercio que emite el ticket.\n"
-            f"2. 'nro_factura': Número de factura si existe, sino 'S/N'.\n"
-            f"3. 'neto': Monto antes del IVA (Total - IVA). Si no hay desglose, repite el Total (solo números).\n"
-            f"4. 'iva': Monto total del IVA (suma de IVA 5% e IVA 10%). Si no hay, pon '0' (solo números).\n"
-            f"5. 'total': Monto total a pagar (solo números, sin puntos ni comas).\n"
-            f"6. 'categoria': Categoriza en una palabra (ej. Supermercado, Combustible, Farmacia, Comida, Varios).\n"
-            f"7. 'comprobante': Aplica la REGLA CRÍTICA estrictamente ('Virtual Legal', 'Física Legal' o 'No Legal').\n"
-            f"Solo devuelve el JSON, sin markdown ni explicaciones adicionales."
-        )
-
-        try:
-            client = genai.Client(api_key=api_key)
-            imagen_part = types.Part.from_bytes(data=imagen_bytes, mime_type=mime_type)
-            
-            respuesta_ia = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=[imagen_part, prompt_sistema],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-
-            datos = json.loads(respuesta_ia.text)
-            datos['fecha'] = fecha_hoy_str
-            datos['mes'] = mes_actual
-            datos['tipo_movimiento'] = "Gasto"
-            logger.info(f"🤖 IA Financiera OCR extrajo: {datos}")
-            return datos
-
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Error OCR al decodificar JSON: {e}")
-            return {"error": "La IA devolvió un formato ilegible del ticket."}
-        except Exception as e:
-            logger.error(f"❌ Error OCR API Gemini: {e}")
-            return {"error": str(e)}
     def _limpiar_monto(self, valor) -> int:
         import re
         if not valor: return 0
@@ -248,3 +140,74 @@ class AgenteFinanciero:
         except Exception as e:
             logger.error(f"❌ Error al obtener balance: {e}")
             return None
+
+    def preparar_datos_reporte(self, mes=None):
+        from logic.pdf_service import DatosReporte
+        
+        datos = self.ws.get_all_values()
+        if not datos or len(datos) < 2:
+            return None, "❌ El Libro Diario está vacío."
+            
+        headers = datos[0]
+        filas_raw = datos[1:]
+        
+        # Filtrar por mes si se especifica (Columna K es índice 10)
+        if mes:
+            filas_datos = [f for f in filas_raw if len(f) > 10 and f[10].strip().lower() == mes.lower()]
+            if not filas_datos:
+                return None, f"❌ No hay movimientos registrados para el mes de {mes}."
+            titulo_mes = f"Mes: {mes}"
+        else:
+            filas_datos = filas_raw
+            titulo_mes = "Histórico Completo"
+
+        total_ingresos = 0
+        total_gastos = 0
+        
+        # Filtramos columnas para el reporte: [Fecha, Movimiento, Proveedor, Factura, Total, Categoría]
+        # Índices: 0, 1, 2, 3, 6, 7
+        headers_filtrados = ["Fecha", "Tipo", "Detalle", "Factura", "Monto", "Categoría"]
+        filas_filtradas = []
+        
+        for f in filas_datos:
+            f = (f + [''] * 11)[:11]
+            tipo = f[1].strip().title()
+            monto_str = f[6].strip()
+            
+            # Formatear el monto con separador de miles
+            monto_val = 0
+            if monto_str.isdigit():
+                monto_val = int(monto_str)
+                monto_fmt = f"Gs. {monto_val:,}".replace(",", ".")
+            else:
+                monto_fmt = monto_str
+                
+            if tipo.lower() == 'ingreso':
+                total_ingresos += monto_val
+            elif tipo.lower() == 'gasto':
+                total_gastos += monto_val
+                
+            filas_filtradas.append([f[0], tipo, f[2], f[3], monto_fmt, f[7]])
+
+        flujo_neto = total_ingresos - total_gastos
+
+        def gs(n):
+            return f"Gs. {int(n):,}".replace(",", ".")
+
+        resumen_data = [
+            ["Total Ingresos", gs(total_ingresos)],
+            ["Total Gastos", f"- {gs(total_gastos)}"],
+            ["Flujo Neto", gs(flujo_neto)],
+        ]
+
+        nombre_archivo = f"reporte_financiero_{titulo_mes.replace(' ', '_').replace(':', '')}.pdf"
+
+        reporte = DatosReporte(
+            titulo="REPORTE FINANCIERO - LIBRO DIARIO",
+            subtitulo=titulo_mes,
+            encabezados=headers_filtrados,
+            filas=filas_filtradas,
+            lineas_resumen=resumen_data,
+            nombre_archivo=nombre_archivo
+        )
+        return reporte, None

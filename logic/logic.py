@@ -7,10 +7,6 @@ import pytz
 import json
 import sqlite3
 
-# 🆕 IMPORTS DE LA FASE 2 & 3 (Google GenAI moderno)
-from google import genai
-from google.genai import types
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
@@ -176,7 +172,6 @@ class AgenteAutonomoHoras:
                 self.ws.update(f"{letra_celda}{fila}", [[hora_ahora]], value_input_option="USER_ENTERED")
 
                 log_msg = f"Marcado [{modo}] {nombre}: {hora_ahora} en fila {fila}"
-                print(f"✅ {log_msg}")
                 logger.info(log_msg)
                 return f"✅ *{nombre}* registrado a las {hora_ahora}."
 
@@ -244,209 +239,79 @@ class AgenteAutonomoHoras:
             logger.error(f"❌ Error inesperado en cierre: {e}")
             return f"❌ Error al ejecutar el cierre: {e}"
 
-    def _parsear_horas_a_decimal(self, valor_str: str) -> float:
+    @staticmethod
+    def _parsear_horas_a_decimal(valor_str: str) -> float:
         valor_str = str(valor_str).strip().replace(',','.')
-
         if not valor_str or "horas" in valor_str.lower():
             return 0.0
-
         try:
             if ':' in valor_str:
-                partes = valor_str.split(':') # Corregido typo 'splt' -> 'split'
+                partes = valor_str.split(':')
                 return int(partes[0]) + int(partes[1]) / 60
-
             valor_float = float(valor_str)
             return valor_float
-
         except (ValueError, IndexError):
             return 0.0
 
-    def generar_reporte_pdf(self, nombre_hoja=None, descuento=0):
-        try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.lib import colors
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.units import cm
-            from reportlab.lib.enums import TA_CENTER
+    def preparar_datos_reporte(self, nombre_hoja=None, descuento=0):
+        from logic.pdf_service import DatosReporte
+        
+        hojas = self.wb.worksheets()
+        if nombre_hoja:
+            hoja = self.wb.worksheet(nombre_hoja)
+        else:
+            if len(hojas) < 2:
+                return None, "❌ No hay hoja de cierre disponible todavía."
+            hoja = hojas[-2]
 
-            hojas = self.wb.worksheets()
-            if nombre_hoja:
-                hoja = self.wb.worksheet(nombre_hoja)
-            else:
-                if len(hojas) < 2:
-                    return None, "❌ No hay hoja de cierre disponible todavía."
-                hoja = hojas[-2]
+        nombre_periodo = hoja.title
+        datos = hoja.get_all_values()
+        if not datos or len(datos) < 2:
+            return None, "❌ La hoja de cierre está vacía."
 
-            nombre_periodo = hoja.title
-            datos = hoja.get_all_values()
-            if not datos or len(datos) < 2:
-                return None, "❌ La hoja de cierre está vacía."
+        headers = datos[0]
+        filas_raw = datos[1:]
+        filas_datos = [f for f in filas_raw if any(c.strip() for c in f)]
 
-            headers = datos[0]
-            filas_raw = datos[1:]
-            filas_datos = [f for f in filas_raw if any(c.strip() for c in f)]
+        col_horas = next((i for i, h in enumerate(headers) if 'horas' in h.lower()), None)
+        if col_horas is None:
+            return None, "❌ No se encontró columna de horas. Verificá el encabezado."
 
-            col_horas = next((i for i, h in enumerate(headers) if 'horas' in h.lower()), None)
-            if col_horas is None:
-                return None, "❌ No se encontró columna de horas. Verificá el encabezado."
+        total_decimal = sum(self._parsear_horas_a_decimal(f[col_horas]) for f in filas_datos if col_horas < len(f))
+        h_enteras = int(total_decimal)
+        m_resto = int(round((total_decimal - h_enteras) * 60))
+        total_str = f"{h_enteras}h {m_resto:02d}m"
 
-            total_decimal = sum(self._parsear_horas_a_decimal(f[col_horas]) for f in filas_datos if col_horas < len(f))
-            h_enteras = int(total_decimal)
-            m_resto = int(round((total_decimal - h_enteras) * 60))
-            total_str = f"{h_enteras}h {m_resto:02d}m"
+        monto_por_hora = float(os.getenv("MONTO_POR_HORA", "14634"))
+        salario_bruto = total_decimal * monto_por_hora
+        salario_neto = salario_bruto - float(descuento)
 
-            salario_bruto = total_decimal * self.MONTO_POR_HORA
-            salario_neto = salario_bruto - float(descuento)
+        def gs(n):
+            return f"Gs. {int(n):,}".replace(",", ".")
 
-            def gs(n):
-                return f"Gs. {int(n):,}".replace(",", ".")
+        resumen_data = [
+            ["Total horas trabajadas", total_str],
+            ["Monto por hora", gs(monto_por_hora)],
+            ["Salario bruto", gs(salario_bruto)],
+        ]
+        
+        if descuento > 0:
+            resumen_data.append(["Descuentos aplicados", f"- {gs(descuento)}"])
+            resumen_data.append(["Salario neto a cobrar", gs(salario_neto)])
+        else:
+            resumen_data.append(["Salario del mes", gs(salario_neto)])
 
-            directorio = os.path.join(BASE_DIR, "reportes")
-            os.makedirs(directorio, exist_ok=True)
-            nombre_archivo = f"reporte_{nombre_periodo.replace(' ', '_').replace('/', '-')}.pdf"
-            ruta_pdf = f"{directorio}/{nombre_archivo}"
+        nombre_archivo = f"reporte_horas_{nombre_periodo.replace(' ', '_').replace('/', '-')}.pdf"
 
-            doc = SimpleDocTemplate(ruta_pdf, pagesize=A4, leftMargin=1.5*cm, rightMargin=1.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
-            estilos = getSampleStyleSheet()
-
-            def estilo(nombre, **kw):
-                return ParagraphStyle(nombre, parent=estilos['Normal'], **kw)
-
-            e_titulo = estilo('Tit', fontSize=16, alignment=TA_CENTER, fontName='Helvetica-Bold', spaceAfter=3)
-            e_sub = estilo('Sub', fontSize=10, alignment=TA_CENTER, textColor=colors.HexColor('#555555'), spaceAfter=2)
-            e_seccion = estilo('Sec', fontSize=11, fontName='Helvetica-Bold', spaceBefore=14, spaceAfter=6, textColor=colors.HexColor('#1a1a2e'))
-
-            AZUL = colors.HexColor('#1a1a2e')
-            GRIS = colors.HexColor('#f5f5f5')
-            GRIS2 = colors.HexColor('#cccccc')
-
-            story = []
-            story.append(Paragraph("REPORTE DE PERÍODO", e_titulo))
-            story.append(Paragraph(nombre_periodo, e_sub))
-            story.append(Paragraph(f"Generado: {datetime.now(tz_py).strftime('%d/%m/%Y  %I:%M %p')}", e_sub))
-            story.append(HRFlowable(width="100%", thickness=2, color=AZUL, spaceAfter=14))
-
-            story.append(Paragraph("Registros del período", e_seccion))
-            ancho_util = A4[0] - 3*cm
-            col_w = [ancho_util / len(headers)] * len(headers)
-
-            tabla_filas = [headers]
-            for f in filas_datos:
-                f_completa = (f + [''] * len(headers))[:len(headers)]
-                tabla_filas.append(f_completa)
-
-            tabla = Table(tabla_filas, colWidths=col_w, repeatRows=1)
-            tabla.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), AZUL),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 8),
-                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, GRIS]),
-                ('GRID', (0, 0), (-1, -1), 0.4, GRIS2),
-                ('BOX', (0, 0), (-1, -1), 1, AZUL),
-                ('TOPPADDING', (0, 0), (-1, -1), 5),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ]))
-            story.append(tabla)
-
-            story.append(Spacer(1, 20))
-            story.append(HRFlowable(width="100%", thickness=0.5, color=GRIS2, spaceAfter=6))
-            story.append(Paragraph("Resumen del período", e_seccion))
-
-            resumen_data = [
-                ["Total horas trabajadas", total_str],
-                ["Monto por hora",         gs(self.MONTO_POR_HORA)],
-                ["Salario bruto",          gs(salario_bruto)],
-            ]
-
-            if descuento > 0:
-                resumen_data.append(["Descuentos aplicados", f"- {gs(descuento)}"])
-                resumen_data.append(["Salario neto a cobrar", gs(salario_neto)])
-            else:
-                resumen_data.append(["Salario del mes", gs(salario_neto)])
-
-            cw = [ancho_util * 0.6, ancho_util * 0.4]
-            tabla_resumen = Table(resumen_data, colWidths=cw)
-            tabla_resumen.setStyle(TableStyle([
-                ('FONTNAME', (0, 0), (-1, -2), 'Helvetica'),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -2), 10),
-                ('FONTSIZE', (0, -1), (-1, -1), 12),
-                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-                ('ROWBACKGROUNDS', (0, 0), (-1, -2), [colors.white, GRIS]),
-                ('BACKGROUND', (0, -1), (-1, -1), AZUL),
-                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-                ('BOX', (0, 0), (-1, -1), 1, AZUL),
-                ('LINEABOVE', (0, -1), (-1, -1), 1.5, AZUL),
-                ('TOPPADDING', (0, 0), (-1, -1), 8),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-            ]))
-            story.append(tabla_resumen)
-
-            doc.build(story)
-            return ruta_pdf, f"✅ Reporte generado — {nombre_periodo}"
-        except Exception as e:
-            return None, f"❌ Error al generar reporte: {type(e).__name__} - {str(e)}"
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # 🧠 MÉTODOS DE LA FASE 3: INTEGRACIÓN CON GEMINI 2.5 Y PERSISTENCIA DE AVISOS
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def interpretar_frase_con_ia(self, frase_usuario: str):
-        """
-        Toma una frase libre del usuario, le inyecta el contexto temporal dinámico
-        y le pide a Gemini 2.5 que extraiga el título, la fecha y la hora en un JSON limpio.
-        """
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            logger.error("❌ Error: No se encontró GEMINI_API_KEY en el entorno.")
-            return {"error": "Configuración de IA incompleta en el servidor."}
-
-        # 📅 ANCLAJE TEMPORAL DINÁMICO
-        ahora = datetime.now(tz_py)
-        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-        dia_nombre = dias_semana[ahora.weekday()]
-        fecha_hoy_str = ahora.strftime("%d/%m/%Y")
-        hora_hoy_str = ahora.strftime("%H:%M")
-
-        prompt_sistema = (
-            f"Eres un asistente virtual experto en procesamiento de lenguaje natural y extracción de cronogramas.\n"
-            f"CONTEXTO TEMPORAL REAL: Hoy es {dia_nombre} {fecha_hoy_str} y la hora actual en Paraguay es {hora_hoy_str}.\n\n"
-            f"Tu tarea es analizar la frase enviada por el usuario y extraer un evento para su agenda.\n"
-            f"Debes devolver obligatoriamente un objeto JSON estructurado con las siguientes tres llaves (strings):\n"
-            f"1. 'titulo': Descripción clara y concisa de la tarea o evento (corrige ortografía si es necesario, usa mayúsculas iniciales).\n"
-            f"2. 'fecha': Fecha del evento formateada estrictamente como DD/MM/AAAA. (Calcula el día correcto basándote en que hoy es {fecha_hoy_str}. Si el usuario dice 'el próximo lunes', calcula la fecha exacta del próximo lunes).\n"
-            f"3. 'hora': Hora del evento formateada estrictamente como HH:MM (formato 24h). Si el usuario no especifica una hora (ej: 'tengo médico el martes'), asume por defecto la hora '08:00'.\n\n"
-            f"Restricción absoluta: No agregues introducciones, explicaciones ni comentarios. Tu respuesta debe ser puramente el JSON."
+        reporte = DatosReporte(
+            titulo="REPORTE DE ASISTENCIA Y HORAS",
+            subtitulo=nombre_periodo,
+            encabezados=headers,
+            filas=filas_datos,
+            lineas_resumen=resumen_data,
+            nombre_archivo=nombre_archivo
         )
-
-        try:
-            client = genai.Client(api_key=api_key)
-
-            respuesta_ia = client.models.generate_content(
-                model='gemini-2.5-flash',  # 🚀 Modelo de última generación compatible con google-genai
-                contents=f"Contexto del Sistema:\n{prompt_sistema}\n\nMensaje del Usuario: {frase_usuario}",
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-
-            datos_formateados = json.loads(respuesta_ia.text)
-            logger.info(f"🤖 IA interpretó con éxito: {datos_formateados}")
-            return datos_formateados
-
-        except json.JSONDecodeError as jde:
-            logger.error(f"❌ Error al decodificar JSON de la IA: {jde}. Respuesta cruda: {respuesta_ia.text}")
-            return {"error": "La IA devolvió un formato ilegible. Intentá refrasear."}
-        except Exception as e:
-            logger.error(f"❌ Error en la llamada a Gemini API: {e}")
-            return {"error": f"No se pudo conectar con el motor de IA: {str(e)}"}
+        return reporte, None
 
     def guardar_aviso_calendar(self, datos_evento: dict) -> str:
         """

@@ -5,6 +5,7 @@ from logger_config import setup_logger
 from com.core.security import auth_required
 from com.core.errors import safe_handler
 from logic.logic import EstadoGestor
+from logic.ai_service import AIService
 
 logger = setup_logger("finanzas_handler")
 
@@ -25,7 +26,7 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app):
         texto_usuario = partes[1]
         msg_carga = bot.reply_to(message, f"⏳ Procesando {tipo_mov.lower()} con IA...")
         
-        datos = gamma_app.agente_financiero.procesar_movimiento_con_ia(texto_usuario, tipo_movimiento=tipo_mov)
+        datos = AIService.procesar_movimiento_con_ia(texto_usuario, tipo_movimiento=tipo_mov)
         if "error" in datos:
             bot.edit_message_text(f"❌ Error: {datos['error']}", message.chat.id, msg_carga.message_id)
             return
@@ -68,7 +69,7 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app):
             file_info = bot.get_file(message.photo[-1].file_id)
             downloaded_file = bot.download_file(file_info.file_path)
             
-            datos = gamma_app.agente_financiero.analizar_ticket_con_ia(downloaded_file, mime_type="image/jpeg")
+            datos = AIService.analizar_ticket_con_ia(downloaded_file, mime_type="image/jpeg")
             
             if "error" in datos:
                 bot.edit_message_text(f"❌ Error: {datos['error']}", message.chat.id, msg_carga.message_id)
@@ -79,9 +80,9 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app):
             cache_key = f"ocr_{msg_carga.message_id}"
             EstadoGestor.set(cache_key, datos)
             
-            neto = "{:,}".format(int(datos.get('neto', 0))).replace(",", ".")
-            iva = "{:,}".format(int(datos.get('iva', 0))).replace(",", ".")
-            total = "{:,}".format(int(datos.get('total', 0))).replace(",", ".")
+            neto = "{:,}".format(gamma_app.agente_financiero._limpiar_monto(datos.get('neto', 0))).replace(",", ".")
+            iva = "{:,}".format(gamma_app.agente_financiero._limpiar_monto(datos.get('iva', 0))).replace(",", ".")
+            total = "{:,}".format(gamma_app.agente_financiero._limpiar_monto(datos.get('total', 0))).replace(",", ".")
             
             texto_confirmacion = (
                 "🧾 *Ticket Analizado*\n"
