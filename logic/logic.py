@@ -324,7 +324,10 @@ class AgenteAutonomoHoras:
         try:
             servicio = ConexionSheets.obtener_servicio_calendar()
             fecha_hora_str = f"{datos_evento['fecha']} {datos_evento['hora']}"
-            dt_inicio = datetime.strptime(fecha_hora_str, "%d/%m/%Y %H:%M")
+            try:
+                dt_inicio = datetime.strptime(fecha_hora_str, "%d/%m/%Y %H:%M")
+            except ValueError:
+                return "❌ Error: La IA no devolvió un formato de fecha válido. Por favor, intenta de nuevo."
             dt_inicio = tz_py.localize(dt_inicio)
             dt_fin = dt_inicio + timedelta(hours=1)
 

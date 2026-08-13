@@ -122,9 +122,10 @@ class AgenteFinanciero:
                 if len(fila) < 7: continue
                 tipo = fila[1].strip().lower()
                 monto = fila[6].strip()
-                if not monto.isdigit(): continue
-                
-                monto_val = int(monto)
+                try:
+                    monto_val = int(monto)
+                except ValueError:
+                    continue
                 if tipo == 'ingreso':
                     total_ingresos += monto_val
                 elif tipo == 'gasto':
@@ -176,10 +177,10 @@ class AgenteFinanciero:
             
             # Formatear el monto con separador de miles
             monto_val = 0
-            if monto_str.isdigit():
+            try:
                 monto_val = int(monto_str)
                 monto_fmt = f"Gs. {monto_val:,}".replace(",", ".")
-            else:
+            except ValueError:
                 monto_fmt = monto_str
                 
             if tipo.lower() == 'ingreso':
