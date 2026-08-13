@@ -73,8 +73,16 @@ def register_base_handlers(bot: TeleBot, gamma_app):
         modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
         texto_debug = "🛠️ /debug   — Ver logs de errores internos\n" if modo_dev else ""
         
+        # Leer archivo VERSION
+        version = "1.x"
+        base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        version_path = os.path.join(base_path, "VERSION")
+        if os.path.exists(version_path):
+            with open(version_path, "r") as f:
+                version = f.read().strip()
+                
         texto = (
-            "🤖 *Bot de Gestión Avanzada (GAMMA)*\n"
+            f"🤖 *Bot de Gestión Avanzada (GAMMA)* `v{version}`\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "Menú de comandos sincronizado ✅\n\n"
             "*Finanzas:*\n"
