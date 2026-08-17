@@ -1,10 +1,12 @@
+from __future__ import annotations
+from typing import Any
 import logging
-import os
+from pathlib import Path
 import pytz
 from datetime import datetime
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(BASE_DIR, "gen_log.txt")
+BASE_DIR = Path(__file__).resolve().parent
+LOG_FILE = BASE_DIR / "gen_log.txt"
 tz_py = pytz.timezone('America/Buenos_Aires')
 
 class TimezoneFormatter(logging.Formatter):
@@ -18,7 +20,7 @@ class TimezoneFormatter(logging.Formatter):
             return dt.strftime(datefmt)
         return dt.strftime("%Y-%m-%d %H:%M:%S")
 
-def setup_logger(name="gamma_bot"):
+def setup_logger(name="gamma_bot") -> Any:
     logger = logging.getLogger(name)
     if not logger.handlers:
         logger.setLevel(logging.INFO)

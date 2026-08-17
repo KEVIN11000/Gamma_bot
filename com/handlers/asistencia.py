@@ -1,4 +1,7 @@
+from __future__ import annotations
+from typing import Any
 import os
+from pathlib import Path
 from telebot import TeleBot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from logger_config import setup_logger
@@ -10,7 +13,7 @@ from logic.pdf_service import PDFService
 
 logger = setup_logger("asistencia_handler")
 
-def register_asistencia_handlers(bot: TeleBot, gamma_app):
+def register_asistencia_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     
     @bot.message_handler(commands=['marcar'])
     @auth_required(bot)
@@ -193,7 +196,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app):
 
 
 # --- Funciones auxiliares
-def _iniciar_flujo_reporte_horas(message, bot, gamma_app, is_callback=False):
+def _iniciar_flujo_reporte_horas(message: Any, bot: Any, gamma_app: Any, is_callback=False) -> Any:
     nombres = gamma_app.agente_excel.obtener_nombres_hojas(limite=6)
 
     if not nombres:
@@ -217,7 +220,7 @@ def _iniciar_flujo_reporte_horas(message, bot, gamma_app, is_callback=False):
         bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
 
 
-def _generar_y_enviar_reporte_financiero(bot, gamma_app, message_obj, is_callback=False):
+def _generar_y_enviar_reporte_financiero(bot: Any, gamma_app: Any, message_obj: Any, is_callback=False) -> Any:
     chat_id = message_obj.chat.id
     msg_id = message_obj.message_id
     
@@ -241,13 +244,13 @@ def _generar_y_enviar_reporte_financiero(bot, gamma_app, message_obj, is_callbac
                 chat_id,
                 f,
                 caption=f"📊 {msg_pdf}",
-                visible_file_name=os.path.basename(ruta_pdf)
+                visible_file_name=Path(ruta_pdf).name
             )
     else:
         bot.send_message(chat_id, msg_pdf)
 
 
-def _capturar_monto_descuento(message, bot, gamma_app):
+def _capturar_monto_descuento(message: Any, bot: Any, gamma_app: Any) -> Any:
     if not verificar_usuario_manual(bot, message): return
     if not message.text:
         bot.reply_to(message, "❌ Por favor, enviá un texto con el número. (No se admiten stickers ni imágenes)")
@@ -265,7 +268,7 @@ def _capturar_monto_descuento(message, bot, gamma_app):
             parse_mode="Markdown"
         )
 
-def _generar_y_enviar_reporte(bot, gamma_app, message_obj, descuento):
+def _generar_y_enviar_reporte(bot: Any, gamma_app: Any, message_obj: Any, descuento: Any) -> Any:
     bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF de horas...")
     
     datos, error = gamma_app.agente_excel.preparar_datos_reporte(descuento=descuento)
@@ -282,12 +285,12 @@ def _generar_y_enviar_reporte(bot, gamma_app, message_obj, descuento):
                 message_obj.chat.id,
                 f,
                 caption=f"📊 {msg_pdf}",
-                visible_file_name=os.path.basename(ruta_pdf)
+                visible_file_name=Path(ruta_pdf).name
             )
     else:
         bot.send_message(message_obj.chat.id, msg_pdf)
 
-def _capturar_descuento_reporte(message, bot, gamma_app):
+def _capturar_descuento_reporte(message: Any, bot: Any, gamma_app: Any) -> Any:
     if not verificar_usuario_manual(bot, message): return
     if not message.text:
         bot.reply_to(message, "❌ Por favor, enviá un texto numérico. (No se admiten archivos)")
@@ -308,7 +311,7 @@ def _capturar_descuento_reporte(message, bot, gamma_app):
             "Ejecutá /reporte para intentar de nuevo."
         )
 
-def _generar_y_enviar_reporte_por_hoja(bot, gamma_app, message_obj, nombre_hoja: str, descuento: float):
+def _generar_y_enviar_reporte_por_hoja(bot: Any, gamma_app: Any, message_obj: Any, nombre_hoja: str, descuento: float) -> Any:
     bot.send_message(message_obj.chat.id, "📄 Procesando datos y armando PDF de horas...")
     
     datos, error = gamma_app.agente_excel.preparar_datos_reporte(nombre_hoja=nombre_hoja, descuento=descuento)
@@ -325,7 +328,7 @@ def _generar_y_enviar_reporte_por_hoja(bot, gamma_app, message_obj, nombre_hoja:
                 message_obj.chat.id,
                 f,
                 caption=f"📊 {msg_pdf}",
-                visible_file_name=os.path.basename(ruta_pdf)
+                visible_file_name=Path(ruta_pdf).name
             )
     else:
         bot.send_message(message_obj.chat.id, msg_pdf)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Any
 import os
 import re
 from functools import wraps
@@ -16,7 +18,7 @@ def get_authorized_users() -> set:
             usuarios.add(int(uid))
     return usuarios
 
-def auth_required(bot: TeleBot):
+def auth_required(bot: TeleBot) -> Any:
     """
     Decorador para restringir el acceso solo a usuarios autorizados.
     """

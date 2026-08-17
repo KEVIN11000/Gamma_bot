@@ -1,4 +1,7 @@
+from __future__ import annotations
 import os
+from typing import Any
+from pathlib import Path
 from telebot import TeleBot
 from telebot.types import BotCommand
 from logger_config import setup_logger
@@ -7,7 +10,7 @@ from com.core.errors import safe_handler
 
 logger = setup_logger("base_handler")
 
-def _registrar_comandos_menu(bot: TeleBot):
+def _registrar_comandos_menu(bot: TeleBot) -> Any:
     comandos = [
         BotCommand("gasto",    "Registrar un nuevo gasto (ej. '/gasto 15000 taxi')."),
         BotCommand("ingreso",  "Registrar un nuevo ingreso."),
@@ -27,7 +30,7 @@ def _registrar_comandos_menu(bot: TeleBot):
     bot.set_my_commands(comandos)
 logger.info("✅ Menú de comandos actualizado.")
 
-def register_base_handlers(bot: TeleBot, gamma_app):
+def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     @bot.message_handler(commands=['debug'])
     @auth_required(bot)
     @safe_handler(bot, logger)
@@ -54,7 +57,7 @@ def register_base_handlers(bot: TeleBot, gamma_app):
             
         ruta_archivo = archivos[tipo_log]
         
-        if os.path.exists(ruta_archivo):
+        if Path(ruta_archivo).exists():
             with open(ruta_archivo, "r", encoding="utf-8", errors="replace") as f:
                 lineas = f.readlines()
                 ultimas = "".join(lineas[-20:])
@@ -75,9 +78,9 @@ def register_base_handlers(bot: TeleBot, gamma_app):
         
         # Leer archivo VERSION
         version = "1.x"
-        base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        version_path = os.path.join(base_path, "VERSION")
-        if os.path.exists(version_path):
+        base_path = Path(__file__).resolve().parents[3]
+        version_path = base_path / "VERSION"
+        if version_path.exists():
             with open(version_path, "r") as f:
                 version = f.read().strip()
                 

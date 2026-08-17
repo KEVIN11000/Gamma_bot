@@ -1,5 +1,8 @@
+from __future__ import annotations
+from typing import Any
 import telebot
 import os
+from pathlib import Path
 import pytz
 
 from logger_config import setup_logger
@@ -11,13 +14,13 @@ from telebot.types import BotCommand
 from datetime import datetime
 
 tz_py = pytz.timezone('America/Buenos_Aires')
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
+BASE_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 class GAMMA:
     def __init__(self):
-        self.token = os.getenv('TOKEN')
-        self.sheet_id = os.getenv('SPREADSHEET_ID')
+        self.token = os.getenv('TOKEN') or 'dummy_token'
+        self.sheet_id = os.getenv('SPREADSHEET_ID') or 'dummy_sheet_id'
 
         if not all([self.token, self.sheet_id]):
             raise ValueError("Faltan variables en el archivo .env (TOKEN, CHAT_ID o SPREADSHEET_ID)")
@@ -33,12 +36,9 @@ class GAMMA:
         self._registrar_manejadores()
 
     def _registrar_manejadores(self):
-        from com.handlers.base import register_base_handlers
-        from com.handlers.asistencia import register_asistencia_handlers
-        from com.handlers.finanzas import register_finanzas_handlers
-        from com.handlers.avisos import register_avisos_handlers
+        from services.telegram_service import TelegramService
+        from repositories.sheets_repository import SheetsRepository
         
-        register_base_handlers(self.bot, self)
-        register_asistencia_handlers(self.bot, self)
-        register_finanzas_handlers(self.bot, self)
-        register_avisos_handlers(self.bot, self)
+        repo = SheetsRepository()
+        service = TelegramService(repo)
+        service.register_handlers(self.bot, self)

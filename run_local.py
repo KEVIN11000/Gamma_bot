@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Any
 import os
 from dotenv import load_dotenv
 
@@ -19,6 +21,12 @@ try:
     bot_instance.bot.stop_polling()
     bot_instance.bot.remove_webhook()
     logger.info("Webhook eliminated and previous polling stopped, initiating new polling...")
-    bot_instance.bot.polling(none_stop=True)
+    try:
+        bot_instance.bot.polling(none_stop=True)
+    except Exception as e:
+        # If another polling instance is running, Telegram API returns error 409
+        logger.error(f"Polling failed: {e}. Ensure no other bot process is running.")
+        # Optionally, exit or retry after a delay
+        raise
 except Exception as e:
     logger.error(f"Error en polling: {e}")

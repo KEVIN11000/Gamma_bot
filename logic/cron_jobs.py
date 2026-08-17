@@ -1,4 +1,7 @@
+from __future__ import annotations
+from typing import Any
 import os
+from pathlib import Path
 import requests
 from datetime import datetime, timedelta
 import pytz
@@ -6,14 +9,14 @@ from logger_config import setup_logger
 
 logger = setup_logger("cron_jobs")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = Path(__file__).resolve().parents[2]
 tz_py = pytz.timezone('America/Asuncion')
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PUNTO 2 — Resumen Semanal de Productividad
 # ─────────────────────────────────────────────────────────────────────────────
 
-def resumen_semanal(bot, chat_id, spreadsheet_id):
+def resumen_semanal(bot: Any, chat_id: Any, spreadsheet_id: Any) -> Any:
     """
     Lee la última hoja del Spreadsheet y calcula las horas y monto
     acumulados en la semana actual (lunes a viernes).
@@ -119,7 +122,7 @@ CODIGOS_CLIMA = {
 }
 
 
-def notificacion_clima(bot, chat_id):
+def notificacion_clima(bot: Any, chat_id: Any) -> Any:
     """
     Consulta Open-Meteo (gratuito, sin API key) y envía el pronóstico
     del día para Asunción a las 07:00 AM.
@@ -182,18 +185,18 @@ def notificacion_clima(bot, chat_id):
 # PUNTO 4 — Rotación Anual de Logs
 # ─────────────────────────────────────────────────────────────────────────────
 
-def rotar_logs():
+def rotar_logs() -> Any:
     """
     Renombra gen_log.txt → gen_log_YYYY.txt y crea uno nuevo vacío.
     Llamado por cron-job.org el 1° de enero a las 00:01 AM.
     """
     try:
 
-        path_actual = os.path.join(BASE_DIR, "gen_log.txt")
+        path_actual = BASE_DIR / "gen_log.txt"
         anio_anterior = datetime.now(tz_py).year - 1
-        path_backup = os.path.join(BASE_DIR, f"gen_log_{anio_anterior}.txt")
+        path_backup = BASE_DIR / f"gen_log_{anio_anterior}.txt"
 
-        if os.path.exists(path_actual):
+        if path_actual.exists():
             os.rename(path_actual, path_backup)
 
         # Crear un log nuevo y limpio
@@ -211,7 +214,7 @@ def rotar_logs():
 # PUNTO 5 — Informe Estadístico Mensual
 # ─────────────────────────────────────────────────────────────────────────────
 
-def informe_estadistico_mensual(gamma_app, chat_id):
+def informe_estadistico_mensual(gamma_app: Any, chat_id: Any) -> Any:
     """
     Genera y envía automáticamente los reportes PDF (Horas y Finanzas)
     con fines puramente estadísticos. No cierra la hoja de asistencia.
@@ -261,7 +264,7 @@ def informe_estadistico_mensual(gamma_app, chat_id):
 # PUNTO 6 — Asesor IA Proactivo (Fase 4)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def alerta_asesor_financiero(gamma_app, chat_id):
+def alerta_asesor_financiero(gamma_app: Any, chat_id: Any) -> Any:
     """
     Extrae los datos financieros del Libro Diario, genera insights usando Gemini
     y los envía al usuario de forma proactiva.

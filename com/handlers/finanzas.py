@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Any
 import os
 from telebot import TeleBot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -9,7 +11,7 @@ from logic.ai_service import AIService
 
 logger = setup_logger("finanzas_handler")
 
-def register_finanzas_handlers(bot: TeleBot, gamma_app):
+def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
 
     @bot.message_handler(commands=['gasto', 'ingreso'])
     @auth_required(bot)

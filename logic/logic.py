@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Any
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
@@ -6,9 +8,10 @@ import os
 import pytz
 import json
 import sqlite3
+from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, ".env"))
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
 
 tz_py = pytz.timezone('America/Buenos_Aires')
 
@@ -35,10 +38,13 @@ class ConexionSheets:
     def obtener_cliente(cls):
         if cls._cliente is None:
             scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-            path_json = os.path.join(BASE_DIR, "credentials.json")
+            path_json = BASE_DIR / "credentials.json"
+            if not path_json.exists():
+                logger.warning("⚠️ credentials.json not found; Google services will be unavailable.")
+                return None
             from google.oauth2.service_account import Credentials
             import gspread
-            credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
+            credenciales = Credentials.from_service_account_file(str(path_json), scopes=scopes)
             cls._cliente = gspread.authorize(credenciales)
             logger.info("🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton).")
         return cls._cliente
@@ -47,7 +53,7 @@ class ConexionSheets:
     def obtener_servicio_calendar(cls):
         if cls._servicio_calendar is None:
             scopes = ["https://www.googleapis.com/auth/calendar"]
-            path_json = os.path.join(BASE_DIR, "credentials.json")
+            path_json = BASE_DIR / "credentials.json"
             from google.oauth2.service_account import Credentials
             from googleapiclient.discovery import build
             credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
@@ -79,13 +85,13 @@ class AgenteAutonomoHoras:
     def ws(self):
         if self._ws is None:
             base_path = BASE_DIR
-            path_txt = os.path.join(base_path, "periodo_actual.txt")
-            if not os.path.exists(path_txt):
+            path_txt = base_path / "periodo_actual.txt"
+            # Ensure the directory exists
+            path_txt.parent.mkdir(parents=True, exist_ok=True)
+            if not path_txt.exists():
                 nombre_inicial = self.mes if self.mes else "Mayo 2026"
-                with open(path_txt, "w", encoding="utf-8") as f:
-                    f.write(nombre_inicial)
-            with open(path_txt, "r", encoding="utf-8") as f:
-                nombre_hoja = f.read().strip()
+                path_txt.write_text(nombre_inicial, encoding="utf-8")
+            nombre_hoja = path_txt.read_text(encoding="utf-8").strip()
             self._ws = self.wb.worksheet(nombre_hoja)
         return self._ws
 
@@ -188,9 +194,9 @@ class AgenteAutonomoHoras:
 
     def ejecutar_cierre_periodo_manual(self):
         base_path = BASE_DIR
-        path_txt = os.path.join(base_path, "periodo_actual.txt")
+        path_txt = base_path / "periodo_actual.txt"
 
-        if os.path.exists(path_txt):
+        if path_txt.exists():
             with open(path_txt, "r", encoding="utf-8") as f:
                 hoja_actual = f.read().strip()
         else:
@@ -445,9 +451,9 @@ class AgenteAutonomoHoras:
         """
         try:
             base_path = BASE_DIR
-            path_txt = os.path.join(base_path, "periodo_actual.txt")
+            path_txt = base_path / "periodo_actual.txt"
             hoja_activa = ""
-            if os.path.exists(path_txt):
+            if path_txt.exists():
                 with open(path_txt, "r", encoding="utf-8") as f:
                     hoja_activa = f.read().strip()
 
@@ -615,7 +621,7 @@ class AgenteAsistenciaMaterias:
 
 class EstadoGestor:
     """Clase para guardar y recuperar estado temporal usando SQLite para soportar múltiples workers en PythonAnywhere."""
-    PATH_DB = os.path.join(BASE_DIR, "estado_temporal.db")
+    PATH_DB = BASE_DIR / "estado_temporal.db"
 
     @classmethod
     def _get_conn(cls):
