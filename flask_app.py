@@ -71,6 +71,7 @@ def home() -> Any:
     return "Bot de Marcación Activo", 200
 
 # ── Auto-deploy desde GitHub ──────────────────────────────────────────────────
+@limiter.limit("10 per minute")
 @app.route('/deploy', methods=['POST'])
 def deploy() -> Any:
     """
@@ -115,7 +116,13 @@ def deploy() -> Any:
 
         # 4. Enviar notificación al chat primero, ANTES de recargar
         chat_id = os.getenv("CHAT_ID")
-        masked_id = config.mask_chat_id(int(chat_id)) if chat_id and chat_id.isdigit() else "None"
+        masked_id = "None"
+        if chat_id:
+            try:
+                cid = int(chat_id)
+                masked_id = config.mask_chat_id(cid)
+            except ValueError:
+                masked_id = "Invalid"
         logger.info(f"[deploy] CHAT_ID leído: {masked_id}")
         if chat_id:
             try:
@@ -126,6 +133,9 @@ def deploy() -> Any:
                         version = f.read().strip()
                 else:
                     version = "desconocida"
+                # Sanitizar para evitar markup en Telegram
+                import html
+                version = html.escape(version)
 
                 msg = bot_instance.bot.send_message(
                     chat_id,
@@ -185,6 +195,7 @@ def _validar_cron_secret() -> Any:
     return token_enviado == secret
 
 
+@limiter.limit("10 per minute")
 @app.route('/cron/resumen-semanal', methods=['GET', 'POST'])
 def cron_resumen_semanal() -> Any:
     if not _validar_cron_secret():
@@ -197,6 +208,7 @@ def cron_resumen_semanal() -> Any:
     return ("✅ Resumen semanal enviado.", 200) if exito else ("❌ Error en resumen semanal.", 500)
 
 
+@limiter.limit("10 per minute")
 @app.route('/cron/clima', methods=['GET', 'POST'])
 def cron_clima() -> Any:
     if not _validar_cron_secret():
@@ -208,6 +220,7 @@ def cron_clima() -> Any:
     return ("✅ Notificación climática enviada.", 200) if exito else ("❌ Error en clima.", 500)
 
 
+@limiter.limit("10 per minute")
 @app.route('/cron/rotar-logs', methods=['GET', 'POST'])
 def cron_rotar_logs() -> Any:
     if not _validar_cron_secret():
@@ -216,6 +229,7 @@ def cron_rotar_logs() -> Any:
     return ("✅ Logs rotados correctamente.", 200) if exito else ("❌ Error al rotar logs.", 500)
 
 
+@limiter.limit("10 per minute")
 @app.route('/cron/cierre-mensual', methods=['GET', 'POST'])
 def cron_cierre_mensual() -> Any:
     if not _validar_cron_secret():
@@ -228,6 +242,7 @@ def cron_cierre_mensual() -> Any:
     return ("✅ Informe estadístico ejecutado y reportes enviados.", 200) if exito else ("❌ Error en informe.", 500)
 
 
+@limiter.limit("10 per minute")
 @app.route('/cron/asesor-ia', methods=['GET', 'POST'])
 def cron_asesor_ia() -> Any:
     if not _validar_cron_secret():
