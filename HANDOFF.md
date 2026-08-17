@@ -1,55 +1,49 @@
 # HANDOFF — Gamma_bot
 
-**Fase cerrada:** Fase 3 (Automatización Mensual) y Fase 4 (Asesor IA)
+**Fase cerrada:** Fase 4.1 (Parches de Informe Estadístico)
 **Fecha de cierre:** 2026-08-13
-**Estado del build/tests:** ✅ APROBADO (Gate 4 Sign-off) — Suite automatizada `test_qa_suite.py` creada (15/15 tests pasando). Validación de sintaxis limpia (`python -m compileall -q .`).
+**Estado del build/tests:** ✅ pasando — La validación de sintaxis (`compileall`) y la suite automatizada (`test_qa_suite.py`, 15 tests) pasaron exitosamente al 100%.
 
 ---
 
 ## 1. Estado actual
-
-- Endpoint `/cron/cierre-mensual` implementado e integrado con `PDFService` (reporte dual: Asistencia y Finanzas).
-- Endpoint `/cron/asesor-ia` implementado, conectando los movimientos de `AgenteFinanciero` con Gemini para obtener un "tip" proactivo.
-- Control de versiones corregido: el comando `/start` ahora lee dinámicamente el archivo `VERSION` sin caracteres harcodeados. 
-- **QA Sign-off otorgado:** Se descubrieron y corrigieron errores críticos en `logic/cron_jobs.py` (acceso a atributo inexistente `datos.totales` e índice/filtro incorrecto en `alerta_asesor_financiero`) y `com/core/security.py` (crash por `UnicodeEncodeError` en consolas Windows cp1252). Todo verificado y estabilizado.
+- Endpoint `/cron/cierre-mensual` convertido a un informe puramente estadístico (no altera la hoja de cálculo).
+- Endpoint `/cron/asesor-ia` extrae correctamente totales del balance con protección contra fallos.
+- Manejo robusto de fallos en generación de PDF y asilamiento de envíos (uso de `try/finally` para prevenir fugas de disco).
+- Despliegue en producción (`Main-stable`) activo.
+- Sistema de pruebas y validación formal de 4 Gates (SDLC) instituido y funcional.
 
 ## 2. Decisiones tomadas en esta fase
-
-- **Decisión:** Los cambios estructurales de las Fases 3 y 4 fueron auditados y probados mediante una suite de 15 pruebas unitarias/integración (`test_qa_suite.py`).
-  **Por qué:** Garantizar que los refactorings no introduzcan regresiones antes de autorizar el pase a `Main-stable`.
-- **Decisión:** Se creó y ejecutó la suite automatizada `test_qa_suite.py`.
-  **Por qué:** Para contar con verificación continua reproducible de PDF, IA, Finanzas, Horas, Security y Endpoints Flask.
+- **Decisión:** Mantener el endpoint URL `/cron/cierre-mensual` pero renombrar el método a `informe_estadistico_mensual`.
+  **Por qué:** Para no romper integraciones externas en `cron-job.org` y clarificar internamente su rol pasivo de sólo lectura.
+- **Decisión:** Desactivar la rotación de planillas en el cron.
+  **Por qué:** Requisito de usuario: las fechas de cierre contable son variables y deben ser ejecutadas manualmente mediante el bot, y no impuestas por una fecha del calendario.
 
 ## 3. Archivos y módulos clave tocados
 
 | Archivo | Cambio |
 |---|---|
-| `flask_app.py` | Nuevos endpoints `/cron/cierre-mensual` y `/cron/asesor-ia` integrados con `X-Cron-Secret`. |
-| `logic/cron_jobs.py` | Métodos `cierre_mensual_automatico` y `alerta_asesor_financiero` (corregido bug de `datos.totales` y parseo de filas filtradas). |
-| `logic/ai_service.py` | Nueva función `generar_insights_financieros` usando `gemini-2.5-flash` con *System Prompt* analítico. |
-| `com/core/security.py` | Corregido crash por `UnicodeEncodeError` en `print` con emojis en consolas Windows. |
-| `logic/logic.py` | Mejorado `preparar_datos_reporte` para manejar libros con 1 sola hoja sin fallar. |
-| `test_qa_suite.py` | Suite de 15 pruebas automatizadas (PDF, IA, Finanzas, Cron, Flask, Security). |
-| `com/handlers/base.py` | Corrección del string de versión (eliminación de la letra 'v' hardcodeada). |
-| `VERSION` | Modificado el texto de `V1.8.0` a `V1.8.4` localmente y en `Main-stable`. |
+| `logic/cron_jobs.py` | Refactor de cierre aislando los envíos PDF en `try/finally`. Fix para `asesor-ia` habilitando cálculos de totales. |
+| `logic/financiero.py` | Soporte de valores financieros negativos usando bloques `try/except` en vez de `isdigit()`. |
+| `logic/logic.py` | Fallback para leer planillas de 1 sola hoja sin romperse. Parseo seguro de IA `strptime` para calendario. |
+| `com/core/security.py` | Corrección de encoding de caracteres UTF-8 en consolas Windows (`print` reemplazado por `logger`). |
+| `test_qa_suite.py` | **[NEW]** Se creó la suite completa de pruebas (15 tests de QA automatizado). |
 
 ## 4. Pendientes explícitos para la próxima fase
-
-- [x] Realizar Quality Assurance (QA) auditando el código y ejecutando pruebas automatizadas. (COMPLETADO)
-- [ ] Hacer *push* de los cambios refactorizados a `Main-stable` tras recibir el Sign-off de QA.
-- [ ] Configurar las nuevas URLs de cron en *cron-job.org* y definir horarios de ejecución mensual/semanal.
+- [ ] Vigilancia de estabilidad general (detección de errores emergentes durante uso cotidiano real las próximas semanas).
+- [ ] Configuración manual paralela de las tareas cron en servicios externos (cron-job.org) y test real en fecha.
 
 ## 5. Riesgos / deuda técnica conocida
-
-- **Riesgo:** El Libro Diario de Finanzas acumula datos sin límite.
-  **Impacto:** A diferencia del cierre mensual de Asistencia (que crea una nueva pestaña por mes), el Libro Diario es único. Si el volumen crece excesivamente, el bot podría sufrir de latencia alta por culpa de la API de Google Sheets.
-  **Mitigación sugerida:** Evaluar si amerita una función para archivar o rotar el Libro Diario anualmente.
+- **Riesgo:** Limitaciones de cuota (rate-limit `429 Too Many Requests`) de la API de Telegram.
+  **Impacto:** Fallo temporal al enviar dos documentos PDF muy pesados seguidos o concurrentes, derivando en logs de error.
+  **Mitigación sugerida:** Se solucionó la fuga de memoria temporal mediante limpieza agresiva (`finally os.remove`), pero de haber caídas repetitivas, se debe pensar en un mecanismo de *Exponential Backoff* antes del envío final por chat.
 
 ## 6. Cómo verificar que este handoff sigue vigente
+Comprueba que los tests agregados continúan validando toda la lógica interna:
 
-Ejecutar la suite completa de pruebas de QA:
 ```bash
-python -m unittest test_qa_suite.py
+python -m compileall -q .
+python test_qa_suite.py
 ```
 
 ---

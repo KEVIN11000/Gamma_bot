@@ -27,6 +27,11 @@ def setup_logger(name="gamma_bot"):
         file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
+        # Restrict log file permissions to owner only
+        try:
+            os.chmod(LOG_FILE, 0o600)
+        except Exception:
+            pass
         
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)

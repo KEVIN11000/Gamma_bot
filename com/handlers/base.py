@@ -25,7 +25,7 @@ def _registrar_comandos_menu(bot: TeleBot):
         comandos.append(BotCommand("debug", "Ver logs recientes del sistema."))
         
     bot.set_my_commands(comandos)
-    print("✅ Menú de comandos actualizado.", flush=True)
+logger.info("✅ Menú de comandos actualizado.")
 
 def register_base_handlers(bot: TeleBot, gamma_app):
     @bot.message_handler(commands=['debug'])

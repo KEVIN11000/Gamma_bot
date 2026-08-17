@@ -1,4 +1,5 @@
 import os
+import re
 from functools import wraps
 from telebot import TeleBot
 from logger_config import setup_logger
@@ -8,9 +9,10 @@ logger = setup_logger("security")
 def get_authorized_users() -> set:
     chat_id_raw = os.getenv("CHAT_ID", "")
     usuarios = set()
+    pattern = r"^-?\d+$"
     for uid in chat_id_raw.split(','):
         uid = uid.strip()
-        if uid.lstrip('-').isdigit():  # Soporta números positivos y negativos
+        if re.match(pattern, uid):
             usuarios.add(int(uid))
     return usuarios
 

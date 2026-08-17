@@ -1,5 +1,7 @@
 import os
 import json
+import re
+import time
 
 from logger_config import setup_logger
 logger = setup_logger("financiero")
@@ -15,7 +17,14 @@ tz_py = pytz.timezone('America/Buenos_Aires')
 class AgenteFinanciero:
     def __init__(self, spreadsheet_id):
         self.spreadsheet_id = spreadsheet_id
+        # ID del spreadsheet que contiene el Libro Diario, si se separó en una planilla distinta
+        self.libro_contable_id = os.getenv('LIBRO_CONTABLE_ID') or spreadsheet_id
+        # Validate LIBRO_CONTABLE_ID format (alphanumeric, dash, underscore)
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', self.libro_contable_id):
+            logger.warning(f"LIBRO_CONTABLE_ID '{self.libro_contable_id}' tiene un formato inesperado; se usará spreadsheet_id por defecto.")
+            self.libro_contable_id = spreadsheet_id
         self._wb = None
+        self._libro_wb = None
         self._ws = None
 
     @property
@@ -28,20 +37,40 @@ class AgenteFinanciero:
             self._wb = self.cliente.open_by_key(self.spreadsheet_id)
         return self._wb
 
+    @staticmethod
+    def _retry_operation(func, *args, max_attempts=3, backoff=0.5, **kwargs):
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Intento {attempt}/{max_attempts} falló en operación de Google Sheets: {e}")
+                if attempt == max_attempts:
+                    raise
+                time.sleep(backoff * attempt)
+
     @property
     def ws(self):
         if self._ws is None:
-            titulos_existentes = [h.title for h in self.wb.worksheets()]
+            # Determine which workbook to use: separate Libro Diario worksheet or default workbook
+            if self.libro_contable_id and self.libro_contable_id != self.spreadsheet_id:
+                if self._libro_wb is None:
+                    self._libro_wb = ConexionSheets.obtener_cliente().open_by_key(self.libro_contable_id)
+                wb = self._libro_wb
+                logger.info(f"Usando workbook separado para Libro Diario: {self.libro_contable_id}")
+            else:
+                wb = self.wb
+                logger.info(f"Usando workbook principal para Libro Diario: {self.spreadsheet_id}")
+            titulos_existentes = [h.title for h in wb.worksheets()]
             modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
             nombre_hoja = "Libro_Diario_Test" if modo_dev else "Libro_Diario"
             
             if nombre_hoja not in titulos_existentes:
-                self._ws = self.wb.add_worksheet(title=nombre_hoja, rows=1000, cols=11)
+                self._ws = wb.add_worksheet(title=nombre_hoja, rows=1000, cols=11)
                 encabezados = ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes"]
-                self._ws.update("A1:K1", [encabezados])
+                self._retry_operation(self._ws.update, "A1:K1", [encabezados])
                 logger.info(f"✅ Se creó la pestaña {nombre_hoja} en Google Sheets.")
             else:
-                self._ws = self.wb.worksheet(nombre_hoja)
+                self._ws = wb.worksheet(nombre_hoja)
         return self._ws
 
     def _obtener_o_crear_hoja_libro_diario(self):
@@ -99,7 +128,7 @@ class AgenteFinanciero:
                 sanitizar(datos.get('mes', ''))
             ]
             
-            self.ws.update(f"A{fila}:K{fila}", [valores])
+            self._retry_operation(self.ws.update, f"A{fila}:K{fila}", [valores])
             
             icono = "🟢" if datos.get('tipo_movimiento') == "Ingreso" else "🔴"
             monto_fmt = "{:,}".format(int(datos.get('total', 0))).replace(",", ".")

@@ -15,6 +15,15 @@ tz_py = pytz.timezone('America/Buenos_Aires')
 from logger_config import setup_logger
 logger = setup_logger('logic')
 
+# Helper to escape potential formula injection in Google Sheets
+def sanitize_input(value: str) -> str:
+    """Escape leading '=' to prevent formula injection.
+    Returns the original value if not a string or does not start with '='.
+    """
+    if isinstance(value, str) and value.startswith('='):
+        return "'" + value
+    return value
+
 
 
 
