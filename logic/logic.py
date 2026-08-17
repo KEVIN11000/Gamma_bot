@@ -39,6 +39,9 @@ class ConexionSheets:
         if cls._cliente is None:
             scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             path_json = BASE_DIR / "credentials.json"
+            if not path_json.exists():
+                logger.warning("⚠️ credentials.json not found; Google services will be unavailable.")
+                return None
             from google.oauth2.service_account import Credentials
             import gspread
             credenciales = Credentials.from_service_account_file(str(path_json), scopes=scopes)
