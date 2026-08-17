@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Any
 # Constants used across the Gamma_bot project
 
 VERSION = "1.8.6"

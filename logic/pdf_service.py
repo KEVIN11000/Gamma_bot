@@ -1,4 +1,7 @@
+from __future__ import annotations
+from typing import Any
 import os
+from pathlib import Path
 from datetime import datetime
 import pytz
 from dataclasses import dataclass
@@ -7,7 +10,7 @@ from logger_config import setup_logger
 logger = setup_logger("pdf_service")
 
 tz_py = pytz.timezone('America/Buenos_Aires')
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 @dataclass
 class DatosReporte:

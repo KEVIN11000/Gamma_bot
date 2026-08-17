@@ -9,3 +9,4 @@ python-dotenv>=1.0.0
 pytz>=2023.3
 requests>=2.31.0
 google-genai>=0.3.0
+Flask-Limiter>=2.6.0

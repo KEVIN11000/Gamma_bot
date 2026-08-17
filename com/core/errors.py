@@ -1,9 +1,11 @@
+from __future__ import annotations
+from typing import Any
 import traceback
 from functools import wraps
 from telebot import TeleBot
 import logging
 
-def safe_handler(bot: TeleBot, logger: logging.Logger):
+def safe_handler(bot: TeleBot, logger: logging.Logger) -> Any:
     """
     Decorador para capturar excepciones en handlers y evitar bloques try-except repetitivos.
     Envía un mensaje genérico al usuario si ocurre un error y lo registra en el logger.

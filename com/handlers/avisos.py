@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Any
 import os
 import telebot
 from telebot import TeleBot
@@ -11,7 +13,7 @@ from logic.ai_service import AIService
 
 logger = setup_logger("avisos_handler")
 
-def register_avisos_handlers(bot: TeleBot, gamma_app):
+def register_avisos_handlers(bot: TeleBot, gamma_app: Any) -> Any:
 
     @bot.message_handler(commands=['aviso'])
     @auth_required(bot)
@@ -145,7 +147,7 @@ def register_avisos_handlers(bot: TeleBot, gamma_app):
             bot.send_message(call.message.chat.id, f"❌ Error al procesar la baja del aviso: {str(e)}")
 
 
-def _capturar_frase_aviso_secuencial(message, bot, gamma_app):
+def _capturar_frase_aviso_secuencial(message: Any, bot: Any, gamma_app: Any) -> Any:
     if not verificar_usuario_manual(bot, message): return
 
     if not message.text or message.text.startswith('/'):
@@ -153,7 +155,7 @@ def _capturar_frase_aviso_secuencial(message, bot, gamma_app):
         return
     _procesar_frase_aviso(message, message.text, bot, gamma_app)
 
-def _procesar_frase_aviso(message, frase: str, bot, gamma_app):
+def _procesar_frase_aviso(message: Any, frase: str, bot: Any, gamma_app: Any) -> Any:
     msg_espera = bot.send_message(message.chat.id, "🧠 Analizando frase con Gemini...")
     datos_ia = AIService.interpretar_frase_con_ia(frase)
 
