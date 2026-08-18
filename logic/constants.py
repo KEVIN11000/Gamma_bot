@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Constants used across the Gamma_bot project
 
-VERSION = "1.8.6"
+VERSION = "1.8.7"
 
 # Sheet names
 HOJA_LIBRO_DIARIO = "Libro_Diario"
