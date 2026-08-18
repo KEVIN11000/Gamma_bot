@@ -20,6 +20,7 @@ class DatosReporte:
     """
     Class DatosReporte.
     """
+
     titulo: str
     subtitulo: str
     encabezados: list
@@ -32,18 +33,18 @@ class PDFService:
     """
     Class PDFService.
     """
-    
+
     @staticmethod
     def generar_reporte_generico(datos: DatosReporte):
         """
         generar_reporte_generico method/function.
-        
+
         Args:
             datos: Description for datos.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -54,12 +55,16 @@ class PDFService:
             from reportlab.lib import colors
             from reportlab.lib.enums import TA_CENTER
             from reportlab.lib.pagesizes import A4
-            from reportlab.lib.styles import (ParagraphStyle,
-                                              getSampleStyleSheet)
+            from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
             from reportlab.lib.units import cm
-            from reportlab.platypus import (HRFlowable, Paragraph,
-                                            SimpleDocTemplate, Spacer, Table,
-                                            TableStyle)
+            from reportlab.platypus import (
+                HRFlowable,
+                Paragraph,
+                SimpleDocTemplate,
+                Spacer,
+                Table,
+                TableStyle,
+            )
 
             directorio = os.path.join(BASE_DIR, "reportes")
             os.makedirs(directorio, exist_ok=True)
@@ -87,14 +92,14 @@ class PDFService:
             def estilo(nombre, **kw):
                 """
                 estilo method/function.
-                
+
                 Args:
                     nombre: Description for nombre.
                     **kw: Arbitrary keyword arguments.
-                
+
                 Returns:
                     Description of the return value.
-                
+
                 Raises:
                     Exception: Description of the exception.
                 """

@@ -14,8 +14,10 @@ if BASE_DIR not in sys.path:
 
 from com.core.security import auth_required, get_authorized_users  # noqa: E402
 from flask_app import app  # noqa: E402
-from logic.cron_jobs import (alerta_asesor_financiero,  # noqa: E402
-                             informe_estadistico_mensual)
+from logic.cron_jobs import (
+    alerta_asesor_financiero,  # noqa: E402
+    informe_estadistico_mensual,
+)
 from logic.financiero import AgenteFinanciero  # noqa: E402
 from logic.logic import AgenteAutonomoHoras  # noqa: E402
 from logic.pdf_service import DatosReporte, PDFService  # noqa: E402
@@ -32,7 +34,9 @@ class TestPDFService(unittest.TestCase):
             nombre_archivo="test_reporte.pdf",
         )
         ruta, msg = PDFService.generar_reporte_generico(datos)
-        self.addCleanup(lambda: os.remove(ruta) if ruta and os.path.exists(ruta) else None)
+        self.addCleanup(
+            lambda: os.remove(ruta) if ruta and os.path.exists(ruta) else None
+        )
         self.assertIsNotNone(ruta)
         self.assertTrue(os.path.exists(ruta))
         self.assertIn("✅ Reporte generado", msg)
@@ -47,7 +51,9 @@ class TestPDFService(unittest.TestCase):
             nombre_archivo="test_vacio.pdf",
         )
         ruta, msg = PDFService.generar_reporte_generico(datos)
-        self.addCleanup(lambda: os.remove(ruta) if ruta and os.path.exists(ruta) else None)
+        self.addCleanup(
+            lambda: os.remove(ruta) if ruta and os.path.exists(ruta) else None
+        )
         self.assertIsNotNone(ruta)
         self.assertTrue(os.path.exists(ruta))
 
@@ -224,7 +230,9 @@ class TestCronJobs(unittest.TestCase):
 
 
 class TestSecurity(unittest.TestCase):
-    @patch.dict(os.environ, {"CHAT_ID": "123456, -987654, 123; rm -rf /, malicious_string"})
+    @patch.dict(
+        os.environ, {"CHAT_ID": "123456, -987654, 123; rm -rf /, malicious_string"}
+    )
     def test_get_authorized_users_injection(self):
         # Command injection attempts in CHAT_ID should be filtered out by regex
         users = get_authorized_users()
@@ -257,7 +265,9 @@ class TestSecurity(unittest.TestCase):
         msg_unauth.from_user.last_name = "Actor"
         res_unauth = dummy_handler(msg_unauth)
         self.assertIsNone(res_unauth)
-        mock_bot.reply_to.assert_called_once_with(msg_unauth, "🚫 No tenés acceso a este bot.")
+        mock_bot.reply_to.assert_called_once_with(
+            msg_unauth, "🚫 No tenés acceso a este bot."
+        )
 
         # Unauthorized user with data (callback query)
         cb_unauth = MagicMock(spec=["from_user", "data", "id"])
@@ -265,26 +275,29 @@ class TestSecurity(unittest.TestCase):
         cb_unauth.id = "cb123"
         res_cb = dummy_handler(cb_unauth)
         self.assertIsNone(res_cb)
-        mock_bot.answer_callback_query.assert_called_once_with("cb123", "No estás autorizado.", show_alert=True)
+        mock_bot.answer_callback_query.assert_called_once_with(
+            "cb123", "No estás autorizado.", show_alert=True
+        )
 
     @patch.dict(os.environ, {"CHAT_ID": "100"})
     def test_verificar_usuario_manual(self):
         from com.core.security import verificar_usuario_manual
+
         mock_bot = MagicMock()
 
         msg_auth = MagicMock()
         msg_auth.from_user.id = 100
         self.assertTrue(verificar_usuario_manual(mock_bot, msg_auth))
-        
+
         msg_unauth = MagicMock()
         msg_unauth.from_user.id = 999
         msg_unauth.from_user.username = "hacker"
         msg_unauth.from_user.first_name = "Bad"
         msg_unauth.from_user.last_name = "Actor"
         self.assertFalse(verificar_usuario_manual(mock_bot, msg_unauth))
-        mock_bot.reply_to.assert_called_once_with(msg_unauth, "🚫 No tenés acceso a este bot.")
-
-
+        mock_bot.reply_to.assert_called_once_with(
+            msg_unauth, "🚫 No tenés acceso a este bot."
+        )
 
 
 class TestGspreadFailures(unittest.TestCase):
@@ -295,16 +308,24 @@ class TestGspreadFailures(unittest.TestCase):
     def test_api_failure_quota_exceeded(self, mock_ws):
         # Simulate gspread APIError
         mock_response = MagicMock()
-        mock_response.json.return_value = {"error": {"message": "Quota exceeded", "code": 429, "status": "RESOURCE_EXHAUSTED"}}
+        mock_response.json.return_value = {
+            "error": {
+                "message": "Quota exceeded",
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+            }
+        }
         mock_ws.col_values.side_effect = gspread.exceptions.APIError(mock_response)
-        
+
         datos = {"total": 100}
         res = self.agente.registrar_movimiento(datos)
         self.assertIn("Hubo un error", res)
 
     @patch.object(AgenteFinanciero, "ws")
     def test_gspread_corrupt_data(self, mock_ws):
-        mock_ws.col_values.side_effect = gspread.exceptions.GSpreadException("Corrupt data")
+        mock_ws.col_values.side_effect = gspread.exceptions.GSpreadException(
+            "Corrupt data"
+        )
         datos = {"total": 100}
         res = self.agente.registrar_movimiento(datos)
         self.assertIn("Hubo un error", res)

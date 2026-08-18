@@ -24,16 +24,17 @@ class AgenteFinanciero:
     """
     Class AgenteFinanciero.
     """
+
     def __init__(self, spreadsheet_id: str) -> None:
         """
         __init__ method/function.
-        
+
         Args:
             spreadsheet_id: Description for spreadsheet_id.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -56,10 +57,10 @@ class AgenteFinanciero:
     def cliente(self):
         """
         cliente method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -69,10 +70,10 @@ class AgenteFinanciero:
     def wb(self):
         """
         wb method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -84,15 +85,15 @@ class AgenteFinanciero:
     def _retry_operation(func, *args, max_attempts=3, backoff=0.5, **kwargs):
         """
         _retry_operation method/function.
-        
+
         Args:
             func: Description for func.
             *args: Variable length argument list.
             **kwargs: Arbitrary keyword arguments.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -111,10 +112,10 @@ class AgenteFinanciero:
     def ws(self):
         """
         ws method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -150,10 +151,10 @@ class AgenteFinanciero:
     def _obtener_o_crear_hoja_libro_diario(self):
         """
         _obtener_o_crear_hoja_libro_diario method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -163,13 +164,13 @@ class AgenteFinanciero:
     def _limpiar_monto(self, valor) -> int:
         """
         _limpiar_monto method/function.
-        
+
         Args:
             valor: Description for valor.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -187,13 +188,13 @@ class AgenteFinanciero:
     def registrar_movimiento(self, datos: dict) -> str:
         """
         Inserta la fila en Libro_Diario.
-        
+
         Args:
             datos: Dictionary containing movement details.
-            
+
         Returns:
             A string message indicating success or failure.
-            
+
         Raises:
             Exception: If an error occurs during sheet update.
         """
@@ -228,13 +229,13 @@ class AgenteFinanciero:
             def sanitizar(val):
                 """
                 sanitizar method/function.
-                
+
                 Args:
                     val: Description for val.
-                
+
                 Returns:
                     Description of the return value.
-                
+
                 Raises:
                     Exception: Description of the exception.
                 """
@@ -274,10 +275,10 @@ class AgenteFinanciero:
     def obtener_balance(self) -> dict:
         """
         Calcula el Flujo Neto basado en el Libro Diario completo (o del mes actual).
-        
+
         Returns:
             A dictionary with 'ingresos', 'gastos', and 'flujo_neto'.
-            
+
         Raises:
             Exception: If there's an error reading from the sheet.
         """
@@ -315,13 +316,13 @@ class AgenteFinanciero:
     def preparar_datos_reporte(self, mes=None):
         """
         preparar_datos_reporte method/function.
-        
+
         Args:
             mes: Description for mes.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -388,13 +389,13 @@ class AgenteFinanciero:
         def gs(n):
             """
             gs method/function.
-            
+
             Args:
                 n: Description for n.
-            
+
             Returns:
                 Description of the return value.
-            
+
             Raises:
                 Exception: Description of the exception.
             """

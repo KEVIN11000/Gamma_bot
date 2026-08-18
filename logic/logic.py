@@ -47,6 +47,7 @@ class ConexionSheets:
     """
     Class ConexionSheets.
     """
+
     _cliente = None
     _servicio_calendar = None
 
@@ -54,10 +55,10 @@ class ConexionSheets:
     def obtener_cliente(cls) -> "gspread.Client | None":
         """
         obtener_cliente method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -88,10 +89,10 @@ class ConexionSheets:
     def obtener_servicio_calendar(cls) -> "Any | None":
         """
         obtener_servicio_calendar method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -115,19 +116,20 @@ class AgenteAutonomoHoras:
     """
     Class AgenteAutonomoHoras.
     """
+
     MONTO_POR_HORA = int(MONTO_POR_HORA_DEFAULT)
 
     def __init__(self, spreadsheet_id: str, mes: str = "Mayo") -> None:
         """
         __init__ method/function.
-        
+
         Args:
             spreadsheet_id: Description for spreadsheet_id.
             mes: Description for mes.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -140,10 +142,10 @@ class AgenteAutonomoHoras:
     def cliente(self):
         """
         cliente method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -153,10 +155,10 @@ class AgenteAutonomoHoras:
     def wb(self):
         """
         wb method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -168,10 +170,10 @@ class AgenteAutonomoHoras:
     def ws(self):
         """
         ws method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -190,10 +192,10 @@ class AgenteAutonomoHoras:
     def fin_de(self):
         """
         fin_de method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -209,10 +211,10 @@ class AgenteAutonomoHoras:
     def _cargar_hoja_activa(self):
         """
         _cargar_hoja_activa method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -221,10 +223,10 @@ class AgenteAutonomoHoras:
 
     def _obtener_o_crear_fila_hoy(self):
         """Busca la fecha de hoy en la hoja del período activo actual.
-        
+
         Returns:
             int or None: The row number corresponding to today's date, or None if the limit is reached.
-            
+
         Raises:
             Exception: If an error occurs communicating with Google Sheets.
         """
@@ -273,13 +275,13 @@ class AgenteAutonomoHoras:
     def ejecutar_marcado_para_bot(self, modo="normal"):
         """
         ejecutar_marcado_para_bot method/function.
-        
+
         Args:
             modo: Description for modo.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -303,13 +305,13 @@ class AgenteAutonomoHoras:
         def celda_vacia(col_index):
             """
             celda_vacia method/function.
-            
+
             Args:
                 col_index: Description for col_index.
-            
+
             Returns:
                 Description of the return value.
-            
+
             Raises:
                 Exception: Description of the exception.
             """
@@ -342,10 +344,10 @@ class AgenteAutonomoHoras:
     def ejecutar_cierre_periodo_manual(self):
         """
         ejecutar_cierre_periodo_manual method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -434,13 +436,13 @@ class AgenteAutonomoHoras:
     def _parsear_horas_a_decimal(valor_str: str) -> float:
         """
         _parsear_horas_a_decimal method/function.
-        
+
         Args:
             valor_str: Description for valor_str.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -459,14 +461,14 @@ class AgenteAutonomoHoras:
     def preparar_datos_reporte(self, nombre_hoja=None, descuento=0):
         """
         preparar_datos_reporte method/function.
-        
+
         Args:
             nombre_hoja: Description for nombre_hoja.
             descuento: Description for descuento.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -514,13 +516,13 @@ class AgenteAutonomoHoras:
         def gs(n):
             """
             gs method/function.
-            
+
             Args:
                 n: Description for n.
-            
+
             Returns:
                 Description of the return value.
-            
+
             Raises:
                 Exception: Description of the exception.
             """
@@ -555,13 +557,13 @@ class AgenteAutonomoHoras:
     def guardar_aviso_calendar(self, datos_evento: dict) -> str:
         """
         Guarda el aviso interpretado por Gemini directamente en Google Calendar.
-        
+
         Args:
             datos_evento: Dictionary with event details (titulo, fecha, hora).
-            
+
         Returns:
             str: A confirmation message or error message.
-            
+
         Raises:
             Exception: If an error occurs communicating with Google Calendar.
         """
@@ -617,10 +619,10 @@ class AgenteAutonomoHoras:
 
     def obtener_lista_avisos_calendar(self):
         """Devuelve la lista de los próximos eventos desde Google Calendar.
-        
+
         Returns:
             list: List of dictionaries containing formatted event data.
-            
+
         Raises:
             Exception: If an error occurs fetching events from Calendar API.
         """
@@ -677,13 +679,13 @@ class AgenteAutonomoHoras:
 
     def eliminar_aviso_calendar(self, event_id: str):
         """Elimina un evento de Google Calendar por su ID.
-        
+
         Args:
             event_id (str): The Google Calendar event ID to delete.
-            
+
         Returns:
             bool or None: True if successful, None otherwise.
-            
+
         Raises:
             Exception: If an error occurs during deletion.
         """
@@ -704,13 +706,13 @@ class AgenteAutonomoHoras:
         Devuelve los títulos de las últimas `limite` hojas del spreadsheet,
         excluyendo la hoja activa actual (donde se están registrando las marcas).
         Se usa para el comando /reporte para que el usuario elija el período.
-        
+
         Args:
             limite (int, optional): The maximum number of sheet names to retrieve. Defaults to 6.
-            
+
         Returns:
             list: A list of string sheet titles.
-            
+
         Raises:
             Exception: If an error occurs while fetching sheet names.
         """
@@ -734,15 +736,16 @@ class AgenteAsistenciaMaterias:
     """
     Class AgenteAsistenciaMaterias.
     """
+
     SPREADSHEET_ID = "1VJe98WHoL5U7aDiGLIw55ZHnG-M6bAuLmIZx9LNbWnY"
 
     def __init__(self):
         """
         __init__ method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -753,10 +756,10 @@ class AgenteAsistenciaMaterias:
     def cliente(self):
         """
         cliente method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -766,10 +769,10 @@ class AgenteAsistenciaMaterias:
     def wb(self):
         """
         wb method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -781,10 +784,10 @@ class AgenteAsistenciaMaterias:
     def HORARIOS_MATERIAS(self):
         """
         HORARIOS_MATERIAS method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -795,13 +798,13 @@ class AgenteAsistenciaMaterias:
     def _normalizar_hora(self, hora_str: str) -> str:
         """
         _normalizar_hora method/function.
-        
+
         Args:
             hora_str: Description for hora_str.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -831,10 +834,10 @@ class AgenteAsistenciaMaterias:
     def _cargar_horarios(self):
         """
         _cargar_horarios method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -891,13 +894,13 @@ class AgenteAsistenciaMaterias:
     def obtener_materia_actual(self, ahora):
         """
         obtener_materia_actual method/function.
-        
+
         Args:
             ahora: Description for ahora.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -920,10 +923,10 @@ class AgenteAsistenciaMaterias:
     def marcar_asistencia(self):
         """
         marcar_asistencia method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -987,10 +990,10 @@ class EstadoGestor:
     def _get_conn(cls):
         """
         _get_conn method/function.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -1004,14 +1007,14 @@ class EstadoGestor:
     def set(cls, clave, valor):
         """
         set method/function.
-        
+
         Args:
             clave: Description for clave.
             valor: Description for valor.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -1032,14 +1035,14 @@ class EstadoGestor:
     def get(cls, clave, default=None):
         """
         get method/function.
-        
+
         Args:
             clave: Description for clave.
             default: Description for default.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """
@@ -1062,14 +1065,14 @@ class EstadoGestor:
     def pop(cls, clave, default=None):
         """
         pop method/function.
-        
+
         Args:
             clave: Description for clave.
             default: Description for default.
-        
+
         Returns:
             Description of the return value.
-        
+
         Raises:
             Exception: Description of the exception.
         """

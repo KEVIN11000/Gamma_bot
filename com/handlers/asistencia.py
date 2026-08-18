@@ -211,7 +211,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             return
 
         if data.startswith("reporte_hoja_"):
-            nombre_hoja = data[len("reporte_hoja_"):]
+            nombre_hoja = data[len("reporte_hoja_") :]
             EstadoGestor.set(f"reporte_{chat_id}", nombre_hoja)
 
             teclado = InlineKeyboardMarkup()

@@ -12,16 +12,16 @@ def iniciar_flujo_reporte_horas(
 ) -> None:
     """
     iniciar_flujo_reporte_horas method/function.
-    
+
     Args:
         message: Description for message.
         bot: Description for bot.
         gamma_app: Description for gamma_app.
         is_callback: Description for is_callback.
-    
+
     Returns:
         Description of the return value.
-    
+
     Raises:
         Exception: Description of the exception.
     """
@@ -61,16 +61,16 @@ def generar_y_enviar_reporte_financiero(
 ) -> None:
     """
     generar_y_enviar_reporte_financiero method/function.
-    
+
     Args:
         bot: Description for bot.
         gamma_app: Description for gamma_app.
         message_obj: Description for message_obj.
         is_callback: Description for is_callback.
-    
+
     Returns:
         Description of the return value.
-    
+
     Raises:
         Exception: Description of the exception.
     """
@@ -104,18 +104,20 @@ def generar_y_enviar_reporte_financiero(
         bot.send_message(chat_id, msg_pdf)
 
 
-def capturar_monto_descuento(message: Message, bot: TeleBot, gamma_app: "GammaApp") -> None:
+def capturar_monto_descuento(
+    message: Message, bot: TeleBot, gamma_app: "GammaApp"
+) -> None:
     """
     capturar_monto_descuento method/function.
-    
+
     Args:
         message: Description for message.
         bot: Description for bot.
         gamma_app: Description for gamma_app.
-    
+
     Returns:
         Description of the return value.
-    
+
     Raises:
         Exception: Description of the exception.
     """
@@ -146,16 +148,16 @@ def generar_y_enviar_reporte(
 ) -> None:
     """
     generar_y_enviar_reporte method/function.
-    
+
     Args:
         bot: Description for bot.
         gamma_app: Description for gamma_app.
         message_obj: Description for message_obj.
         descuento: Description for descuento.
-    
+
     Returns:
         Description of the return value.
-    
+
     Raises:
         Exception: Description of the exception.
     """
@@ -182,18 +184,20 @@ def generar_y_enviar_reporte(
         bot.send_message(message_obj.chat.id, msg_pdf)
 
 
-def capturar_descuento_reporte(message: Message, bot: TeleBot, gamma_app: "GammaApp") -> None:
+def capturar_descuento_reporte(
+    message: Message, bot: TeleBot, gamma_app: "GammaApp"
+) -> None:
     """
     capturar_descuento_reporte method/function.
-    
+
     Args:
         message: Description for message.
         bot: Description for bot.
         gamma_app: Description for gamma_app.
-    
+
     Returns:
         Description of the return value.
-    
+
     Raises:
         Exception: Description of the exception.
     """
@@ -224,21 +228,25 @@ def capturar_descuento_reporte(message: Message, bot: TeleBot, gamma_app: "Gamma
 
 
 def generar_y_enviar_reporte_por_hoja(
-    bot: TeleBot, gamma_app: "GammaApp", message_obj: Message, nombre_hoja: str, descuento: float
+    bot: TeleBot,
+    gamma_app: "GammaApp",
+    message_obj: Message,
+    nombre_hoja: str,
+    descuento: float,
 ) -> None:
     """
     generar_y_enviar_reporte_por_hoja method/function.
-    
+
     Args:
         bot: Description for bot.
         gamma_app: Description for gamma_app.
         message_obj: Description for message_obj.
         nombre_hoja: Description for nombre_hoja.
         descuento: Description for descuento.
-    
+
     Returns:
         Description of the return value.
-    
+
     Raises:
         Exception: Description of the exception.
     """

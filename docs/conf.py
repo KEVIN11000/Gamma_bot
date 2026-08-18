@@ -1,23 +1,24 @@
 # Configuration file for the Sphinx documentation builder.
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
 
-project = 'Gamma Bot'
-copyright = '2026, VCP-S'
-author = 'VCP-S'
+sys.path.insert(0, os.path.abspath(".."))
+
+project = "Gamma Bot"
+copyright = "2026, VCP-S"
+author = "VCP-S"
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.viewcode',
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
 ]
 
-templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-html_theme = 'alabaster'
-html_static_path = ['_static']
+html_theme = "alabaster"
+html_static_path = ["_static"]
 
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False

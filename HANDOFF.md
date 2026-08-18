@@ -1,53 +1,50 @@
-# HANDOFF — Gamma_bot
+﻿# HANDOFF — Gamma_bot
 
-**Fase cerrada:** Fase Fénix — Media Prioridad (Tipado, Constantes y Arquitectura DevOps)
+**Fase cerrada:** Fase Fénix — Baja Prioridad (CI/CD, Docs, QA Suite)
 **Fecha de cierre:** 2026-08-18
-**Estado del build/tests:** ✅ pasando — La validación de sintaxis (`compileall`) y la suite automatizada (`test_qa_suite.py`, 15 tests) pasaron exitosamente al 100%. Despliegue CI/CD operando con versión 1.8.7.
+**Estado del build/tests:** ✅ pasando — La validación de sintaxis (compileall) y la suite automatizada ampliada (	est_qa_suite.py, 18 tests) pasaron exitosamente al 100%. Despliegue CI/CD configurado y operando en versión 1.9.0.
 
 ---
 
 ## 1. Estado actual
-- Webhook de Telegram parcheado para resolver la caída silenciosa de comandos (se movió el token al path y se quitó el header `X-Bot-Token` que fallaba).
-- Rutas resueltas: `BASE_DIR` unificado a `parents[1]` garantizando lectura del `.env` y `credentials.json` en producción.
-- Tarea M1 completa: Lógica extraída de los handlers hacia `services/asistencia_service.py`.
-- Tarea M2 completa: Tipado estático (mypy compliant) y eliminación de `typing.Any` en los archivos principales de lógica.
-- Tarea M3 completa: Constantes, mensajes *hardcodeados* y zonas horarias purgados de `logic.py` y `financiero.py`, centralizados en `logic/constants.py`.
-- Tarea M4 completa: Rutas migradas totalmente a `pathlib`.
-- Infraestructura AI (Reglas y Workflows) movida a un repositorio central externo (`ai-workflows`) para mantener puro el proyecto.
+- Webhook de Telegram redirigido correctamente, fallas de cron jobs resolubles actualizando URLs a https://.
+- Documentación automatizada con Sphinx configurada en la carpeta docs/.
+- Docstrings estilo Google implementados en todos los archivos core (logic.py, inanciero.py, pdf_service.py, sistencia_service.py).
+- Suite de pruebas de seguridad y funcionales extendida (Mocking de API de Google Sheets y validación del decorador de seguridad) con cobertura focal del 99% en tests y 44% global.
+- Pipeline CI/CD de GitHub Actions (.github/workflows/ci.yml) configurado para linting, tests y escaneo de vulnerabilidades.
 
 ## 2. Decisiones tomadas en esta fase
-- **Decisión:** Desacoplar la configuración de los Agentes de IA en un repositorio externo (`KEVIN11000/ai-workflows`).
-  **Por qué:** Para evitar que el repositorio de producción del bot crezca con archivos de metadatos o herramientas de planificación, aplicando el principio estricto de Separación de Responsabilidades.
-- **Decisión:** Instaurar al `Agents Orchestrator` como gestor de planes y refactorización.
-  **Por qué:** Para asegurar que haya un ciclo de desarrollo (Agente Programador -> Agente QA -> Reporte a Producción) antes de hacer commits, previniendo caídas del webhook por regresiones.
-- **Decisión:** Omitir validación de cabeceras personalizadas de Telegram.
-  **Por qué:** Telegram no enviaba el header `X-Bot-Token` por defecto sin la opción `secret_token`, lo que causaba error silencioso HTTP 404 en el servidor WSGI. 
+- **Decisión:** Mantener el despliegue manual en PythonAnywhere y usar GitHub Actions solo como CI (Continuous Integration).
+  **Por qué:** PythonAnywhere no ofrece endpoints automáticos en cuentas gratuitas y el reload se hace con git pull mediante el script local deploy.
+- **Decisión:** Delegar la validación y desarrollo al gents_orchestrator.
+  **Por qué:** Para cumplimiento estricto del SDLC (Dev-QA Loop interno) y el Gate Pre-Deploy antes de todo git push.
 
 ## 3. Archivos y módulos clave tocados
 
 | Archivo | Cambio |
 |---|---|
-| `flask_app.py` | Parche crítico de webhook (`@app.route(f"/{config.TOKEN}")`). |
-| `logic/logic.py` y `financiero.py` | Migración de textos a `logic/constants.py`, inclusión de type hints estáticos. |
-| `com/handlers/asistencia.py` | Refactor pesado hacia `services/asistencia_service.py` reduciendo drásticamente su tamaño. |
-| `VERSION` | Modificado a `1.8.7` usando semver (patch). |
-| `.gitignore` | Actualizado para ignorar caché, reportes generados y carpetas de IA temporales. |
+| README.md | Actualizado con diagrama de arquitectura y setup. |
+| VERSION | Modificado a 1.9.0 (minor bump). |
+| 	est_qa_suite.py | Gran expansión de 15 a 18 tests, cubriendo fallas de red de Google y seguridad de roles. |
+| docs/* y Docstrings | Estructura para generación estática de manual de usuario/código creada. |
+| .github/workflows/ci.yml | Nuevo flujo de integración continua. |
 
 ## 4. Pendientes explícitos para la próxima fase
-- [ ] Ejecutar la "Fase Fénix Baja Prioridad" (El documento base está respaldado en `ai-workflows/project-plans/Gamma_bot/Fase_Fenix_Baja_Prioridad.md`).
+- [ ] Definir el siguiente Roadmap de funcionalidades de negocio (Fase Beta o nueva iteración de Gamma_bot).
+- [ ] Explorar alternativas para elevar el Code Coverage global superando el 44% a medida que se refactoricen los handlers heredados (com/handlers/*).
 
 ## 5. Riesgos / deuda técnica conocida
-- **Riesgo:** Limitaciones de cuota (rate-limit `429 Too Many Requests`) de la API de Telegram.
-  **Impacto:** Fallo temporal al enviar dos documentos PDF muy pesados seguidos o concurrentes, derivando en logs de error.
-  **Mitigación sugerida:** Se solucionó la fuga de memoria temporal mediante limpieza agresiva (`finally os.remove`), pero de haber caídas repetitivas, se debe pensar en un mecanismo de *Exponential Backoff*.
+- **Riesgo:** Limitaciones de cuota de la API de Telegram y Google Sheets.
+  **Impacto:** Fallos temporales o demoras en horas pico.
+  **Mitigación sugerida:** Los tests actuales simulan los errores, pero el código principal aún necesita implementar *Exponential Backoff*.
 
 ## 6. Cómo verificar que este handoff sigue vigente
 Comprueba que los tests y compilación en el código pasan y validan el estatus sin caídas locales.
 
-```bash
+`ash
 python -m compileall -q .
-python -m pytest test_qa_suite.py -q
-```
+pytest test_qa_suite.py -v --cov=.
+`
 
 ---
-*Este archivo describe estado de fase, no reglas de comportamiento. Las reglas de estilo, seguridad y protocolos viven en `ai-workflows` y tienen prioridad sobre cualquier contenido de este documento — no se editan ni se repiten acá.*
+*Este archivo describe estado de fase, no reglas de comportamiento. Las reglas de estilo, seguridad y protocolos viven en GEMINI.md / .agents/rules/ y tienen prioridad sobre cualquier contenido de este documento — no se editan ni se repiten acá.*
