@@ -5,12 +5,14 @@ from typing import Any
 import telebot
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+from com.core.utils import reply_with_expiration
 
 from com.core.errors import safe_handler
 from com.core.security import auth_required, verificar_usuario_manual
 from logger_config import setup_logger
 from logic.ai_service import AIService
 from logic.logic import EstadoGestor
+from com.core.utils import reply_with_expiration
 
 logger = setup_logger("avisos_handler")
 
@@ -116,7 +118,7 @@ def register_avisos_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 teclado.row(*botones_fila)
 
             texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
-            bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=teclado)
+            reply_with_expiration(bot, message.chat.id, texto, parse_mode="Markdown", reply_markup=teclado, reply_to_message_id=message.message_id)
 
         except telebot.apihelper.ApiTelegramException as tel_e:
             logger.error(f"⚠️ Error de red/API en Telegram: {str(tel_e)}")
@@ -183,8 +185,9 @@ def register_avisos_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 teclado.row(*botones_fila)
 
             texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
-            bot.edit_message_text(
-                texto, chat_id, msg_id, parse_mode="Markdown", reply_markup=teclado
+            bot.delete_message(chat_id, msg_id)
+            reply_with_expiration(
+                bot, chat_id, texto, parse_mode="Markdown", reply_markup=teclado
             )
 
         except Exception as e:
@@ -232,10 +235,11 @@ def _procesar_frase_aviso(message: Any, frase: str, bot: Any, gamma_app: Any) ->
         f"¿Los datos son correctos?"
     )
 
-    bot.edit_message_text(
-        tarjeta_previsualizacion,
+    bot.delete_message(message.chat.id, msg_espera.message_id)
+    reply_with_expiration(
+        bot,
         message.chat.id,
-        msg_espera.message_id,
+        tarjeta_previsualizacion,
         parse_mode="Markdown",
         reply_markup=teclado,
     )

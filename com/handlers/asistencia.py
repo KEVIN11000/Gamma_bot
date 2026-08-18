@@ -4,6 +4,7 @@ from pathlib import Path
 
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+from com.core.utils import reply_with_expiration
 
 from com.core.errors import safe_handler
 from com.core.security import auth_required, verificar_usuario_manual
@@ -17,6 +18,7 @@ from services.asistencia_service import (
     capturar_descuento_reporte,
     generar_y_enviar_reporte_por_hoja,
 )
+from com.core.utils import reply_with_expiration
 
 logger = setup_logger("asistencia_handler")
 
@@ -32,7 +34,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             InlineKeyboardButton("▶️ Marcar", callback_data="marcar_normal"),
             InlineKeyboardButton("🚪 Salida directa", callback_data="marcar_directo"),
         )
-        bot.send_message(
+        reply_with_expiration(
+            bot,
             message.chat.id,
             "¿Qué tipo de registro querés hacer hoy?",
             reply_markup=teclado,
@@ -88,7 +91,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             InlineKeyboardButton("✅ Confirmar", callback_data="cierre_confirmar"),
             InlineKeyboardButton("❌ Cancelar", callback_data="cierre_cancelar"),
         )
-        bot.send_message(
+        reply_with_expiration(
+            bot,
             message.chat.id,
             "⚠️ *¿Ejecutar el cierre de período?*\n\n_Esta acción no se puede deshacer._",
             parse_mode="Markdown",
@@ -135,7 +139,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                     callback_data="cierre_descuento_no",
                 ),
             )
-            bot.send_message(
+            reply_with_expiration(
+                bot,
                 chat_id,
                 "¿Deseas aplicar algún **descuento** al salario calculado de este mes?",
                 parse_mode="Markdown",
@@ -180,11 +185,13 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                     "💰 Libro Diario", callback_data="reporte_tipo_finanzas"
                 ),
             )
-            bot.reply_to(
-                message,
+            reply_with_expiration(
+                bot,
+                message.chat.id,
                 "📊 *¿Qué reporte deseas generar hoy?*",
                 parse_mode="Markdown",
                 reply_markup=teclado,
+                reply_to_message_id=message.message_id,
             )
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("reporte_"))
@@ -223,11 +230,12 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                     "❌ No, reporte directo", callback_data="reporte_desc_no"
                 ),
             )
-            bot.edit_message_text(
+            bot.delete_message(chat_id, msg_id)
+            reply_with_expiration(
+                bot,
+                chat_id,
                 f"📅 Período seleccionado: *{nombre_hoja}*\n\n"
                 f"¿Deseas aplicar algún *descuento* al salario calculado?",
-                chat_id,
-                msg_id,
                 parse_mode="Markdown",
                 reply_markup=teclado,
             )

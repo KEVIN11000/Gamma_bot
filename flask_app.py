@@ -18,6 +18,7 @@ import config
 from com.bot import GAMMA
 from logger_config import setup_logger
 from logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs
+from com.core.utils import limpiar_menus_expirados
 
 logger = setup_logger("flask")
 app = Flask(__name__)
@@ -30,6 +31,12 @@ base_path = Path(__file__).resolve().parent
 @app.route(f"/{config.TOKEN}", methods=["POST"])
 @limiter.limit("10/min")
 def webhook() -> Any:
+    from com.core.utils import limpiar_menus_expirados
+    try:
+        limpiar_menus_expirados(bot_instance.bot)
+    except Exception:
+        pass
+    limpiar_menus_expirados(bot_instance.bot)
     # Piggyback: Borrar mensaje de deploy si existe
     deploy_file = base_path / "deploy_msg.json"
     if deploy_file.exists():
@@ -194,6 +201,11 @@ def deploy() -> Any:
 
 # ── Cron Jobs (llamados por cron-job.org) ────────────────────────────────────
 def _validar_cron_secret() -> Any:
+    from com.core.utils import limpiar_menus_expirados
+    try:
+        limpiar_menus_expirados(bot_instance.bot)
+    except Exception:
+        pass
     """Verify the secret token for cron endpoints.
     Reads CRON_SECRET from the environment on each request, allowing
     all calls in development when the variable is unset or empty.
@@ -213,6 +225,7 @@ def _validar_cron_secret() -> Any:
 def cron_resumen_semanal() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     spreadsheet_id = os.environ.get("SPREADSHEET_ID")
     if not chat_id or not spreadsheet_id:
@@ -230,6 +243,7 @@ def cron_resumen_semanal() -> Any:
 def cron_clima() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
@@ -246,6 +260,7 @@ def cron_clima() -> Any:
 def cron_rotar_logs() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    limpiar_menus_expirados(bot_instance.bot)
     exito = rotar_logs()
     return (
         ("✅ Logs rotados correctamente.", 200)
@@ -259,6 +274,7 @@ def cron_rotar_logs() -> Any:
 def cron_cierre_mensual() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
@@ -277,6 +293,7 @@ def cron_cierre_mensual() -> Any:
 def cron_asesor_ia() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
