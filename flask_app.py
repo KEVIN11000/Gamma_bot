@@ -49,7 +49,7 @@ def webhook() -> Any:
     update = telebot.types.Update.de_json(json_string)
 
     # Procesamiento síncrono: en el tier gratuito de PythonAnywhere (1 worker),
-    # un hilo en segundo plano puede ser destruido cuando la petición HTTP finaliza.
+    # un hilo en segundo plano -> ser destruido cuando la petición HTTP finaliza.
     # El procesamiento síncrono garantiza que el mensaje se procese completamente.
     try:
         bot_instance.bot.process_new_updates([update])
@@ -253,3 +253,4 @@ def cron_asesor_ia() -> Any:
     from logic.cron_jobs import alerta_asesor_financiero
     exito = alerta_asesor_financiero(bot_instance, chat_id)
     return ("✅ Insights del Asesor IA enviados.", 200) if exito else ("❌ Error en Asesor IA.", 500)
+

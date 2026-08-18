@@ -3,7 +3,10 @@ credentials.json
 avisos.json
 periodo_actual.txt
 gen_log.txt
+gen_log_*.txt
+deploy_msg.json
 sheet.xlsx
 estado_temporal.db
+estado_temporal.json
 __pycache__/
 *.pyc
