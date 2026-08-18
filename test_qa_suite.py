@@ -4,6 +4,8 @@ import os
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
+import gspread.exceptions
+
 
 # Ensure project root is in path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,12 +32,10 @@ class TestPDFService(unittest.TestCase):
             nombre_archivo="test_reporte.pdf",
         )
         ruta, msg = PDFService.generar_reporte_generico(datos)
+        self.addCleanup(lambda: os.remove(ruta) if ruta and os.path.exists(ruta) else None)
         self.assertIsNotNone(ruta)
         self.assertTrue(os.path.exists(ruta))
         self.assertIn("✅ Reporte generado", msg)
-        # Clean up
-        if ruta and os.path.exists(ruta):
-            os.remove(ruta)
 
     def test_generar_reporte_generico_sin_filas(self):
         datos = DatosReporte(
@@ -47,10 +47,9 @@ class TestPDFService(unittest.TestCase):
             nombre_archivo="test_vacio.pdf",
         )
         ruta, msg = PDFService.generar_reporte_generico(datos)
+        self.addCleanup(lambda: os.remove(ruta) if ruta and os.path.exists(ruta) else None)
         self.assertIsNotNone(ruta)
         self.assertTrue(os.path.exists(ruta))
-        if ruta and os.path.exists(ruta):
-            os.remove(ruta)
 
 
 class TestAgenteFinanciero(unittest.TestCase):
@@ -225,15 +224,17 @@ class TestCronJobs(unittest.TestCase):
 
 
 class TestSecurity(unittest.TestCase):
-    @patch.dict(os.environ, {"CHAT_ID": "123456, -987654"})
-    def test_get_authorized_users(self):
+    @patch.dict(os.environ, {"CHAT_ID": "123456, -987654, 123; rm -rf /, malicious_string"})
+    def test_get_authorized_users_injection(self):
+        # Command injection attempts in CHAT_ID should be filtered out by regex
         users = get_authorized_users()
         self.assertIn(123456, users)
         self.assertIn(-987654, users)
-        self.assertNotIn(999999, users)
+        # Should not include anything else or crash
+        self.assertEqual(len(users), 2)
 
     @patch.dict(os.environ, {"CHAT_ID": "100"})
-    def test_auth_required_decorator(self):
+    def test_auth_required_decorator_exhaustive(self):
         mock_bot = MagicMock()
 
         @auth_required(mock_bot)
@@ -247,13 +248,66 @@ class TestSecurity(unittest.TestCase):
         res = dummy_handler(msg_auth)
         self.assertEqual(res, "SUCCESS")
 
-        # Unauthorized user
+        # Unauthorized user without data (message)
         msg_unauth = MagicMock(spec=["from_user"])
         msg_unauth.from_user.id = 999
-        msg_unauth.from_user.username = "intruder"
+        # Malicious payload in Telegram username
+        msg_unauth.from_user.username = "<script>alert(1)</script>"
+        msg_unauth.from_user.first_name = "Bad"
+        msg_unauth.from_user.last_name = "Actor"
         res_unauth = dummy_handler(msg_unauth)
         self.assertIsNone(res_unauth)
-        mock_bot.reply_to.assert_called_once()
+        mock_bot.reply_to.assert_called_once_with(msg_unauth, "🚫 No tenés acceso a este bot.")
+
+        # Unauthorized user with data (callback query)
+        cb_unauth = MagicMock(spec=["from_user", "data", "id"])
+        cb_unauth.from_user.id = 888
+        cb_unauth.id = "cb123"
+        res_cb = dummy_handler(cb_unauth)
+        self.assertIsNone(res_cb)
+        mock_bot.answer_callback_query.assert_called_once_with("cb123", "No estás autorizado.", show_alert=True)
+
+    @patch.dict(os.environ, {"CHAT_ID": "100"})
+    def test_verificar_usuario_manual(self):
+        from com.core.security import verificar_usuario_manual
+        mock_bot = MagicMock()
+
+        msg_auth = MagicMock()
+        msg_auth.from_user.id = 100
+        self.assertTrue(verificar_usuario_manual(mock_bot, msg_auth))
+        
+        msg_unauth = MagicMock()
+        msg_unauth.from_user.id = 999
+        msg_unauth.from_user.username = "hacker"
+        msg_unauth.from_user.first_name = "Bad"
+        msg_unauth.from_user.last_name = "Actor"
+        self.assertFalse(verificar_usuario_manual(mock_bot, msg_unauth))
+        mock_bot.reply_to.assert_called_once_with(msg_unauth, "🚫 No tenés acceso a este bot.")
+
+
+
+
+class TestGspreadFailures(unittest.TestCase):
+    def setUp(self):
+        self.agente = AgenteFinanciero(spreadsheet_id="test_sheet_id")
+
+    @patch.object(AgenteFinanciero, "ws")
+    def test_api_failure_quota_exceeded(self, mock_ws):
+        # Simulate gspread APIError
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"error": {"message": "Quota exceeded", "code": 429, "status": "RESOURCE_EXHAUSTED"}}
+        mock_ws.col_values.side_effect = gspread.exceptions.APIError(mock_response)
+        
+        datos = {"total": 100}
+        res = self.agente.registrar_movimiento(datos)
+        self.assertIn("Hubo un error", res)
+
+    @patch.object(AgenteFinanciero, "ws")
+    def test_gspread_corrupt_data(self, mock_ws):
+        mock_ws.col_values.side_effect = gspread.exceptions.GSpreadException("Corrupt data")
+        datos = {"total": 100}
+        res = self.agente.registrar_movimiento(datos)
+        self.assertIn("Hubo un error", res)
 
 
 class TestFlaskEndpoints(unittest.TestCase):

@@ -17,6 +17,9 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 
 @dataclass
 class DatosReporte:
+    """
+    Class DatosReporte.
+    """
     titulo: str
     subtitulo: str
     encabezados: list
@@ -26,8 +29,24 @@ class DatosReporte:
 
 
 class PDFService:
+    """
+    Class PDFService.
+    """
+    
     @staticmethod
     def generar_reporte_generico(datos: DatosReporte):
+        """
+        generar_reporte_generico method/function.
+        
+        Args:
+            datos: Description for datos.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         try:
             import re
             import uuid
@@ -66,6 +85,19 @@ class PDFService:
             estilos = getSampleStyleSheet()
 
             def estilo(nombre, **kw):
+                """
+                estilo method/function.
+                
+                Args:
+                    nombre: Description for nombre.
+                    **kw: Arbitrary keyword arguments.
+                
+                Returns:
+                    Description of the return value.
+                
+                Raises:
+                    Exception: Description of the exception.
+                """
                 return ParagraphStyle(nombre, parent=estilos["Normal"], **kw)
 
             e_titulo = estilo(

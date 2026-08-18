@@ -7,15 +7,36 @@ import time
 import pytz
 
 from logger_config import setup_logger
+from logic.constants import (
+    ENCABEZADOS_LIBRO_DIARIO,
+    HOJA_LIBRO_DIARIO,
+    HOJA_LIBRO_DIARIO_TEST,
+    TIMEZONE,
+)
 from logic.logic import ConexionSheets
 
 logger = setup_logger("financiero")
 
-tz_py = pytz.timezone("America/Buenos_Aires")
+tz_py = pytz.timezone(TIMEZONE)
 
 
 class AgenteFinanciero:
-    def __init__(self, spreadsheet_id):
+    """
+    Class AgenteFinanciero.
+    """
+    def __init__(self, spreadsheet_id: str) -> None:
+        """
+        __init__ method/function.
+        
+        Args:
+            spreadsheet_id: Description for spreadsheet_id.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         self.spreadsheet_id = spreadsheet_id
         # ID del spreadsheet que contiene el Libro Diario, si se separó en una planilla distinta
         self.libro_contable_id = os.getenv("LIBRO_CONTABLE_ID") or spreadsheet_id
@@ -33,16 +54,48 @@ class AgenteFinanciero:
 
     @property
     def cliente(self):
+        """
+        cliente method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         return ConexionSheets.obtener_cliente()
 
     @property
     def wb(self):
+        """
+        wb method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if self._wb is None:
             self._wb = self.cliente.open_by_key(self.spreadsheet_id)
         return self._wb
 
     @staticmethod
     def _retry_operation(func, *args, max_attempts=3, backoff=0.5, **kwargs):
+        """
+        _retry_operation method/function.
+        
+        Args:
+            func: Description for func.
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         for attempt in range(1, max_attempts + 1):
             try:
                 return func(*args, **kwargs)
@@ -56,6 +109,15 @@ class AgenteFinanciero:
 
     @property
     def ws(self):
+        """
+        ws method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if self._ws is None:
             # Determine which workbook to use: separate Libro Diario worksheet or default workbook
             if self.libro_contable_id and self.libro_contable_id != self.spreadsheet_id:
@@ -74,23 +136,11 @@ class AgenteFinanciero:
                 )
             titulos_existentes = [h.title for h in wb.worksheets()]
             modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
-            nombre_hoja = "Libro_Diario_Test" if modo_dev else "Libro_Diario"
+            nombre_hoja = HOJA_LIBRO_DIARIO_TEST if modo_dev else HOJA_LIBRO_DIARIO
 
             if nombre_hoja not in titulos_existentes:
                 self._ws = wb.add_worksheet(title=nombre_hoja, rows=1000, cols=11)
-                encabezados = [
-                    "Fecha",
-                    "Movimiento",
-                    "Proveedor/Cliente",
-                    "Nro Factura",
-                    "Neto",
-                    "IVA",
-                    "Total",
-                    "Categoría",
-                    "Comprobante",
-                    "Rastro/Foto",
-                    "Mes",
-                ]
+                encabezados = ENCABEZADOS_LIBRO_DIARIO
                 self._retry_operation(self._ws.update, "A1:K1", [encabezados])
                 logger.info(f"✅ Se creó la pestaña {nombre_hoja} en Google Sheets.")
             else:
@@ -98,10 +148,31 @@ class AgenteFinanciero:
         return self._ws
 
     def _obtener_o_crear_hoja_libro_diario(self):
+        """
+        _obtener_o_crear_hoja_libro_diario method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         self._ws = None
         _ = self.ws
 
     def _limpiar_monto(self, valor) -> int:
+        """
+        _limpiar_monto method/function.
+        
+        Args:
+            valor: Description for valor.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         import re
 
         if not valor:
@@ -116,6 +187,15 @@ class AgenteFinanciero:
     def registrar_movimiento(self, datos: dict) -> str:
         """
         Inserta la fila en Libro_Diario.
+        
+        Args:
+            datos: Dictionary containing movement details.
+            
+        Returns:
+            A string message indicating success or failure.
+            
+        Raises:
+            Exception: If an error occurs during sheet update.
         """
         # Validación de esquema básica
         if not datos or not isinstance(datos, dict) or "total" not in datos:
@@ -146,6 +226,18 @@ class AgenteFinanciero:
 
             # Sanitizar valores contra inyección de fórmulas (Reporte AppSec)
             def sanitizar(val):
+                """
+                sanitizar method/function.
+                
+                Args:
+                    val: Description for val.
+                
+                Returns:
+                    Description of the return value.
+                
+                Raises:
+                    Exception: Description of the exception.
+                """
                 s = str(val)
                 if s.startswith(("=", "+", "-", "@")):
                     return f"'{s}"
@@ -182,6 +274,12 @@ class AgenteFinanciero:
     def obtener_balance(self) -> dict:
         """
         Calcula el Flujo Neto basado en el Libro Diario completo (o del mes actual).
+        
+        Returns:
+            A dictionary with 'ingresos', 'gastos', and 'flujo_neto'.
+            
+        Raises:
+            Exception: If there's an error reading from the sheet.
         """
         try:
             registros = self.ws.get_all_values()[1:]  # Omitir encabezado
@@ -215,6 +313,18 @@ class AgenteFinanciero:
             return None
 
     def preparar_datos_reporte(self, mes=None):
+        """
+        preparar_datos_reporte method/function.
+        
+        Args:
+            mes: Description for mes.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         from logic.pdf_service import DatosReporte
 
         datos = self.ws.get_all_values()
@@ -276,6 +386,18 @@ class AgenteFinanciero:
         flujo_neto = total_ingresos - total_gastos
 
         def gs(n):
+            """
+            gs method/function.
+            
+            Args:
+                n: Description for n.
+            
+            Returns:
+                Description of the return value.
+            
+            Raises:
+                Exception: Description of the exception.
+            """
             return f"Gs. {int(n):,}".replace(",", ".")
 
         resumen_data = [

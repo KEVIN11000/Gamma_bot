@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -10,11 +11,24 @@ import pytz
 from dotenv import load_dotenv
 
 from logger_config import setup_logger
+from logic.constants import (
+    COLUMNAS_DIRECTO,
+    COLUMNAS_LETRAS,
+    COLUMNAS_NORMAL,
+    DIA_LIBRE,
+    DIAS_LIMITE_AVISOS,
+    DIAS_SEMANA,
+    ENCABEZADOS_HORAS,
+    ENCABEZADOS_MATERIAS,
+    MAX_AVISOS_CALENDAR,
+    MONTO_POR_HORA_DEFAULT,
+    TIMEZONE,
+)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BASE_DIR / ".env")
 
-tz_py = pytz.timezone("America/Buenos_Aires")
+tz_py = pytz.timezone(TIMEZONE)
 
 logger = setup_logger("logic")
 
@@ -30,11 +44,23 @@ def sanitize_input(value: str) -> str:
 
 
 class ConexionSheets:
+    """
+    Class ConexionSheets.
+    """
     _cliente = None
     _servicio_calendar = None
 
     @classmethod
-    def obtener_cliente(cls):
+    def obtener_cliente(cls) -> "gspread.Client | None":
+        """
+        obtener_cliente method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if cls._cliente is None:
             scopes = [
                 "https://www.googleapis.com/auth/spreadsheets",
@@ -59,7 +85,16 @@ class ConexionSheets:
         return cls._cliente
 
     @classmethod
-    def obtener_servicio_calendar(cls):
+    def obtener_servicio_calendar(cls) -> "Any | None":
+        """
+        obtener_servicio_calendar method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if cls._servicio_calendar is None:
             scopes = ["https://www.googleapis.com/auth/calendar"]
             path_json = BASE_DIR / "credentials.json"
@@ -77,9 +112,25 @@ class ConexionSheets:
 
 
 class AgenteAutonomoHoras:
-    MONTO_POR_HORA = 14634
+    """
+    Class AgenteAutonomoHoras.
+    """
+    MONTO_POR_HORA = int(MONTO_POR_HORA_DEFAULT)
 
-    def __init__(self, spreadsheet_id, mes="Mayo"):
+    def __init__(self, spreadsheet_id: str, mes: str = "Mayo") -> None:
+        """
+        __init__ method/function.
+        
+        Args:
+            spreadsheet_id: Description for spreadsheet_id.
+            mes: Description for mes.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         self.mes = mes
         self.spreadsheet_id = spreadsheet_id
         self._wb = None
@@ -87,16 +138,43 @@ class AgenteAutonomoHoras:
 
     @property
     def cliente(self):
+        """
+        cliente method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         return ConexionSheets.obtener_cliente()
 
     @property
     def wb(self):
+        """
+        wb method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if self._wb is None:
             self._wb = self.cliente.open_by_key(self.spreadsheet_id)
         return self._wb
 
     @property
     def ws(self):
+        """
+        ws method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if self._ws is None:
             base_path = BASE_DIR
             path_txt = base_path / "periodo_actual.txt"
@@ -110,18 +188,18 @@ class AgenteAutonomoHoras:
         return self._ws
 
     def fin_de(self):
+        """
+        fin_de method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         ahora = datetime.now(tz_py)
-        dias_semana = [
-            "Lunes",
-            "Martes",
-            "Miércoles",
-            "Jueves",
-            "Viernes",
-            "Sábado",
-            "Domingo",
-        ]
-        dia = dias_semana[ahora.weekday()]
-        free_day = "Domingo"
+        dia = DIAS_SEMANA[ahora.weekday()]
+        free_day = DIA_LIBRE
 
         if dia != free_day:
             return None
@@ -129,26 +207,33 @@ class AgenteAutonomoHoras:
             return 1
 
     def _cargar_hoja_activa(self):
+        """
+        _cargar_hoja_activa method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         self._ws = None  # Force reload next time ws is accessed
         _ = self.ws
 
     def _obtener_o_crear_fila_hoy(self):
-        """Busca la fecha de hoy en la hoja del período activo actual."""
+        """Busca la fecha de hoy en la hoja del período activo actual.
+        
+        Returns:
+            int or None: The row number corresponding to today's date, or None if the limit is reached.
+            
+        Raises:
+            Exception: If an error occurs communicating with Google Sheets.
+        """
         ahora = datetime.now(tz_py)
         hoy_str = ahora.strftime("%d/%m/%Y")
 
         self._cargar_hoja_activa()
 
-        dias_semana = [
-            "Lunes",
-            "Martes",
-            "Miércoles",
-            "Jueves",
-            "Viernes",
-            "Sábado",
-            "Domingo",
-        ]
-        nombre_dia = dias_semana[ahora.weekday()]
+        nombre_dia = DIAS_SEMANA[ahora.weekday()]
 
         fechas_columna_b = self.ws.col_values(2)
         primera_fila_vacia = None
@@ -186,6 +271,18 @@ class AgenteAutonomoHoras:
         return None
 
     def ejecutar_marcado_para_bot(self, modo="normal"):
+        """
+        ejecutar_marcado_para_bot method/function.
+        
+        Args:
+            modo: Description for modo.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         fila = self._obtener_o_crear_fila_hoy()
         if not fila:
             msg = "❌ Límite de filas alcanzado o error en fecha."
@@ -199,19 +296,23 @@ class AgenteAutonomoHoras:
             logger.info(log_msg)
             return "ℹ️ Hoy es tu día libre, no es necesario registrar marcas."
 
-        COLUMNAS_NORMAL = [
-            (3, "Entrada"),
-            (4, "S. Almuerzo"),
-            (5, "V. Almuerzo"),
-            (6, "Salida"),
-        ]
-        COLUMNAS_DIRECTO = [(3, "Entrada"), (6, "Salida")]
         columnas = COLUMNAS_DIRECTO if modo == "directo" else COLUMNAS_NORMAL
 
-        LETRAS_COLUMNAS = {3: "C", 4: "D", 5: "E", 6: "F"}
         valores_fila = self.ws.row_values(fila)
 
         def celda_vacia(col_index):
+            """
+            celda_vacia method/function.
+            
+            Args:
+                col_index: Description for col_index.
+            
+            Returns:
+                Description of the return value.
+            
+            Raises:
+                Exception: Description of the exception.
+            """
             idx = col_index - 1
             return idx >= len(valores_fila) or not valores_fila[idx].strip()
 
@@ -225,7 +326,7 @@ class AgenteAutonomoHoras:
 
         for col_index, nombre in columnas:
             if celda_vacia(col_index):
-                letra_celda = LETRAS_COLUMNAS[col_index]
+                letra_celda = COLUMNAS_LETRAS[col_index]
                 self.ws.update(
                     f"{letra_celda}{fila}",
                     [[hora_ahora]],
@@ -239,6 +340,15 @@ class AgenteAutonomoHoras:
         return "ℹ️ Ya completaste todos los registros of hoy."
 
     def ejecutar_cierre_periodo_manual(self):
+        """
+        ejecutar_cierre_periodo_manual method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         base_path = BASE_DIR
         path_txt = base_path / "periodo_actual.txt"
 
@@ -298,15 +408,7 @@ class AgenteAutonomoHoras:
                 nueva_hoja = self.wb.add_worksheet(
                     title=nombre_hoja_nueva, rows="60", cols="10"
                 )
-                encabezados = [
-                    "Dia",
-                    "Fecha",
-                    "Hora entrada",
-                    "Salgo almuerzo",
-                    "Vuelta almuerzo",
-                    "Hora salida",
-                    "Horas",
-                ]
+                encabezados = ENCABEZADOS_HORAS
                 nueva_hoja.update("A1:G1", [encabezados])
                 mensaje_creacion = f"Se ha creado la pestaña *{nombre_hoja_nueva}* con sus encabezados."
 
@@ -330,6 +432,18 @@ class AgenteAutonomoHoras:
 
     @staticmethod
     def _parsear_horas_a_decimal(valor_str: str) -> float:
+        """
+        _parsear_horas_a_decimal method/function.
+        
+        Args:
+            valor_str: Description for valor_str.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         valor_str = str(valor_str).strip().replace(",", ".")
         if not valor_str or "horas" in valor_str.lower():
             return 0.0
@@ -343,6 +457,19 @@ class AgenteAutonomoHoras:
             return 0.0
 
     def preparar_datos_reporte(self, nombre_hoja=None, descuento=0):
+        """
+        preparar_datos_reporte method/function.
+        
+        Args:
+            nombre_hoja: Description for nombre_hoja.
+            descuento: Description for descuento.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         from logic.pdf_service import DatosReporte
 
         hojas = self.wb.worksheets()
@@ -380,11 +507,23 @@ class AgenteAutonomoHoras:
         m_resto = int(round((total_decimal - h_enteras) * 60))
         total_str = f"{h_enteras}h {m_resto:02d}m"
 
-        monto_por_hora = float(os.getenv("MONTO_POR_HORA", "14634"))
+        monto_por_hora = float(os.getenv("MONTO_POR_HORA", MONTO_POR_HORA_DEFAULT))
         salario_bruto = total_decimal * monto_por_hora
         salario_neto = salario_bruto - float(descuento)
 
         def gs(n):
+            """
+            gs method/function.
+            
+            Args:
+                n: Description for n.
+            
+            Returns:
+                Description of the return value.
+            
+            Raises:
+                Exception: Description of the exception.
+            """
             return f"Gs. {int(n):,}".replace(",", ".")
 
         resumen_data = [
@@ -416,6 +555,15 @@ class AgenteAutonomoHoras:
     def guardar_aviso_calendar(self, datos_evento: dict) -> str:
         """
         Guarda el aviso interpretado por Gemini directamente en Google Calendar.
+        
+        Args:
+            datos_evento: Dictionary with event details (titulo, fecha, hora).
+            
+        Returns:
+            str: A confirmation message or error message.
+            
+        Raises:
+            Exception: If an error occurs communicating with Google Calendar.
         """
         calendar_id = os.getenv("CALENDAR_ID")
         if not calendar_id:
@@ -435,11 +583,11 @@ class AgenteAutonomoHoras:
                 "summary": datos_evento["titulo"],
                 "start": {
                     "dateTime": dt_inicio.isoformat(),
-                    "timeZone": "America/Buenos_Aires",
+                    "timeZone": TIMEZONE,
                 },
                 "end": {
                     "dateTime": dt_fin.isoformat(),
-                    "timeZone": "America/Buenos_Aires",
+                    "timeZone": TIMEZONE,
                 },
                 "reminders": {
                     "useDefault": False,
@@ -468,7 +616,14 @@ class AgenteAutonomoHoras:
             return f"❌ Error interno de Google Calendar: {str(e)}"
 
     def obtener_lista_avisos_calendar(self):
-        """Devuelve la lista de los próximos 10 eventos desde Google Calendar."""
+        """Devuelve la lista de los próximos eventos desde Google Calendar.
+        
+        Returns:
+            list: List of dictionaries containing formatted event data.
+            
+        Raises:
+            Exception: If an error occurs fetching events from Calendar API.
+        """
         calendar_id = os.getenv("CALENDAR_ID")
         if not calendar_id:
             return []
@@ -478,8 +633,8 @@ class AgenteAutonomoHoras:
             ahora = datetime.now(tz_py)
             ahora_iso = ahora.isoformat()
 
-            # 🆕 Limitar la búsqueda al mes actual (próximos 30 días)
-            limite_mes = ahora + timedelta(days=30)
+            # 🆕 Limitar la búsqueda
+            limite_mes = ahora + timedelta(days=DIAS_LIMITE_AVISOS)
             limite_iso = limite_mes.isoformat()
 
             eventos_result = (
@@ -488,7 +643,7 @@ class AgenteAutonomoHoras:
                     calendarId=calendar_id,
                     timeMin=ahora_iso,
                     timeMax=limite_iso,
-                    maxResults=15,
+                    maxResults=MAX_AVISOS_CALENDAR,
                     singleEvents=True,
                     orderBy="startTime",
                 )
@@ -521,7 +676,17 @@ class AgenteAutonomoHoras:
             return []
 
     def eliminar_aviso_calendar(self, event_id: str):
-        """Elimina un evento de Google Calendar por su ID."""
+        """Elimina un evento de Google Calendar por su ID.
+        
+        Args:
+            event_id (str): The Google Calendar event ID to delete.
+            
+        Returns:
+            bool or None: True if successful, None otherwise.
+            
+        Raises:
+            Exception: If an error occurs during deletion.
+        """
         calendar_id = os.getenv("CALENDAR_ID")
         if not calendar_id:
             return None
@@ -539,6 +704,15 @@ class AgenteAutonomoHoras:
         Devuelve los títulos de las últimas `limite` hojas del spreadsheet,
         excluyendo la hoja activa actual (donde se están registrando las marcas).
         Se usa para el comando /reporte para que el usuario elija el período.
+        
+        Args:
+            limite (int, optional): The maximum number of sheet names to retrieve. Defaults to 6.
+            
+        Returns:
+            list: A list of string sheet titles.
+            
+        Raises:
+            Exception: If an error occurs while fetching sheet names.
         """
         try:
             base_path = BASE_DIR
@@ -557,29 +731,80 @@ class AgenteAutonomoHoras:
 
 
 class AgenteAsistenciaMaterias:
+    """
+    Class AgenteAsistenciaMaterias.
+    """
     SPREADSHEET_ID = "1VJe98WHoL5U7aDiGLIw55ZHnG-M6bAuLmIZx9LNbWnY"
 
     def __init__(self):
+        """
+        __init__ method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         self._wb = None
         self._horarios_materias = None
 
     @property
     def cliente(self):
+        """
+        cliente method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         return ConexionSheets.obtener_cliente()
 
     @property
     def wb(self):
+        """
+        wb method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if self._wb is None:
             self._wb = self.cliente.open_by_key(self.SPREADSHEET_ID)
         return self._wb
 
     @property
     def HORARIOS_MATERIAS(self):
+        """
+        HORARIOS_MATERIAS method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if self._horarios_materias is None:
             self._cargar_horarios()
         return self._horarios_materias
 
     def _normalizar_hora(self, hora_str: str) -> str:
+        """
+        _normalizar_hora method/function.
+        
+        Args:
+            hora_str: Description for hora_str.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         if not hora_str:
             return ""
         hora_str = str(hora_str).replace("\u202f", " ").strip().lower()
@@ -604,6 +829,15 @@ class AgenteAsistenciaMaterias:
         return f"{hh_int:02d}:{mm}"
 
     def _cargar_horarios(self):
+        """
+        _cargar_horarios method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         try:
             ws = self.wb.worksheet("Config_bot")
             filas = ws.get_all_values()[1:]  # Ignorar encabezados
@@ -655,16 +889,19 @@ class AgenteAsistenciaMaterias:
             self._horarios_materias = {}
 
     def obtener_materia_actual(self, ahora):
-        dias_semana = [
-            "Lunes",
-            "Martes",
-            "Miércoles",
-            "Jueves",
-            "Viernes",
-            "Sábado",
-            "Domingo",
-        ]
-        dia_actual = dias_semana[ahora.weekday()]
+        """
+        obtener_materia_actual method/function.
+        
+        Args:
+            ahora: Description for ahora.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
+        dia_actual = DIAS_SEMANA[ahora.weekday()]
         hora_actual = ahora.time()
 
         for materia, datos in self.HORARIOS_MATERIAS.items():
@@ -681,6 +918,15 @@ class AgenteAsistenciaMaterias:
         return None, None
 
     def marcar_asistencia(self):
+        """
+        marcar_asistencia method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         try:
             ahora = datetime.now(tz_py)
             materia, tipo = self.obtener_materia_actual(ahora)
@@ -693,33 +939,12 @@ class AgenteAsistenciaMaterias:
             titulos_existentes = [h.title for h in self.wb.worksheets()]
             if materia not in titulos_existentes:
                 ws = self.wb.add_worksheet(title=materia, rows="100", cols="6")
-                ws.update(
-                    "A1:F1",
-                    [
-                        [
-                            "Día",
-                            "Fecha",
-                            "Hora Teoría",
-                            "Asistencia Teoría",
-                            "Hora Práctica",
-                            "Asistencia Práctica",
-                        ]
-                    ],
-                )
+                ws.update("A1:F1", [ENCABEZADOS_MATERIAS])
             else:
                 ws = self.wb.worksheet(materia)
 
             hoy_str = ahora.strftime("%d/%m/%Y")
-            dias_semana = [
-                "Lunes",
-                "Martes",
-                "Miércoles",
-                "Jueves",
-                "Viernes",
-                "Sábado",
-                "Domingo",
-            ]
-            dia_actual = dias_semana[ahora.weekday()]
+            dia_actual = DIAS_SEMANA[ahora.weekday()]
 
             fechas_col = ws.col_values(2)
             fila = None
@@ -731,19 +956,7 @@ class AgenteAsistenciaMaterias:
             if fila is None:
                 fila = len(fechas_col) + 1
                 if fila == 1:
-                    ws.update(
-                        "A1:F1",
-                        [
-                            [
-                                "Día",
-                                "Fecha",
-                                "Hora Teoría",
-                                "Asistencia Teoría",
-                                "Hora Práctica",
-                                "Asistencia Práctica",
-                            ]
-                        ],
-                    )
+                    ws.update("A1:F1", [ENCABEZADOS_MATERIAS])
                     fila = 2
                 ws.update(f"A{fila}:B{fila}", [[dia_actual, hoy_str]])
 
@@ -772,6 +985,15 @@ class EstadoGestor:
 
     @classmethod
     def _get_conn(cls):
+        """
+        _get_conn method/function.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         conn = sqlite3.connect(cls.PATH_DB, timeout=5.0)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS estado (clave TEXT PRIMARY KEY, valor TEXT)"
@@ -780,6 +1002,19 @@ class EstadoGestor:
 
     @classmethod
     def set(cls, clave, valor):
+        """
+        set method/function.
+        
+        Args:
+            clave: Description for clave.
+            valor: Description for valor.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         conn = cls._get_conn()
         try:
             valor_str = json.dumps(valor, ensure_ascii=False)
@@ -795,6 +1030,19 @@ class EstadoGestor:
 
     @classmethod
     def get(cls, clave, default=None):
+        """
+        get method/function.
+        
+        Args:
+            clave: Description for clave.
+            default: Description for default.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         conn = cls._get_conn()
         try:
             cur = conn.execute(
@@ -812,6 +1060,19 @@ class EstadoGestor:
 
     @classmethod
     def pop(cls, clave, default=None):
+        """
+        pop method/function.
+        
+        Args:
+            clave: Description for clave.
+            default: Description for default.
+        
+        Returns:
+            Description of the return value.
+        
+        Raises:
+            Exception: Description of the exception.
+        """
         valor = cls.get(clave, default)
         conn = cls._get_conn()
         try:
