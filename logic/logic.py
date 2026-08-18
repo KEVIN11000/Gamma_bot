@@ -1,33 +1,32 @@
 from __future__ import annotations
-from typing import Any
-import gspread
-from google.oauth2.service_account import Credentials
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
-import os
-import pytz
+
 import json
+import os
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import pytz
+from dotenv import load_dotenv
+
+from logger_config import setup_logger
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
 
-tz_py = pytz.timezone('America/Buenos_Aires')
+tz_py = pytz.timezone("America/Buenos_Aires")
 
-from logger_config import setup_logger
-logger = setup_logger('logic')
+logger = setup_logger("logic")
+
 
 # Helper to escape potential formula injection in Google Sheets
 def sanitize_input(value: str) -> str:
     """Escape leading '=' to prevent formula injection.
     Returns the original value if not a string or does not start with '='.
     """
-    if isinstance(value, str) and value.startswith('='):
+    if isinstance(value, str) and value.startswith("="):
         return "'" + value
     return value
-
-
 
 
 class ConexionSheets:
@@ -37,16 +36,26 @@ class ConexionSheets:
     @classmethod
     def obtener_cliente(cls):
         if cls._cliente is None:
-            scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+            scopes = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ]
             path_json = BASE_DIR / "credentials.json"
             if not path_json.exists():
-                logger.warning("⚠️ credentials.json not found; Google services will be unavailable.")
+                logger.warning(
+                    "⚠️ credentials.json not found; Google services will be unavailable."
+                )
                 return None
-            from google.oauth2.service_account import Credentials
             import gspread
-            credenciales = Credentials.from_service_account_file(str(path_json), scopes=scopes)
+            from google.oauth2.service_account import Credentials
+
+            credenciales = Credentials.from_service_account_file(
+                str(path_json), scopes=scopes
+            )
             cls._cliente = gspread.authorize(credenciales)
-            logger.info("🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton).")
+            logger.info(
+                "🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton)."
+            )
         return cls._cliente
 
     @classmethod
@@ -56,9 +65,14 @@ class ConexionSheets:
             path_json = BASE_DIR / "credentials.json"
             from google.oauth2.service_account import Credentials
             from googleapiclient.discovery import build
-            credenciales = Credentials.from_service_account_file(path_json, scopes=scopes)
-            cls._servicio_calendar = build('calendar', 'v3', credentials=credenciales)
-            logger.info("📅 Nueva conexión a Google Calendar establecida exitosamente (Singleton).")
+
+            credenciales = Credentials.from_service_account_file(
+                path_json, scopes=scopes
+            )
+            cls._servicio_calendar = build("calendar", "v3", credentials=credenciales)
+            logger.info(
+                "📅 Nueva conexión a Google Calendar establecida exitosamente (Singleton)."
+            )
         return cls._servicio_calendar
 
 
@@ -95,11 +109,17 @@ class AgenteAutonomoHoras:
             self._ws = self.wb.worksheet(nombre_hoja)
         return self._ws
 
-
-
     def fin_de(self):
         ahora = datetime.now(tz_py)
-        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        dias_semana = [
+            "Lunes",
+            "Martes",
+            "Miércoles",
+            "Jueves",
+            "Viernes",
+            "Sábado",
+            "Domingo",
+        ]
         dia = dias_semana[ahora.weekday()]
         free_day = "Domingo"
 
@@ -119,7 +139,15 @@ class AgenteAutonomoHoras:
 
         self._cargar_hoja_activa()
 
-        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        dias_semana = [
+            "Lunes",
+            "Martes",
+            "Miércoles",
+            "Jueves",
+            "Viernes",
+            "Sábado",
+            "Domingo",
+        ]
         nombre_dia = dias_semana[ahora.weekday()]
 
         fechas_columna_b = self.ws.col_values(2)
@@ -135,16 +163,25 @@ class AgenteAutonomoHoras:
                 primera_fila_vacia = fila
 
                 # Insertamos el Día y la Fecha en las columnas A y B
-                self.ws.update(f"A{primera_fila_vacia}:B{primera_fila_vacia}", [[nombre_dia, hoy_str]],
-                               value_input_option='USER_ENTERED')
+                self.ws.update(
+                    f"A{primera_fila_vacia}:B{primera_fila_vacia}",
+                    [[nombre_dia, hoy_str]],
+                    value_input_option="USER_ENTERED",
+                )
 
                 # Fórmula matemática dinámica
                 formula_horas = (
                     f'=SI(VALOR(D{primera_fila_vacia})<>""; '
-                    f'(VALOR(D{primera_fila_vacia})-VALOR(C{primera_fila_vacia}))+(VALOR(F{primera_fila_vacia})-VALOR(E{primera_fila_vacia})); '
-                    f'VALOR(F{primera_fila_vacia})-VALOR(C{primera_fila_vacia})) * 24')
+                    f"(VALOR(D{primera_fila_vacia})-VALOR(C{primera_fila_vacia}))"
+                    f"+(VALOR(F{primera_fila_vacia})-VALOR(E{primera_fila_vacia})); "
+                    f"VALOR(F{primera_fila_vacia})-VALOR(C{primera_fila_vacia})) * 24"
+                )
 
-                self.ws.update(f"G{primera_fila_vacia}", [[formula_horas]], value_input_option='USER_ENTERED')
+                self.ws.update(
+                    f"G{primera_fila_vacia}",
+                    [[formula_horas]],
+                    value_input_option="USER_ENTERED",
+                )
                 return primera_fila_vacia
         return None
 
@@ -157,12 +194,17 @@ class AgenteAutonomoHoras:
 
         hora_ahora = datetime.now(tz_py).strftime("%H:%M")
 
-        if hasattr(self, 'fin_de') and self.fin_de():
+        if hasattr(self, "fin_de") and self.fin_de():
             log_msg = f"{hora_ahora} Dia libre, no hay marcas que hacer!!!"
             logger.info(log_msg)
             return "ℹ️ Hoy es tu día libre, no es necesario registrar marcas."
 
-        COLUMNAS_NORMAL  = [(3, "Entrada"), (4, "S. Almuerzo"), (5, "V. Almuerzo"), (6, "Salida")]
+        COLUMNAS_NORMAL = [
+            (3, "Entrada"),
+            (4, "S. Almuerzo"),
+            (5, "V. Almuerzo"),
+            (6, "Salida"),
+        ]
         COLUMNAS_DIRECTO = [(3, "Entrada"), (6, "Salida")]
         columnas = COLUMNAS_DIRECTO if modo == "directo" else COLUMNAS_NORMAL
 
@@ -184,7 +226,11 @@ class AgenteAutonomoHoras:
         for col_index, nombre in columnas:
             if celda_vacia(col_index):
                 letra_celda = LETRAS_COLUMNAS[col_index]
-                self.ws.update(f"{letra_celda}{fila}", [[hora_ahora]], value_input_option="USER_ENTERED")
+                self.ws.update(
+                    f"{letra_celda}{fila}",
+                    [[hora_ahora]],
+                    value_input_option="USER_ENTERED",
+                )
 
                 log_msg = f"Marcado [{modo}] {nombre}: {hora_ahora} en fila {fila}"
                 logger.info(log_msg)
@@ -202,8 +248,20 @@ class AgenteAutonomoHoras:
         else:
             hoja_actual = "Mayo 2026"
 
-        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-                 "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        meses = [
+            "Enero",
+            "Febrero",
+            "Marzo",
+            "Abril",
+            "Mayo",
+            "Junio",
+            "Julio",
+            "Agosto",
+            "Septiembre",
+            "Octubre",
+            "Noviembre",
+            "Diciembre",
+        ]
 
         partes = hoja_actual.split()
         if len(partes) == 2 and partes[0] in meses:
@@ -229,12 +287,26 @@ class AgenteAutonomoHoras:
             if hoja_ya_existia:
                 # La hoja ya fue creada (cierre previo parcial): la reutilizamos
                 nueva_hoja = self.wb.worksheet(nombre_hoja_nueva)
-                logger.error(f"⚠️ La hoja '{nombre_hoja_nueva}' ya existía. Reutilizando sin recrear encabezados.")
-                mensaje_creacion = f"⚠️ La pestaña *{nombre_hoja_nueva}* ya existía y fue reutilizada."
+                logger.error(
+                    f"⚠️ La hoja '{nombre_hoja_nueva}' ya existía. Reutilizando sin recrear encabezados."
+                )
+                mensaje_creacion = (
+                    f"⚠️ La pestaña *{nombre_hoja_nueva}* ya existía y fue reutilizada."
+                )
             else:
                 # Flujo normal: crear hoja nueva con encabezados
-                nueva_hoja = self.wb.add_worksheet(title=nombre_hoja_nueva, rows="60", cols="10")
-                encabezados = ["Dia", "Fecha", "Hora entrada", "Salgo almuerzo", "Vuelta almuerzo", "Hora salida", "Horas"]
+                nueva_hoja = self.wb.add_worksheet(
+                    title=nombre_hoja_nueva, rows="60", cols="10"
+                )
+                encabezados = [
+                    "Dia",
+                    "Fecha",
+                    "Hora entrada",
+                    "Salgo almuerzo",
+                    "Vuelta almuerzo",
+                    "Hora salida",
+                    "Horas",
+                ]
                 nueva_hoja.update("A1:G1", [encabezados])
                 mensaje_creacion = f"Se ha creado la pestaña *{nombre_hoja_nueva}* con sus encabezados."
 
@@ -242,7 +314,9 @@ class AgenteAutonomoHoras:
             with open(path_txt, "w", encoding="utf-8") as f:
                 f.write(nombre_hoja_nueva)
 
-            logger.info(f"🔄 CIERRE PROCESADO: Finalizado '{hoja_actual}'. Activo '{nombre_hoja_nueva}'")
+            logger.info(
+                f"🔄 CIERRE PROCESADO: Finalizado '{hoja_actual}'. Activo '{nombre_hoja_nueva}'"
+            )
             return (
                 f"✅ Cierre de período exitoso.\n\n"
                 f"{mensaje_creacion} "
@@ -256,12 +330,12 @@ class AgenteAutonomoHoras:
 
     @staticmethod
     def _parsear_horas_a_decimal(valor_str: str) -> float:
-        valor_str = str(valor_str).strip().replace(',','.')
+        valor_str = str(valor_str).strip().replace(",", ".")
         if not valor_str or "horas" in valor_str.lower():
             return 0.0
         try:
-            if ':' in valor_str:
-                partes = valor_str.split(':')
+            if ":" in valor_str:
+                partes = valor_str.split(":")
                 return int(partes[0]) + int(partes[1]) / 60
             valor_float = float(valor_str)
             return valor_float
@@ -270,7 +344,7 @@ class AgenteAutonomoHoras:
 
     def preparar_datos_reporte(self, nombre_hoja=None, descuento=0):
         from logic.pdf_service import DatosReporte
-        
+
         hojas = self.wb.worksheets()
         if nombre_hoja:
             hoja = self.wb.worksheet(nombre_hoja)
@@ -291,11 +365,17 @@ class AgenteAutonomoHoras:
         filas_raw = datos[1:]
         filas_datos = [f for f in filas_raw if any(c.strip() for c in f)]
 
-        col_horas = next((i for i, h in enumerate(headers) if 'horas' in h.lower()), None)
+        col_horas = next(
+            (i for i, h in enumerate(headers) if "horas" in h.lower()), None
+        )
         if col_horas is None:
             return None, "❌ No se encontró columna de horas. Verificá el encabezado."
 
-        total_decimal = sum(self._parsear_horas_a_decimal(f[col_horas]) for f in filas_datos if col_horas < len(f))
+        total_decimal = sum(
+            self._parsear_horas_a_decimal(f[col_horas])
+            for f in filas_datos
+            if col_horas < len(f)
+        )
         h_enteras = int(total_decimal)
         m_resto = int(round((total_decimal - h_enteras) * 60))
         total_str = f"{h_enteras}h {m_resto:02d}m"
@@ -312,14 +392,16 @@ class AgenteAutonomoHoras:
             ["Monto por hora", gs(monto_por_hora)],
             ["Salario bruto", gs(salario_bruto)],
         ]
-        
+
         if descuento > 0:
             resumen_data.append(["Descuentos aplicados", f"- {gs(descuento)}"])
             resumen_data.append(["Salario neto a cobrar", gs(salario_neto)])
         else:
             resumen_data.append(["Salario del mes", gs(salario_neto)])
 
-        nombre_archivo = f"reporte_horas_{nombre_periodo.replace(' ', '_').replace('/', '-')}.pdf"
+        nombre_archivo = (
+            f"reporte_horas_{nombre_periodo.replace(' ', '_').replace('/', '-')}.pdf"
+        )
 
         reporte = DatosReporte(
             titulo="REPORTE DE ASISTENCIA Y HORAS",
@@ -327,7 +409,7 @@ class AgenteAutonomoHoras:
             encabezados=headers,
             filas=filas_datos,
             lineas_resumen=resumen_data,
-            nombre_archivo=nombre_archivo
+            nombre_archivo=nombre_archivo,
         )
         return reporte, None
 
@@ -350,28 +432,30 @@ class AgenteAutonomoHoras:
             dt_fin = dt_inicio + timedelta(hours=1)
 
             evento = {
-                'summary': datos_evento['titulo'],
-                'start': {
-                    'dateTime': dt_inicio.isoformat(),
-                    'timeZone': 'America/Buenos_Aires',
+                "summary": datos_evento["titulo"],
+                "start": {
+                    "dateTime": dt_inicio.isoformat(),
+                    "timeZone": "America/Buenos_Aires",
                 },
-                'end': {
-                    'dateTime': dt_fin.isoformat(),
-                    'timeZone': 'America/Buenos_Aires',
+                "end": {
+                    "dateTime": dt_fin.isoformat(),
+                    "timeZone": "America/Buenos_Aires",
                 },
-                'reminders': {
-                    'useDefault': False,
-                    'overrides': [
-                        {'method': 'popup', 'minutes': 24 * 60},
-                        {'method': 'popup', 'minutes': 2 * 60},
-                        {'method': 'popup', 'minutes': 60},
-                        {'method': 'popup', 'minutes': 15},
+                "reminders": {
+                    "useDefault": False,
+                    "overrides": [
+                        {"method": "popup", "minutes": 24 * 60},
+                        {"method": "popup", "minutes": 2 * 60},
+                        {"method": "popup", "minutes": 60},
+                        {"method": "popup", "minutes": 15},
                     ],
                 },
             }
 
-            evento_creado = servicio.events().insert(calendarId=calendar_id, body=evento).execute()
-            logger.info(f"📅 Nuevo aviso guardado en Calendar: '{datos_evento['titulo']}'")
+            servicio.events().insert(calendarId=calendar_id, body=evento).execute()
+            logger.info(
+                f"📅 Nuevo aviso guardado en Calendar: '{datos_evento['titulo']}'"
+            )
 
             return (
                 f"✅ *¡Aviso guardado en Google Calendar!*\n\n"
@@ -393,37 +477,44 @@ class AgenteAutonomoHoras:
             servicio = ConexionSheets.obtener_servicio_calendar()
             ahora = datetime.now(tz_py)
             ahora_iso = ahora.isoformat()
-            
+
             # 🆕 Limitar la búsqueda al mes actual (próximos 30 días)
             limite_mes = ahora + timedelta(days=30)
             limite_iso = limite_mes.isoformat()
-            
-            eventos_result = servicio.events().list(
-                calendarId=calendar_id, 
-                timeMin=ahora_iso, 
-                timeMax=limite_iso,
-                maxResults=15, 
-                singleEvents=True,
-                orderBy='startTime'
-            ).execute()
-            
-            eventos = eventos_result.get('items', [])
-            
+
+            eventos_result = (
+                servicio.events()
+                .list(
+                    calendarId=calendar_id,
+                    timeMin=ahora_iso,
+                    timeMax=limite_iso,
+                    maxResults=15,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute()
+            )
+
+            eventos = eventos_result.get("items", [])
+
             avisos_formateados = []
             for evento in eventos:
-                start = evento['start'].get('dateTime', evento['start'].get('date'))
+                start = evento["start"].get("dateTime", evento["start"].get("date"))
                 # Formatear la fecha para que sea legible en Telegram
                 try:
                     dt = datetime.fromisoformat(start)
                     fecha_str = dt.strftime("%d/%m/%Y %H:%M")
-                except:
+                except Exception as e:
+                    logger.error(f"Error parsing event start date: {e}")
                     fecha_str = start
-                
-                avisos_formateados.append({
-                    "id": evento['id'],
-                    "titulo": evento.get('summary', 'Sin título'),
-                    "fecha_evento": fecha_str
-                })
+
+                avisos_formateados.append(
+                    {
+                        "id": evento["id"],
+                        "titulo": evento.get("summary", "Sin título"),
+                        "fecha_evento": fecha_str,
+                    }
+                )
             return avisos_formateados
         except Exception as e:
             logger.error(f"❌ Error al obtener eventos de Calendar: {e}")
@@ -434,7 +525,7 @@ class AgenteAutonomoHoras:
         calendar_id = os.getenv("CALENDAR_ID")
         if not calendar_id:
             return None
-            
+
         try:
             servicio = ConexionSheets.obtener_servicio_calendar()
             servicio.events().delete(calendarId=calendar_id, eventId=event_id).execute()
@@ -464,9 +555,9 @@ class AgenteAutonomoHoras:
             logger.error(f"❌ Error en obtener_nombres_hojas: {e}")
             return []
 
+
 class AgenteAsistenciaMaterias:
     SPREADSHEET_ID = "1VJe98WHoL5U7aDiGLIw55ZHnG-M6bAuLmIZx9LNbWnY"
-    HORARIOS_MATERIAS = {}
 
     def __init__(self):
         self._wb = None
@@ -488,29 +579,28 @@ class AgenteAsistenciaMaterias:
             self._cargar_horarios()
         return self._horarios_materias
 
-
-
-
     def _normalizar_hora(self, hora_str: str) -> str:
-        if not hora_str: return ""
-        hora_str = str(hora_str).replace('\u202f', ' ').strip().lower()
-        
-        es_pm = 'p' in hora_str
-        es_am = 'a' in hora_str
-        
+        if not hora_str:
+            return ""
+        hora_str = str(hora_str).replace("\u202f", " ").strip().lower()
+
+        es_pm = "p" in hora_str
+        es_am = "a" in hora_str
+
         import re
-        match = re.search(r'(\d{1,2}):(\d{2})', hora_str)
+
+        match = re.search(r"(\d{1,2}):(\d{2})", hora_str)
         if not match:
             return hora_str[:5]
-            
+
         hh, mm = match.groups()
         hh_int = int(hh)
-        
+
         if es_pm and hh_int < 12:
             hh_int += 12
         elif es_am and hh_int == 12:
             hh_int = 0
-            
+
         return f"{hh_int:02d}:{mm}"
 
     def _cargar_horarios(self):
@@ -527,35 +617,53 @@ class AgenteAsistenciaMaterias:
                 fin_teo = str(fila[3]).strip()
                 inicio_prac = str(fila[4]).strip()
                 fin_prac = str(fila[5]).strip()
-                
+
                 # Ignorar filas vacías o sin horarios completos
-                if not materia or not dia or not inicio_teo or not fin_teo or not inicio_prac or not fin_prac:
+                if (
+                    not materia
+                    or not dia
+                    or not inicio_teo
+                    or not fin_teo
+                    or not inicio_prac
+                    or not fin_prac
+                ):
                     continue
-                
+
                 # Asegurar formato HH:MM (convertir de AM/PM a 24h si es necesario)
                 inicio_teo = self._normalizar_hora(inicio_teo)
                 fin_teo = self._normalizar_hora(fin_teo)
                 inicio_prac = self._normalizar_hora(inicio_prac)
                 fin_prac = self._normalizar_hora(fin_prac)
-                
+
                 # Tratar caracteres extraños en los días (ej. tildes) estandarizando a los de Python
                 dia = dia.capitalize()
-                if 'bad' in dia.lower(): dia = 'Sábado'
-                if 'rcol' in dia.lower(): dia = 'Miércoles'
+                if "bad" in dia.lower():
+                    dia = "Sábado"
+                if "rcol" in dia.lower():
+                    dia = "Miércoles"
 
                 self._horarios_materias[materia] = {
                     "dia": dia,
                     "teoria": (inicio_teo, fin_teo),
-                    "practica": (inicio_prac, fin_prac)
+                    "practica": (inicio_prac, fin_prac),
                 }
-            logger.info(f"✅ Horarios cargados desde Config_bot: {len(self._horarios_materias)} materias.")
+            logger.info(
+                f"✅ Horarios cargados desde Config_bot: {len(self._horarios_materias)} materias."
+            )
         except Exception as e:
             logger.error(f"❌ Error al cargar horarios desde Config_bot: {e}")
             self._horarios_materias = {}
 
-
     def obtener_materia_actual(self, ahora):
-        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        dias_semana = [
+            "Lunes",
+            "Martes",
+            "Miércoles",
+            "Jueves",
+            "Viernes",
+            "Sábado",
+            "Domingo",
+        ]
         dia_actual = dias_semana[ahora.weekday()]
         hora_actual = ahora.time()
 
@@ -577,31 +685,65 @@ class AgenteAsistenciaMaterias:
             ahora = datetime.now(tz_py)
             materia, tipo = self.obtener_materia_actual(ahora)
             if not materia:
-                return "ℹ️ No hay ninguna clase en curso en este momento según el horario."
+                return (
+                    "ℹ️ No hay ninguna clase en curso en este momento según el horario."
+                )
 
             # Verificar si existe la hoja de la materia, si no, crearla
             titulos_existentes = [h.title for h in self.wb.worksheets()]
             if materia not in titulos_existentes:
                 ws = self.wb.add_worksheet(title=materia, rows="100", cols="6")
-                ws.update("A1:F1", [["Día", "Fecha", "Hora Teoría", "Asistencia Teoría", "Hora Práctica", "Asistencia Práctica"]])
+                ws.update(
+                    "A1:F1",
+                    [
+                        [
+                            "Día",
+                            "Fecha",
+                            "Hora Teoría",
+                            "Asistencia Teoría",
+                            "Hora Práctica",
+                            "Asistencia Práctica",
+                        ]
+                    ],
+                )
             else:
                 ws = self.wb.worksheet(materia)
-            
+
             hoy_str = ahora.strftime("%d/%m/%Y")
-            dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            dias_semana = [
+                "Lunes",
+                "Martes",
+                "Miércoles",
+                "Jueves",
+                "Viernes",
+                "Sábado",
+                "Domingo",
+            ]
             dia_actual = dias_semana[ahora.weekday()]
-            
+
             fechas_col = ws.col_values(2)
             fila = None
             for i, fecha in enumerate(fechas_col):
                 if fecha == hoy_str:
                     fila = i + 1
                     break
-            
+
             if fila is None:
                 fila = len(fechas_col) + 1
                 if fila == 1:
-                    ws.update("A1:F1", [["Día", "Fecha", "Hora Teoría", "Asistencia Teoría", "Hora Práctica", "Asistencia Práctica"]])
+                    ws.update(
+                        "A1:F1",
+                        [
+                            [
+                                "Día",
+                                "Fecha",
+                                "Hora Teoría",
+                                "Asistencia Teoría",
+                                "Hora Práctica",
+                                "Asistencia Práctica",
+                            ]
+                        ],
+                    )
                     fila = 2
                 ws.update(f"A{fila}:B{fila}", [[dia_actual, hoy_str]])
 
@@ -614,19 +756,26 @@ class AgenteAsistenciaMaterias:
             log_msg = f"Asistencia marcada para {materia} ({tipo}) a las {hora_str} en fila {fila}"
             logger.info(log_msg)
             return f"✅ Asistencia de *{materia}* ({tipo}) registrada exitosamente a las {hora_str}."
-            
+
         except Exception as e:
             logger.error(f"❌ Error marcando materia: {e}")
             return f"❌ Error interno al marcar asistencia: {str(e)}"
 
+
 class EstadoGestor:
-    """Clase para guardar y recuperar estado temporal usando SQLite para soportar múltiples workers en PythonAnywhere."""
+    """Clase para guardar y recuperar estado temporal usando SQLite.
+
+    Diseñada para soportar múltiples workers en PythonAnywhere.
+    """
+
     PATH_DB = BASE_DIR / "estado_temporal.db"
 
     @classmethod
     def _get_conn(cls):
         conn = sqlite3.connect(cls.PATH_DB, timeout=5.0)
-        conn.execute("CREATE TABLE IF NOT EXISTS estado (clave TEXT PRIMARY KEY, valor TEXT)")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS estado (clave TEXT PRIMARY KEY, valor TEXT)"
+        )
         return conn
 
     @classmethod
@@ -634,7 +783,10 @@ class EstadoGestor:
         conn = cls._get_conn()
         try:
             valor_str = json.dumps(valor, ensure_ascii=False)
-            conn.execute("INSERT OR REPLACE INTO estado (clave, valor) VALUES (?, ?)", (str(clave), valor_str))
+            conn.execute(
+                "INSERT OR REPLACE INTO estado (clave, valor) VALUES (?, ?)",
+                (str(clave), valor_str),
+            )
             conn.commit()
         except Exception as e:
             logger.error(f"Error escribiendo en EstadoGestor: {e}")
@@ -645,7 +797,9 @@ class EstadoGestor:
     def get(cls, clave, default=None):
         conn = cls._get_conn()
         try:
-            cur = conn.execute("SELECT valor FROM estado WHERE clave = ?", (str(clave),))
+            cur = conn.execute(
+                "SELECT valor FROM estado WHERE clave = ?", (str(clave),)
+            )
             row = cur.fetchone()
             if row:
                 return json.loads(row[0])

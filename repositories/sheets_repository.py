@@ -5,11 +5,12 @@ from typing import Any
 # Simple repository that delegates to existing logic classes.
 # In a full refactor we would replace direct calls to AgenteFinanciero, etc.
 
+
 class SheetsRepository:
     def __init__(self) -> None:
         # Lazy imports to avoid circular dependencies
-        from logic.financiero import AgenteFinanciero
-        from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias
+        pass
+
         # These agents require the spreadsheet ID; we'll retrieve it from env when needed.
         self._financiero: Any | None = None
         self._autonomo: Any | None = None
@@ -17,7 +18,8 @@ class SheetsRepository:
 
     def _init_agents(self, spreadsheet_id: str) -> None:
         from logic.financiero import AgenteFinanciero
-        from logic.logic import AgenteAutonomoHoras, AgenteAsistenciaMaterias
+        from logic.logic import AgenteAsistenciaMaterias, AgenteAutonomoHoras
+
         self._financiero = AgenteFinanciero(spreadsheet_id=spreadsheet_id)
         self._autonomo = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
         self._asistencia = AgenteAsistenciaMaterias()

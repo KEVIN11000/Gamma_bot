@@ -1,20 +1,24 @@
 from __future__ import annotations
-from typing import Any
+
 import os
-from pathlib import Path
-import requests
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
 import pytz
+import requests
+
 from logger_config import setup_logger
 
 logger = setup_logger("cron_jobs")
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-tz_py = pytz.timezone('America/Asuncion')
+tz_py = pytz.timezone("America/Asuncion")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PUNTO 2 — Resumen Semanal de Productividad
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def resumen_semanal(bot: Any, chat_id: Any, spreadsheet_id: Any) -> Any:
     """
@@ -24,7 +28,6 @@ def resumen_semanal(bot: Any, chat_id: Any, spreadsheet_id: Any) -> Any:
     """
     try:
         from logic.logic import ConexionSheets
-        import gspread
 
         MONTO_POR_HORA = 14634  # Gs. por hora
 
@@ -82,7 +85,9 @@ def resumen_semanal(bot: Any, chat_id: Any, spreadsheet_id: Any) -> Any:
         )
 
         bot.send_message(chat_id, mensaje, parse_mode="Markdown")
-        logger.info(f"Resumen semanal enviado. Horas: {total_horas:.1f} | Monto: Gs. {total_monto:,}")
+        logger.info(
+            f"Resumen semanal enviado. Horas: {total_horas:.1f} | Monto: Gs. {total_monto:,}"
+        )
         return True
 
     except Exception as e:
@@ -142,20 +147,24 @@ def notificacion_clima(bot: Any, chat_id: Any) -> Any:
         data = resp.json()
 
         daily = data.get("daily", {})
-        wmo_code   = daily.get("weathercode", [0])[0]
-        temp_max   = daily.get("temperature_2m_max", [0])[0]
-        temp_min   = daily.get("temperature_2m_min", [0])[0]
+        wmo_code = daily.get("weathercode", [0])[0]
+        temp_max = daily.get("temperature_2m_max", [0])[0]
+        temp_min = daily.get("temperature_2m_min", [0])[0]
         precip_pct = daily.get("precipitation_probability_max", [0])[0]
-        viento     = daily.get("windspeed_10m_max", [0])[0]
+        viento = daily.get("windspeed_10m_max", [0])[0]
 
         emoji, descripcion = CODIGOS_CLIMA.get(wmo_code, ("🌡️", "Condición desconocida"))
 
         # Alerta contextual de lluvia
         alerta_lluvia = ""
         if precip_pct >= 60:
-            alerta_lluvia = "\n☂️ _Alta probabilidad de lluvia. ¡No olvides el paraguas!_"
+            alerta_lluvia = (
+                "\n☂️ _Alta probabilidad de lluvia. ¡No olvides el paraguas!_"
+            )
         elif precip_pct >= 35:
-            alerta_lluvia = "\n🌂 _Posibles lluvias por la tarde. Lleva el paraguas por las dudas._"
+            alerta_lluvia = (
+                "\n🌂 _Posibles lluvias por la tarde. Lleva el paraguas por las dudas._"
+            )
 
         hoy = datetime.now(tz_py).strftime("%A %d de %B").capitalize()
 
@@ -173,7 +182,9 @@ def notificacion_clima(bot: Any, chat_id: Any) -> Any:
         )
 
         bot.send_message(chat_id, mensaje, parse_mode="Markdown")
-        logger.info(f"Notificación climática enviada. {descripcion}, {temp_max}°C, {precip_pct}% lluvia.")
+        logger.info(
+            f"Notificación climática enviada. {descripcion}, {temp_max}°C, {precip_pct}% lluvia."
+        )
         return True
 
     except Exception as e:
@@ -184,6 +195,7 @@ def notificacion_clima(bot: Any, chat_id: Any) -> Any:
 # ─────────────────────────────────────────────────────────────────────────────
 # PUNTO 4 — Rotación Anual de Logs
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def rotar_logs() -> Any:
     """
@@ -201,18 +213,24 @@ def rotar_logs() -> Any:
 
         # Crear un log nuevo y limpio
         with open(path_actual, "w", encoding="utf-8") as f:
-            f.write(f"[LOG INICIADO] {datetime.now(tz_py).strftime('%Y-%m-%d %H:%M:%S')} — Rotación anual completada.\n")
+            f.write(
+                f"[LOG INICIADO] {datetime.now(tz_py).strftime('%Y-%m-%d %H:%M:%S')} — Rotación anual completada.\n"
+            )
 
-        logger.info(f"Log rotado: gen_log_{anio_anterior}.txt guardado. Nuevo gen_log.txt creado.")
+        logger.info(
+            f"Log rotado: gen_log_{anio_anterior}.txt guardado. Nuevo gen_log.txt creado."
+        )
         return True
 
     except Exception as e:
         logger.error(f"rotar_logs: {e}")
         return False
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PUNTO 5 — Informe Estadístico Mensual
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def informe_estadistico_mensual(gamma_app: Any, chat_id: Any) -> Any:
     """
@@ -221,19 +239,24 @@ def informe_estadistico_mensual(gamma_app: Any, chat_id: Any) -> Any:
     """
     try:
         from logic.pdf_service import PDFService
+
         bot = gamma_app.bot
         logger.info("[cron_mensual] Iniciando informe estadístico.")
-        
-        bot.send_message(chat_id, "📊 *[CRON]* Generando Informe Estadístico Mensual...")
-        
+
+        bot.send_message(
+            chat_id, "📊 *[CRON]* Generando Informe Estadístico Mensual..."
+        )
+
         # 1. Reporte de Asistencia (Horas)
-        datos_horas, err_h = gamma_app.agente_excel.preparar_datos_reporte(descuento=0.0)
+        datos_horas, err_h = gamma_app.agente_excel.preparar_datos_reporte(
+            descuento=0.0
+        )
         if err_h:
             bot.send_message(chat_id, f"⚠️ Error en reporte de horas: {err_h}")
         else:
             ruta_pdf_h, msg_h = PDFService.generar_reporte_generico(datos_horas)
             if ruta_pdf_h:
-                with open(ruta_pdf_h, 'rb') as f:
+                with open(ruta_pdf_h, "rb") as f:
                     bot.send_document(chat_id, f, caption=f"📊 {msg_h}")
                 os.remove(ruta_pdf_h)
             else:
@@ -246,7 +269,7 @@ def informe_estadistico_mensual(gamma_app: Any, chat_id: Any) -> Any:
         else:
             ruta_pdf_f, msg_f = PDFService.generar_reporte_generico(datos_finanzas)
             if ruta_pdf_f:
-                with open(ruta_pdf_f, 'rb') as f:
+                with open(ruta_pdf_f, "rb") as f:
                     bot.send_document(chat_id, f, caption=f"📊 {msg_f}")
                 os.remove(ruta_pdf_f)
             else:
@@ -254,15 +277,17 @@ def informe_estadistico_mensual(gamma_app: Any, chat_id: Any) -> Any:
 
         logger.info("[cron_mensual] Informe mensual finalizado con éxito.")
         return True
-        
+
     except Exception as e:
         logger.error(f"informe_estadistico_mensual: {e}")
         gamma_app.bot.send_message(chat_id, f"❌ Error en cierre mensual: {e}")
         return False
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PUNTO 6 — Asesor IA Proactivo (Fase 4)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def alerta_asesor_financiero(gamma_app: Any, chat_id: Any) -> Any:
     """
@@ -271,17 +296,18 @@ def alerta_asesor_financiero(gamma_app: Any, chat_id: Any) -> Any:
     """
     try:
         from logic.ai_service import AIService
+
         bot = gamma_app.bot
         logger.info("[asesor_ia] Iniciando generación de insights proactivos.")
-        
+
         datos, err = gamma_app.agente_financiero.preparar_datos_reporte()
         if err:
             logger.error(f"[asesor_ia] Error obteniendo datos: {err}")
             return False
-            
+
         # Extraemos totales usando obtener_balance()
         totales = gamma_app.agente_financiero.obtener_balance() or {}
-        
+
         # Armamos un resumen de las últimas 15 filas para darle contexto a la IA
         # f es [Fecha, Tipo, Detalle, Factura, Monto, Categoría]
         resumen_filas = ""
@@ -289,22 +315,18 @@ def alerta_asesor_financiero(gamma_app: Any, chat_id: Any) -> Any:
         for f in ultimas_filas:
             if len(f) >= 6:
                 resumen_filas += f"- {f[0]} | {f[1]} | {f[4]} | {f[5]} ({f[2]})\n"
-                
+
         if not resumen_filas:
             resumen_filas = "No hay movimientos recientes."
-            
+
         insights = AIService.generar_insights_financieros(totales, resumen_filas)
-        
-        mensaje = (
-            f"🧠 *GAMMA Asesor IA*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"{insights}"
-        )
-        
+
+        mensaje = f"🧠 *GAMMA Asesor IA*\n" f"━━━━━━━━━━━━━━━━━━━━━\n" f"{insights}"
+
         bot.send_message(chat_id, mensaje, parse_mode="Markdown")
         logger.info("[asesor_ia] Insights enviados correctamente.")
         return True
-        
+
     except Exception as e:
         logger.error(f"alerta_asesor_financiero: {e}")
         return False

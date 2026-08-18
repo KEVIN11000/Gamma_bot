@@ -1,33 +1,37 @@
 from __future__ import annotations
-from typing import Any
-from flask import Flask, request, abort
-import telebot
-import os
-import time
-import subprocess
-import hmac
+
 import hashlib
+import hmac
 import json
-from logger_config import setup_logger
-from com.bot import GAMMA
-from logic.cron_jobs import resumen_semanal, notificacion_clima, rotar_logs
-import config
+import os
+import subprocess
+import time
+from pathlib import Path
+from typing import Any
+
+import telebot
+from flask import Flask, abort, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+
+import config
+from com.bot import GAMMA
+from logger_config import setup_logger
+from logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs
 
 logger = setup_logger("flask")
 app = Flask(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["10 per minute"])
 limiter.init_app(app)
 bot_instance = GAMMA()
-from pathlib import Path
 base_path = Path(__file__).resolve().parent
 
-@app.route('/', methods=['POST'])
+
+@app.route("/", methods=["POST"])
 @limiter.limit("10/min")
 def webhook() -> Any:
     # Verify custom header token
-    token_header = request.headers.get('X-Bot-Token')
+    token_header = request.headers.get("X-Bot-Token")
     if token_header != config.TOKEN:
         abort(401, "Invalid token")
     # Piggyback: Borrar mensaje de deploy si existe
@@ -42,10 +46,13 @@ def webhook() -> Any:
                 os.remove(deploy_file)
         except Exception as e:
             logger.error(f"Error borrando mensaje de deploy atrasado: {e}")
-            try: os.remove(deploy_file) 
-            except: pass
+            try:
+                os.remove(deploy_file)
+            except Exception as e:
+                logger.error(f"Error removing deploy file: {e}")
+                pass
 
-    json_string = request.get_data().decode('utf-8')
+    json_string = request.get_data().decode("utf-8")
     update = telebot.types.Update.de_json(json_string)
 
     # Procesamiento síncrono: en el tier gratuito de PythonAnywhere (1 worker),
@@ -58,7 +65,8 @@ def webhook() -> Any:
 
     return "OK", 200
 
-@app.route('/set_webhook')
+
+@app.route("/set_webhook")
 def set_webhook() -> Any:
     url_app = "https://kevin11000.pythonanywhere.com"
     success = bot_instance.bot.set_webhook(url=f"{url_app}/{bot_instance.token}")
@@ -66,13 +74,15 @@ def set_webhook() -> Any:
         return "✅ Webhook configurado con éxito", 200
     return "❌ Error al configurar Webhook", 500
 
-@app.route('/')
+
+@app.route("/")
 def home() -> Any:
     return "Bot de Marcación Activo", 200
 
+
 # ── Auto-deploy desde GitHub ──────────────────────────────────────────────────
 @limiter.limit("10 per minute")
-@app.route('/deploy', methods=['POST'])
+@app.route("/deploy", methods=["POST"])
 def deploy() -> Any:
     """
     Endpoint llamado por el webhook de GitHub en cada push a Main-stable.
@@ -83,9 +93,9 @@ def deploy() -> Any:
     # Validate GitHub webhook signature if secret is set (mandatory in production)
     if config.GITHUB_WEBHOOK_SECRET:
         secret = config.GITHUB_WEBHOOK_SECRET.encode()
-        signature_header = request.headers.get('X-Hub-Signature-256', '')
+        signature_header = request.headers.get("X-Hub-Signature-256", "")
         body = request.get_data()
-        expected = 'sha256=' + hmac.new(secret, body, hashlib.sha256).hexdigest()
+        expected = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, signature_header):
             abort(403, "Firma inválida")
     elif config.is_production():
@@ -94,8 +104,8 @@ def deploy() -> Any:
 
     # 2. Filtrar: solo actuar en push a Main-stable
     payload = request.get_json(silent=True) or {}
-    ref = payload.get('ref', '')
-    if ref and ref != 'refs/heads/Main-stable':
+    ref = payload.get("ref", "")
+    if ref and ref != "refs/heads/Main-stable":
         return f"Push en '{ref}' ignorado (no es Main-stable)", 200
 
     # 3. Ejecutar git pull
@@ -106,7 +116,7 @@ def deploy() -> Any:
             cwd=base_path,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
         salida = resultado.stdout.strip() or resultado.stderr.strip()
         logger.info(f"[deploy] git pull: {salida}")
@@ -135,12 +145,17 @@ def deploy() -> Any:
                     version = "desconocida"
                 # Sanitizar para evitar markup en Telegram
                 import html
+
                 version = html.escape(version)
 
                 msg = bot_instance.bot.send_message(
                     chat_id,
-                    f"🚀 <b>¡Actualización completada!</b>\nEl autodeploy descargó la nueva versión <b>({version})</b> y el servidor se ha reiniciado.\n\nEscribe /start para ver el menú de comandos.",
-                    parse_mode="HTML"
+                    f"🚀 <b>¡Actualización completada!</b>\n"
+                    f"El autodeploy descargó la nueva versión "
+                    f"<b>({version})</b> y el servidor se ha "
+                    f"reiniciado.\n\n"
+                    f"Escribe /start para ver el menú de comandos.",
+                    parse_mode="HTML",
                 )
                 logger.info("[deploy] Mensaje enviado correctamente.")
 
@@ -148,7 +163,7 @@ def deploy() -> Any:
                 deploy_data = {
                     "chat_id": chat_id,
                     "msg_id": msg.message_id,
-                    "time": time.time()
+                    "time": time.time(),
                 }
                 with open(base_path / "deploy_msg.json", "w") as f:
                     json.dump(deploy_data, f)
@@ -187,70 +202,93 @@ def _validar_cron_secret() -> Any:
     Reads CRON_SECRET from the environment on each request, allowing
     all calls in development when the variable is unset or empty.
     """
-    secret = os.getenv('CRON_SECRET')
+    secret = os.getenv("CRON_SECRET")
     # If no secret is defined, allow in non‑production environments
     if not secret:
         return not config.is_production()
-    token_enviado = request.headers.get('X-Cron-Secret', '') or request.args.get('secret', '')
+    token_enviado = request.headers.get("X-Cron-Secret", "") or request.args.get(
+        "secret", ""
+    )
     return token_enviado == secret
 
 
 @limiter.limit("10 per minute")
-@app.route('/cron/resumen-semanal', methods=['GET', 'POST'])
+@app.route("/cron/resumen-semanal", methods=["GET", "POST"])
 def cron_resumen_semanal() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    chat_id = os.environ.get('CHAT_ID')
-    spreadsheet_id = os.environ.get('SPREADSHEET_ID')
+    chat_id = os.environ.get("CHAT_ID")
+    spreadsheet_id = os.environ.get("SPREADSHEET_ID")
     if not chat_id or not spreadsheet_id:
         return "❌ CHAT_ID o SPREADSHEET_ID no configurados.", 500
     exito = resumen_semanal(bot_instance.bot, chat_id, spreadsheet_id)
-    return ("✅ Resumen semanal enviado.", 200) if exito else ("❌ Error en resumen semanal.", 500)
+    return (
+        ("✅ Resumen semanal enviado.", 200)
+        if exito
+        else ("❌ Error en resumen semanal.", 500)
+    )
 
 
 @limiter.limit("10 per minute")
-@app.route('/cron/clima', methods=['GET', 'POST'])
+@app.route("/cron/clima", methods=["GET", "POST"])
 def cron_clima() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    chat_id = os.environ.get('CHAT_ID')
+    chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
     exito = notificacion_clima(bot_instance.bot, chat_id)
-    return ("✅ Notificación climática enviada.", 200) if exito else ("❌ Error en clima.", 500)
+    return (
+        ("✅ Notificación climática enviada.", 200)
+        if exito
+        else ("❌ Error en clima.", 500)
+    )
 
 
 @limiter.limit("10 per minute")
-@app.route('/cron/rotar-logs', methods=['GET', 'POST'])
+@app.route("/cron/rotar-logs", methods=["GET", "POST"])
 def cron_rotar_logs() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
     exito = rotar_logs()
-    return ("✅ Logs rotados correctamente.", 200) if exito else ("❌ Error al rotar logs.", 500)
+    return (
+        ("✅ Logs rotados correctamente.", 200)
+        if exito
+        else ("❌ Error al rotar logs.", 500)
+    )
 
 
 @limiter.limit("10 per minute")
-@app.route('/cron/cierre-mensual', methods=['GET', 'POST'])
+@app.route("/cron/cierre-mensual", methods=["GET", "POST"])
 def cron_cierre_mensual() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    chat_id = os.environ.get('CHAT_ID')
+    chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
     from logic.cron_jobs import informe_estadistico_mensual
+
     exito = informe_estadistico_mensual(bot_instance, chat_id)
-    return ("✅ Informe estadístico ejecutado y reportes enviados.", 200) if exito else ("❌ Error en informe.", 500)
+    return (
+        ("✅ Informe estadístico ejecutado y reportes enviados.", 200)
+        if exito
+        else ("❌ Error en informe.", 500)
+    )
 
 
 @limiter.limit("10 per minute")
-@app.route('/cron/asesor-ia', methods=['GET', 'POST'])
+@app.route("/cron/asesor-ia", methods=["GET", "POST"])
 def cron_asesor_ia() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    chat_id = os.environ.get('CHAT_ID')
+    chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
     from logic.cron_jobs import alerta_asesor_financiero
-    exito = alerta_asesor_financiero(bot_instance, chat_id)
-    return ("✅ Insights del Asesor IA enviados.", 200) if exito else ("❌ Error en Asesor IA.", 500)
 
+    exito = alerta_asesor_financiero(bot_instance, chat_id)
+    return (
+        ("✅ Insights del Asesor IA enviados.", 200)
+        if exito
+        else ("❌ Error en Asesor IA.", 500)
+    )
