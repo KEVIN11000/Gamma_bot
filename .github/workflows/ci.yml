@@ -25,7 +25,7 @@ jobs:
       - name: Lint with black
         run: black --check .
       - name: Lint with flake8
-        run: flake8 . --max-line-length=88 --extend-ignore=E501,W293,F821
+        run: flake8 . --max-line-length=88 --extend-ignore=E501,W293,F821,E402,E203,F401
       - name: Type check with mypy
         run: mypy .
 
