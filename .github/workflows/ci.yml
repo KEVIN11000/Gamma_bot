@@ -62,4 +62,4 @@ jobs:
         run: safety check
         continue-on-error: true
       - name: Run bandit
-        run: bandit -r . -x tests,test_qa_suite.py
+        run: bandit -r . -x tests,test_qa_suite.py -ll

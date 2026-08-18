@@ -153,7 +153,9 @@ def notificacion_clima(bot: Any, chat_id: Any) -> Any:
         precip_pct = daily.get("precipitation_probability_max", [0])[0]
         viento = daily.get("windspeed_10m_max", [0])[0]
 
-        emoji, descripcion = CODIGOS_CLIMA.get(wmo_code, ("🌡️", "Condición desconocida"))
+        emoji, descripcion = CODIGOS_CLIMA.get(
+            wmo_code, ("🌡️", "Condición desconocida")
+        )
 
         # Alerta contextual de lluvia
         alerta_lluvia = ""
