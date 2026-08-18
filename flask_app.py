@@ -27,13 +27,9 @@ bot_instance = GAMMA()
 base_path = Path(__file__).resolve().parent
 
 
-@app.route("/", methods=["POST"])
+@app.route(f"/{config.TOKEN}", methods=["POST"])
 @limiter.limit("10/min")
 def webhook() -> Any:
-    # Verify custom header token
-    token_header = request.headers.get("X-Bot-Token")
-    if token_header != config.TOKEN:
-        abort(401, "Invalid token")
     # Piggyback: Borrar mensaje de deploy si existe
     deploy_file = base_path / "deploy_msg.json"
     if deploy_file.exists():

@@ -10,3 +10,9 @@ estado_temporal.db
 estado_temporal.json
 __pycache__/
 *.pyc
+.pytest_cache/
+reportes/
+*.pdf
+code_review*
+task.md
+agency-agents/
