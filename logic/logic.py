@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from logger_config import setup_logger
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BASE_DIR / ".env")
 
 tz_py = pytz.timezone("America/Buenos_Aires")
