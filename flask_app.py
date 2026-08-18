@@ -225,6 +225,10 @@ def _validar_cron_secret() -> Any:
 def cron_resumen_semanal() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    try:
+        limpiar_menus_expirados(bot_instance.bot)
+    except Exception as e:
+        logger.error(f"Error en limpiar_menus_expirados: {e}")
     limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     spreadsheet_id = os.environ.get("SPREADSHEET_ID")
@@ -243,6 +247,10 @@ def cron_resumen_semanal() -> Any:
 def cron_clima() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    try:
+        limpiar_menus_expirados(bot_instance.bot)
+    except Exception as e:
+        logger.error(f"Error en limpiar_menus_expirados: {e}")
     limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
@@ -260,6 +268,10 @@ def cron_clima() -> Any:
 def cron_rotar_logs() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    try:
+        limpiar_menus_expirados(bot_instance.bot)
+    except Exception as e:
+        logger.error(f"Error en limpiar_menus_expirados: {e}")
     limpiar_menus_expirados(bot_instance.bot)
     exito = rotar_logs()
     return (
@@ -274,6 +286,10 @@ def cron_rotar_logs() -> Any:
 def cron_cierre_mensual() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    try:
+        limpiar_menus_expirados(bot_instance.bot)
+    except Exception as e:
+        logger.error(f"Error en limpiar_menus_expirados: {e}")
     limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
@@ -293,6 +309,10 @@ def cron_cierre_mensual() -> Any:
 def cron_asesor_ia() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
+    try:
+        limpiar_menus_expirados(bot_instance.bot)
+    except Exception as e:
+        logger.error(f"Error en limpiar_menus_expirados: {e}")
     limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
