@@ -1,4 +1,4 @@
-﻿.env
+.env
 credentials.json
 avisos.json
 periodo_actual.txt
@@ -21,3 +21,7 @@ agency-agents/
 coverage.xml
 htmlcov/
 scratch_*.py
+mypy.ini
+repositories/
+VERSION
+docs/

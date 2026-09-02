@@ -219,7 +219,7 @@ def _validar_cron_secret() -> Any:
     )
     return token_enviado == secret
 
-
+"""
 @limiter.limit("10 per minute")
 @app.route("/cron/resumen-semanal", methods=["GET", "POST"])
 def cron_resumen_semanal() -> Any:
@@ -324,4 +324,4 @@ def cron_asesor_ia() -> Any:
         ("✅ Insights del Asesor IA enviados.", 200)
         if exito
         else ("❌ Error en Asesor IA.", 500)
-    )
+    )"""

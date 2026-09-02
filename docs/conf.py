@@ -5,8 +5,8 @@ import sys
 sys.path.insert(0, os.path.abspath(".."))
 
 project = "Gamma Bot"
-copyright = "2026, VCP-S"
-author = "VCP-S"
+copyright = "2026, K11000"
+author = "K11000"
 
 extensions = [
     "sphinx.ext.autodoc",

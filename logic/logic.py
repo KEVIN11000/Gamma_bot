@@ -511,7 +511,7 @@ class AgenteAutonomoHoras:
 
         monto_por_hora = float(os.getenv("MONTO_POR_HORA", MONTO_POR_HORA_DEFAULT))
         salario_bruto = total_decimal * monto_por_hora
-        salario_neto = salario_bruto - float(descuento)
+        salario_neto = salario_bruto - float(descuento)+int(round(salario_bruto/11))
 
         def gs(n):
             """
