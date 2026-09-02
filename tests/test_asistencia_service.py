@@ -95,11 +95,13 @@ def test_generar_y_enviar_reporte_financiero_exito_con_pdf(mock_file, mock_pdf_s
 
 @patch("services.asistencia_service.verificar_usuario_manual")
 @patch("services.asistencia_service.generar_y_enviar_reporte")
-def test_capturar_monto_descuento_valido(mock_generar, mock_verificar, mock_bot, mock_gamma_app, mock_message):
+@patch("services.asistencia_service.EstadoGestor")
+def test_capturar_monto_descuento_valido(mock_estado, mock_generar, mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
+    mock_estado.pop.return_value = False
     mock_message.text = "1.500,50"
     capturar_monto_descuento(mock_message, mock_bot, mock_gamma_app)
-    mock_generar.assert_called_once_with(mock_bot, mock_gamma_app, mock_message, descuento=150050.0)
+    mock_generar.assert_called_once_with(mock_bot, mock_gamma_app, mock_message, descuento=150050.0, incluir_iva=False)
 
 
 @patch("services.asistencia_service.verificar_usuario_manual")
@@ -130,7 +132,7 @@ def test_generar_y_enviar_reporte(mock_file, mock_pdf_service, mock_bot, mock_ga
     mock_pdf_service.generar_reporte_generico.return_value = ("/ruta/test.pdf", "PDF listo")
     
     generar_y_enviar_reporte(mock_bot, mock_gamma_app, mock_message, 100.0)
-    mock_gamma_app.agente_excel.preparar_datos_reporte.assert_called_with(descuento=100.0)
+    mock_gamma_app.agente_excel.preparar_datos_reporte.assert_called_with(descuento=100.0, incluir_iva=False)
     mock_bot.send_document.assert_called_once()
     
     # Con error
@@ -152,11 +154,12 @@ def test_generar_y_enviar_reporte(mock_file, mock_pdf_service, mock_bot, mock_ga
 @patch("services.asistencia_service.generar_y_enviar_reporte_por_hoja")
 def test_capturar_descuento_reporte_valido(mock_generar_hoja, mock_estado, mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
-    mock_estado.pop.return_value = "Hoja1"
+    # First pop: nombre_hoja; second pop: iva flag
+    mock_estado.pop.side_effect = ["Hoja1", False]
     mock_message.text = "200"
     
     capturar_descuento_reporte(mock_message, mock_bot, mock_gamma_app)
-    mock_generar_hoja.assert_called_once_with(mock_bot, mock_gamma_app, mock_message, "Hoja1", descuento=200.0)
+    mock_generar_hoja.assert_called_once_with(mock_bot, mock_gamma_app, mock_message, "Hoja1", descuento=200.0, incluir_iva=False)
 
 
 @patch("services.asistencia_service.verificar_usuario_manual")
@@ -196,7 +199,7 @@ def test_generar_y_enviar_reporte_por_hoja(mock_file, mock_pdf_service, mock_bot
     mock_pdf_service.generar_reporte_generico.return_value = ("/ruta/hoja.pdf", "PDF listo hoja")
     
     generar_y_enviar_reporte_por_hoja(mock_bot, mock_gamma_app, mock_message, "Hoja1", 50.0)
-    mock_gamma_app.agente_excel.preparar_datos_reporte.assert_called_with(nombre_hoja="Hoja1", descuento=50.0)
+    mock_gamma_app.agente_excel.preparar_datos_reporte.assert_called_with(nombre_hoja="Hoja1", descuento=50.0, incluir_iva=False)
     mock_bot.send_document.assert_called_once()
     
     # Error excel

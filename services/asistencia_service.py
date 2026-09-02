@@ -133,7 +133,8 @@ def capturar_monto_descuento(
     try:
         texto_ingresado = message.text.strip().replace(".", "").replace(",", "")
         monto_descuento = float(texto_ingresado)
-        generar_y_enviar_reporte(bot, gamma_app, message, descuento=monto_descuento)
+        incluir_iva = EstadoGestor.pop(f"iva_{message.chat.id}", False)
+        generar_y_enviar_reporte(bot, gamma_app, message, descuento=monto_descuento, incluir_iva=incluir_iva)
     except ValueError:
         bot.reply_to(
             message,
@@ -144,7 +145,7 @@ def capturar_monto_descuento(
 
 
 def generar_y_enviar_reporte(
-    bot: TeleBot, gamma_app: "GammaApp", message_obj: Message, descuento: float
+    bot: TeleBot, gamma_app: "GammaApp", message_obj: Message, descuento: float, incluir_iva: bool = False
 ) -> None:
     """
     generar_y_enviar_reporte method/function.
@@ -154,6 +155,7 @@ def generar_y_enviar_reporte(
         gamma_app: Description for gamma_app.
         message_obj: Description for message_obj.
         descuento: Description for descuento.
+        incluir_iva: Si se debe incluir IVA en el reporte.
 
     Returns:
         Description of the return value.
@@ -165,7 +167,7 @@ def generar_y_enviar_reporte(
         message_obj.chat.id, "📄 Procesando datos y armando PDF de horas..."
     )
 
-    datos, error = gamma_app.agente_excel.preparar_datos_reporte(descuento=descuento)
+    datos, error = gamma_app.agente_excel.preparar_datos_reporte(descuento=descuento, incluir_iva=incluir_iva)
     if error:
         bot.send_message(message_obj.chat.id, error)
         return
@@ -212,12 +214,13 @@ def capturar_descuento_reporte(
     try:
         chat_id = message.chat.id
         nombre_hoja = EstadoGestor.pop(f"reporte_{chat_id}")
+        incluir_iva = EstadoGestor.pop(f"iva_{chat_id}", False)
         if not nombre_hoja:
             bot.reply_to(message, "❌ Sesión expirada. Ejecutá /reporte de nuevo.")
             return
         monto = float(message.text.strip().replace(".", "").replace(",", ""))
         generar_y_enviar_reporte_por_hoja(
-            bot, gamma_app, message, nombre_hoja, descuento=monto
+            bot, gamma_app, message, nombre_hoja, descuento=monto, incluir_iva=incluir_iva
         )
     except ValueError:
         bot.reply_to(
@@ -233,6 +236,7 @@ def generar_y_enviar_reporte_por_hoja(
     message_obj: Message,
     nombre_hoja: str,
     descuento: float,
+    incluir_iva: bool = False,
 ) -> None:
     """
     generar_y_enviar_reporte_por_hoja method/function.
@@ -243,6 +247,7 @@ def generar_y_enviar_reporte_por_hoja(
         message_obj: Description for message_obj.
         nombre_hoja: Description for nombre_hoja.
         descuento: Description for descuento.
+        incluir_iva: Si se debe incluir IVA en el reporte.
 
     Returns:
         Description of the return value.
@@ -255,7 +260,7 @@ def generar_y_enviar_reporte_por_hoja(
     )
 
     datos, error = gamma_app.agente_excel.preparar_datos_reporte(
-        nombre_hoja=nombre_hoja, descuento=descuento
+        nombre_hoja=nombre_hoja, descuento=descuento, incluir_iva=incluir_iva
     )
     if error:
         bot.send_message(message_obj.chat.id, error)

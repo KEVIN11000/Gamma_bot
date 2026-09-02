@@ -458,13 +458,14 @@ class AgenteAutonomoHoras:
         except (ValueError, IndexError):
             return 0.0
 
-    def preparar_datos_reporte(self, nombre_hoja=None, descuento=0):
+    def preparar_datos_reporte(self, nombre_hoja=None, descuento=0, incluir_iva=False):
         """
         preparar_datos_reporte method/function.
 
         Args:
             nombre_hoja: Description for nombre_hoja.
             descuento: Description for descuento.
+            incluir_iva: Si se debe incluir IVA en el reporte.
 
         Returns:
             Description of the return value.
@@ -510,8 +511,18 @@ class AgenteAutonomoHoras:
         total_str = f"{h_enteras}h {m_resto:02d}m"
 
         monto_por_hora = float(os.getenv("MONTO_POR_HORA", MONTO_POR_HORA_DEFAULT))
-        salario_bruto = total_decimal * monto_por_hora
-        salario_neto = salario_bruto - float(descuento)+int(round(salario_bruto/11))
+        salario_base = total_decimal * monto_por_hora
+
+        if incluir_iva:
+            # En Paraguay, para *agregar* el IVA (10%) a un monto base, se multiplica por 0.10.
+            # Se divide por 11 únicamente para *extraer* el IVA de un monto que ya lo tiene incluido.
+            monto_iva = salario_base * 0.10
+            salario_bruto = salario_base + monto_iva
+        else:
+            monto_iva = 0
+            salario_bruto = salario_base
+
+        salario_neto = salario_bruto - float(descuento)
 
         def gs(n):
             """
@@ -531,8 +542,14 @@ class AgenteAutonomoHoras:
         resumen_data = [
             ["Total horas trabajadas", total_str],
             ["Monto por hora", gs(monto_por_hora)],
-            ["Salario bruto", gs(salario_bruto)],
         ]
+
+        if incluir_iva:
+            resumen_data.append(["Salario base", gs(salario_base)])
+            resumen_data.append(["IVA (10%)", gs(monto_iva)])
+            resumen_data.append(["Salario bruto", gs(salario_bruto)])
+        else:
+            resumen_data.append(["Salario bruto", gs(salario_bruto)])
 
         if descuento > 0:
             resumen_data.append(["Descuentos aplicados", f"- {gs(descuento)}"])

@@ -140,7 +140,8 @@ def test_comando_cierre(registered_handlers, mock_bot):
 
 @patch("time.time", return_value=1000000000)
 @patch("com.handlers.asistencia.generar_y_enviar_reporte")
-def test_callback_cierre(mock_generar_reporte, mock_time, registered_handlers, mock_bot, mock_gamma_app):
+@patch("com.handlers.asistencia.EstadoGestor")
+def test_callback_cierre(mock_estado, mock_generar_reporte, mock_time, registered_handlers, mock_bot, mock_gamma_app):
     handler = get_callback_handler(registered_handlers, "cierre_confirmar")
     
     # expired
@@ -149,22 +150,31 @@ def test_callback_cierre(mock_generar_reporte, mock_time, registered_handlers, m
     handler(call)
     mock_bot.answer_callback_query.assert_called_with(call.id, "❌ Este botón ha expirado.", show_alert=True)
     
-    # valid
+    # valid cancelar
     call.message.date = 1000000000
     mock_bot.reset_mock()
     handler(call)
     mock_bot.edit_message_text.assert_called_with("❌ Cierre cancelado.", call.message.chat.id, call.message.message_id)
     
+    # valid confirmar → should ask IVA question
     call.data = "cierre_confirmar"
     mock_bot.reset_mock()
     mock_gamma_app.agente_excel.ejecutar_cierre_periodo_manual.return_value = "Cierre OK"
     handler(call)
     mock_bot.send_message.assert_any_call(call.message.chat.id, "Cierre OK", parse_mode="Markdown")
     
-    call.data = "cierre_descuento_no"
+    # respond IVA → triggers discount question
+    call.data = "cierre_iva_si"
     mock_bot.reset_mock()
     handler(call)
-    mock_generar_reporte.assert_called_with(mock_bot, mock_gamma_app, call.message, descuento=0)
+    mock_estado.set.assert_called_with(f"iva_{call.message.chat.id}", True)
+    
+    # descuento_no → generate report without discount, using IVA from state
+    call.data = "cierre_descuento_no"
+    mock_bot.reset_mock()
+    mock_estado.pop.return_value = True
+    handler(call)
+    mock_generar_reporte.assert_called_with(mock_bot, mock_gamma_app, call.message, descuento=0, incluir_iva=True)
 
     call.data = "cierre_descuento_si"
     mock_bot.reset_mock()
@@ -187,7 +197,7 @@ def test_comando_reporte(mock_financiero, mock_horas, registered_handlers, mock_
     
     msg = create_message("/reporte")
     handler(msg)
-    mock_bot.reply_to.assert_called_once()
+    mock_bot.send_message.assert_called_once()
 
 
 @patch("com.handlers.asistencia.iniciar_flujo_reporte_horas")
@@ -209,20 +219,30 @@ def test_callback_reporte(mock_estado, mock_por_hoja, mock_financiero, mock_hora
     handler(call)
     mock_financiero.assert_called_once_with(mock_bot, mock_gamma_app, call.message, is_callback=True)
     
+    # seleccionar hoja → debe preguntar IVA ahora
     call.data = "reporte_hoja_TestHoja"
     mock_bot.reset_mock()
     handler(call)
     mock_estado.set.assert_called_with(f"reporte_{call.message.chat.id}", "TestHoja")
-    mock_bot.edit_message_text.assert_called_once()
+    mock_bot.delete_message.assert_called_once()
+    mock_bot.send_message.assert_called_once()
 
-    call.data = "reporte_desc_no"
-    mock_estado.pop.return_value = "TestHoja"
+    # responder IVA → debe preguntar descuento
+    call.data = "reporte_iva_no"
+    mock_bot.reset_mock()
+    mock_estado.get.return_value = "TestHoja"
     handler(call)
-    mock_por_hoja.assert_called_once_with(mock_bot, mock_gamma_app, call.message, "TestHoja", descuento=0)
+    mock_estado.set.assert_called_with(f"iva_{call.message.chat.id}", False)
+
+    # descuento_no → generar reporte
+    call.data = "reporte_desc_no"
+    mock_estado.pop.side_effect = ["TestHoja", False]
+    handler(call)
+    mock_por_hoja.assert_called_once_with(mock_bot, mock_gamma_app, call.message, "TestHoja", descuento=0, incluir_iva=False)
     
     # Test session expired
     call.data = "reporte_desc_no"
-    mock_estado.pop.return_value = None
+    mock_estado.pop.side_effect = [None, False]
     mock_bot.reset_mock()
     handler(call)
     mock_bot.edit_message_text.assert_called_with("❌ Sesión expirada. Ejecutá /reporte de nuevo.", call.message.chat.id, call.message.message_id)

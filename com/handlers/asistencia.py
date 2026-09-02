@@ -132,6 +132,29 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             teclado = InlineKeyboardMarkup()
             teclado.row(
                 InlineKeyboardButton(
+                    "✅ Sí, incluir IVA", callback_data="cierre_iva_si"
+                ),
+                InlineKeyboardButton(
+                    "❌ No",
+                    callback_data="cierre_iva_no",
+                ),
+            )
+            reply_with_expiration(
+                bot,
+                chat_id,
+                "¿Deseas incluir el **IVA (10%)** en el cálculo del reporte?",
+                parse_mode="Markdown",
+                reply_markup=teclado,
+            )
+            return
+
+        if call.data in ("cierre_iva_si", "cierre_iva_no"):
+            incluir_iva = (call.data == "cierre_iva_si")
+            EstadoGestor.set(f"iva_{chat_id}", incluir_iva)
+            
+            teclado = InlineKeyboardMarkup()
+            teclado.row(
+                InlineKeyboardButton(
                     "✅ Sí, aplicar descuento", callback_data="cierre_descuento_si"
                 ),
                 InlineKeyboardButton(
@@ -139,10 +162,10 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                     callback_data="cierre_descuento_no",
                 ),
             )
-            reply_with_expiration(
-                bot,
-                chat_id,
+            bot.edit_message_text(
                 "¿Deseas aplicar algún **descuento** al salario calculado de este mes?",
+                chat_id,
+                msg_id,
                 parse_mode="Markdown",
                 reply_markup=teclado,
             )
@@ -152,7 +175,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             bot.edit_message_text(
                 "✅ Generando reporte sin descuentos...", chat_id, msg_id
             )
-            generar_y_enviar_reporte(bot, gamma_app, call.message, descuento=0)
+            incluir_iva = EstadoGestor.pop(f"iva_{chat_id}", False)
+            generar_y_enviar_reporte(bot, gamma_app, call.message, descuento=0, incluir_iva=incluir_iva)
             return
 
         if call.data == "cierre_descuento_si":
@@ -224,10 +248,11 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             teclado = InlineKeyboardMarkup()
             teclado.row(
                 InlineKeyboardButton(
-                    "✅ Sí, aplicar descuento", callback_data="reporte_desc_si"
+                    "✅ Sí, incluir IVA", callback_data="reporte_iva_si"
                 ),
                 InlineKeyboardButton(
-                    "❌ No, reporte directo", callback_data="reporte_desc_no"
+                    "❌ No",
+                    callback_data="reporte_iva_no",
                 ),
             )
             bot.delete_message(chat_id, msg_id)
@@ -235,7 +260,32 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                 bot,
                 chat_id,
                 f"📅 Período seleccionado: *{nombre_hoja}*\n\n"
+                f"¿Deseas incluir el **IVA (10%)** en el cálculo del reporte?",
+                parse_mode="Markdown",
+                reply_markup=teclado,
+            )
+            return
+
+        if data in ("reporte_iva_si", "reporte_iva_no"):
+            incluir_iva = (data == "reporte_iva_si")
+            EstadoGestor.set(f"iva_{chat_id}", incluir_iva)
+            
+            nombre_hoja = EstadoGestor.get(f"reporte_{chat_id}", "Seleccionado")
+            
+            teclado = InlineKeyboardMarkup()
+            teclado.row(
+                InlineKeyboardButton(
+                    "✅ Sí, aplicar descuento", callback_data="reporte_desc_si"
+                ),
+                InlineKeyboardButton(
+                    "❌ No, reporte directo", callback_data="reporte_desc_no"
+                ),
+            )
+            bot.edit_message_text(
+                f"📅 Período seleccionado: *{nombre_hoja}*\n\n"
                 f"¿Deseas aplicar algún *descuento* al salario calculado?",
+                chat_id,
+                msg_id,
                 parse_mode="Markdown",
                 reply_markup=teclado,
             )
@@ -243,6 +293,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
 
         if data == "reporte_desc_no":
             nombre_hoja = EstadoGestor.pop(f"reporte_{chat_id}")
+            incluir_iva = EstadoGestor.pop(f"iva_{chat_id}", False)
             if not nombre_hoja:
                 bot.edit_message_text(
                     "❌ Sesión expirada. Ejecutá /reporte de nuevo.", chat_id, msg_id
@@ -252,7 +303,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                 "✅ Generando reporte sin descuentos...", chat_id, msg_id
             )
             generar_y_enviar_reporte_por_hoja(
-                bot, gamma_app, call.message, nombre_hoja, descuento=0
+                bot, gamma_app, call.message, nombre_hoja, descuento=0, incluir_iva=incluir_iva
             )
             return
 
