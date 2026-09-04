@@ -906,7 +906,9 @@ class AgenteAsistenciaMaterias:
             )
         except Exception as e:
             logger.error(f"❌ Error al cargar horarios desde Config_bot: {e}")
-            self._horarios_materias = {}
+            # IMPORTANTE: resetear a None (no a {}) para que el próximo intento
+            # vuelva a cargar desde Sheets en lugar de quedar con caché vacía permanente.
+            self._horarios_materias = None
 
     def obtener_materia_actual(self, ahora):
         """

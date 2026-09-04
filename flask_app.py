@@ -29,14 +29,13 @@ base_path = Path(__file__).resolve().parent
 
 
 @app.route(f"/{config.TOKEN}", methods=["POST"])
-@limiter.limit("10/min")
+@limiter.limit("10 per minute")
 def webhook() -> Any:
     from com.core.utils import limpiar_menus_expirados
     try:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception:
         pass
-    limpiar_menus_expirados(bot_instance.bot)
     # Piggyback: Borrar mensaje de deploy si existe
     deploy_file = base_path / "deploy_msg.json"
     if deploy_file.exists():
@@ -201,15 +200,15 @@ def deploy() -> Any:
 
 # ── Cron Jobs (llamados por cron-job.org) ────────────────────────────────────
 def _validar_cron_secret() -> Any:
+    """Verify the secret token for cron endpoints.
+    Reads CRON_SECRET from the environment on each request, allowing
+    all calls in development when the variable is unset or empty.
+    """
     from com.core.utils import limpiar_menus_expirados
     try:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception:
         pass
-    """Verify the secret token for cron endpoints.
-    Reads CRON_SECRET from the environment on each request, allowing
-    all calls in development when the variable is unset or empty.
-    """
     secret = os.getenv("CRON_SECRET")
     # If no secret is defined, allow in non‑production environments
     if not secret:
@@ -229,7 +228,6 @@ def cron_resumen_semanal() -> Any:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception as e:
         logger.error(f"Error en limpiar_menus_expirados: {e}")
-    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     spreadsheet_id = os.environ.get("SPREADSHEET_ID")
     if not chat_id or not spreadsheet_id:
@@ -251,7 +249,6 @@ def cron_clima() -> Any:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception as e:
         logger.error(f"Error en limpiar_menus_expirados: {e}")
-    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
@@ -272,7 +269,6 @@ def cron_rotar_logs() -> Any:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception as e:
         logger.error(f"Error en limpiar_menus_expirados: {e}")
-    limpiar_menus_expirados(bot_instance.bot)
     exito = rotar_logs()
     return (
         ("✅ Logs rotados correctamente.", 200)
@@ -290,7 +286,6 @@ def cron_cierre_mensual() -> Any:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception as e:
         logger.error(f"Error en limpiar_menus_expirados: {e}")
-    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
@@ -313,7 +308,6 @@ def cron_asesor_ia() -> Any:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception as e:
         logger.error(f"Error en limpiar_menus_expirados: {e}")
-    limpiar_menus_expirados(bot_instance.bot)
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
