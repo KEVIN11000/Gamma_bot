@@ -19,6 +19,11 @@ def _registrar_comandos_menu(bot: TeleBot) -> Any:
         BotCommand("gasto", "Registrar un nuevo gasto (ej. '/gasto 15000 taxi')."),
         BotCommand("ingreso", "Registrar un nuevo ingreso."),
         BotCommand("balance", "Ver el balance financiero mensual."),
+        BotCommand("nueva_deuda", "Registrar un nuevo compromiso financiero."),
+        BotCommand("deudas", "Ver estado de cuentas activas y barra de progreso."),
+        BotCommand("abonar", "Registrar un pago parcial o total a una deuda."),
+        BotCommand("cierre_mensual", "Ejecutar el cierre financiero mensual."),
+        BotCommand("simular", "Simular el impacto financiero de un proyecto."),
         BotCommand("marcar", "Registrar entrada/salida general."),
         BotCommand("marcar_materia", "Registrar asistencia a materias."),
         BotCommand("reporte", "Generar reporte PDF de un período anterior."),
@@ -112,10 +117,15 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             f"🤖 *Bot de Gestión Avanzada (GAMMA)* `{version}`\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "Menú de comandos sincronizado ✅\n\n"
-            "*Finanzas:*\n"
+            "*Finanzas & Deudas:*\n"
             "💸 /gasto — Registrar gasto por texto\n"
             "💰 /ingreso — Registrar ingreso\n"
             "📊 /balance — Ver tu balance\n"
+            "📝 /nueva\\_deuda — Alta de deudas o cuentas\n"
+            "💳 /deudas — Ver estado de cuentas activas\n"
+            "💵 /abonar — Registrar un pago\n"
+            "🔮 /simular — Proyectar impacto de gastos\n"
+            "📦 /cierre\\_mensual — Ejecutar cierre del mes\n"
             "📷 Envia una foto de factura para leerla (OCR)\n\n"
             "*Asistencia:*\n"
             "▶️ /marcar  — Registrar entrada o salida\n"

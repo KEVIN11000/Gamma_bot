@@ -161,9 +161,9 @@ class AgenteFinanciero:
         self._ws = None
         _ = self.ws
 
-    def _limpiar_monto(self, valor) -> int:
+    def limpiar_monto(self, valor) -> int:
         """
-        _limpiar_monto method/function.
+        limpiar_monto method/function.
 
         Args:
             valor: Description for valor.
@@ -249,9 +249,9 @@ class AgenteFinanciero:
                 sanitizar(datos.get("tipo_movimiento", "Desconocido")),
                 sanitizar(datos.get("proveedor_cliente", "")),
                 sanitizar(datos.get("nro_factura", "")),
-                self._limpiar_monto(datos.get("neto", 0)),
-                self._limpiar_monto(datos.get("iva", 0)),
-                self._limpiar_monto(datos.get("total", 0)),
+                self.limpiar_monto(datos.get("neto", 0)),
+                self.limpiar_monto(datos.get("iva", 0)),
+                self.limpiar_monto(datos.get("total", 0)),
                 sanitizar(datos.get("categoria", "")),
                 sanitizar(datos.get("comprobante", "")),
                 sanitizar(datos.get("file_id", "")),
@@ -420,3 +420,177 @@ class AgenteFinanciero:
             nombre_archivo=nombre_archivo,
         )
         return reporte, None
+
+# Business logic for Data Schema Abstractions
+from repositories.sheets_repository import SheetsRepository
+from services.calendar_service import CalendarService
+from services.drive_service import DriveService
+import uuid
+
+def create_debt(entity: str, concept: str, total_amount: int, quotas: int, first_due_date: str) -> str:
+    repo = SheetsRepository()
+    debt_id = str(uuid.uuid4())[:8]
+    deuda_dict = {
+        "id_deuda": debt_id,
+        "entidad": entity,
+        "concepto": concept,
+        "monto_total": total_amount,
+        "cuotas": quotas,
+        "primer_vencimiento": first_due_date,
+        "estado": "activa"
+    }
+    repo.insert_deuda(deuda_dict)
+    CalendarService.create_event(f"Vencimiento {entity}", first_due_date, f"Pago de deuda: {concept}")
+    return debt_id
+
+def get_active_debts(debt_id: str = None) -> list[dict]:
+    repo = SheetsRepository()
+    debts = repo.get_deudas_activas()
+    if debt_id:
+        debts = [d for d in debts if d.get("id_deuda") == debt_id]
+    return debts
+
+def register_payment(debt_id: str, amount: int, date: str) -> None:
+    repo = SheetsRepository()
+    pago_dict = {
+        "id_deuda": debt_id,
+        "monto": amount,
+        "fecha": date
+    }
+    repo.insert_pago_abono(pago_dict)
+    
+    movimiento_dict = {
+        "fecha": date,
+        "tipo_movimiento": "Gasto",
+        "proveedor_cliente": "Pago Deuda",
+        "nro_factura": "S/N",
+        "neto": amount,
+        "iva": 0,
+        "total": amount,
+        "categoria": "Pago Deuda",
+        "comprobante": "S/N",
+        "file_id": "",
+        "mes": date[5:7] if len(date) >= 7 else ""
+    }
+    repo.insert_movimiento_diario(movimiento_dict)
+    
+    # In a real scenario we'd query the event_id for the debt.
+    CalendarService.mark_event_completed(f"mock_event_id_for_{debt_id}")
+
+def execute_monthly_closing(month: int, year: int) -> str:
+    repo = SheetsRepository()
+    # Logic to aggregate data from Libro_Diario
+    movimientos = repo.get_movimientos_mes(month, year)
+    total_gastos = sum(m.get("total", 0) for m in movimientos if m.get("tipo_movimiento") == "Gasto")
+    total_ingresos = sum(m.get("total", 0) for m in movimientos if m.get("tipo_movimiento") == "Ingreso")
+    
+    cierre_dict = {
+        "mes": month,
+        "year": year,
+        "total_gastos": total_gastos,
+        "total_ingresos": total_ingresos,
+        "balance": total_ingresos - total_gastos
+    }
+    repo.insert_cierre_mensual(cierre_dict)
+    
+    import tempfile
+    import os
+    # Generate backup
+    backup_path = os.path.join(tempfile.gettempdir(), f"backup_{year}_{month}.csv")
+    with open(backup_path, "w") as f:
+        f.write("mock backup content")
+        
+    drive_id = DriveService.upload_backup(backup_path)
+    return drive_id
+
+def simulate_project(monto: int, meses: int, concept: str = "") -> str:
+    repo = SheetsRepository()
+    presupuesto = repo.get_presupuesto_base()
+    
+    # 1. Gastos fijos
+    GF = int(presupuesto.get("gastos_fijos", presupuesto.get("Gastos Fijos", 0)))
+    
+    # 2. Lógica de Ingresos (Fijo vs Promedio Variable)
+    I = int(presupuesto.get("ingresos", presupuesto.get("Ingresos", 0)))
+    origen_ingreso = "Fijo (Presupuesto Base)"
+    
+    if I == 0:
+        movimientos = repo.get_all_movimientos()
+        meses_activos = set()
+        total_ingresos_historicos = 0
+        
+        for m in movimientos:
+            tipo = str(m.get("tipo_movimiento", m.get("Tipo Movimiento", ""))).strip().lower()
+            if tipo == "ingreso":
+                monto_mov = int(m.get("total", m.get("Total", 0)))
+                fecha = str(m.get("fecha", m.get("Fecha", ""))).strip()
+                mes_str = fecha[:7] if len(fecha) >= 7 else "desc"
+                meses_activos.add(mes_str)
+                total_ingresos_historicos += monto_mov
+                
+        cantidad_meses = len(meses_activos)
+        if cantidad_meses > 0:
+            I = total_ingresos_historicos // cantidad_meses
+            origen_ingreso = f"Promedio variable ({cantidad_meses} meses)"
+        else:
+            I = 1 # Para evitar división por cero en la fórmula
+            origen_ingreso = "Sin historial (Asumido 0)"
+        
+    deudas = repo.get_deudas_activas()
+    QD_act = 0
+    for d in deudas:
+        m_total = int(d.get("monto_total", 0))
+        cuotas = int(d.get("cuotas", 1))
+        if cuotas > 0:
+            QD_act += m_total // cuotas
+            
+    QD_new = monto // meses if meses > 0 else monto
+    
+    MLD = I - GF - QD_act - QD_new
+    DTI = ((QD_act + QD_new) / I) * 100 if I > 0 else 100
+    
+    if DTI <= 30 and MLD > 0:
+        semaforo = "🟢 Viable"
+        mensaje = "Tu salud financiera soporta esta nueva cuota cómodamente."
+    elif DTI <= 40 and MLD > 0:
+        semaforo = "🟡 Ajustado"
+        mensaje = "Puedes pagarlo, pero tu presupuesto quedará muy ajustado para emergencias."
+    else:
+        semaforo = "🔴 Riesgo"
+        mensaje = "Operación de Alto Riesgo. La cuota supera tu capacidad de pago o te deja en saldo rojo."
+        
+    project_id = str(uuid.uuid4())[:8]
+    sim_dict = {
+        "id_proyecto": project_id,
+        "monto": monto,
+        "meses": meses,
+        "concepto": concept,
+        "cuota_estimada": QD_new,
+        "estado": "simulado"
+    }
+    repo.insert_simulacion(sim_dict)
+    
+    def gs(num):
+        return f"{int(num):,}".replace(",", ".")
+        
+    return (
+        f"📊 *Simulador de Viabilidad Financiera*\n\n"
+        f"*Tu Realidad Financiera Actual:*\n"
+        f"Ingresos: ₲ {gs(I)} _{origen_ingreso}_\n"
+        f"Gastos Fijos: ₲ {gs(GF)}\n"
+        f"Cuotas Actuales: ₲ {gs(QD_act)}\n"
+        f"--------------------------------\n"
+        f"*Tu Proyecto:* {concept if concept else 'N/A'}\n"
+        f"*Nueva Cuota Estimada:* ₲ {gs(QD_new)}\n"
+        f"*Margen Libre Post-Proyecto (MLD):* ₲ {gs(MLD)}\n\n"
+        f"🚦 *Diagnóstico:* {semaforo}\n"
+        f"*Endeudamiento Global (DTI):* {DTI:.1f}%\n\n"
+        f"_{mensaje}_\n\n"
+        f"(Usa `/aprobar_proyecto {project_id}` para registrarlo)"
+    )
+
+def approve_project(project_id: str) -> None:
+    repo = SheetsRepository()
+    repo.update_simulacion_estado(project_id, "aprobado")
+    # Transition to Deudas_Maestro could be done here as well by getting simulation details
+

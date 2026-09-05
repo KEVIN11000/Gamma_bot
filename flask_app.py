@@ -22,7 +22,7 @@ from com.core.utils import limpiar_menus_expirados
 
 logger = setup_logger("flask")
 app = Flask(__name__)
-limiter = Limiter(key_func=get_remote_address, default_limits=["10 per minute"])
+limiter = Limiter(key_func=get_remote_address, default_limits=["10 per minute"], storage_uri="memory://")
 limiter.init_app(app)
 bot_instance = GAMMA()
 base_path = Path(__file__).resolve().parent
@@ -217,8 +217,6 @@ def _validar_cron_secret() -> Any:
         "secret", ""
     )
     return token_enviado == secret
-
-"""
 @limiter.limit("10 per minute")
 @app.route("/cron/resumen-semanal", methods=["GET", "POST"])
 def cron_resumen_semanal() -> Any:
@@ -317,5 +315,4 @@ def cron_asesor_ia() -> Any:
     return (
         ("✅ Insights del Asesor IA enviados.", 200)
         if exito
-        else ("❌ Error en Asesor IA.", 500)
-    )"""
+    )

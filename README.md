@@ -7,6 +7,7 @@
 ## 🚀 Características Principales
 
 *   **⏱️ Sistema Inteligente de Marcado:** Control de asistencia dinámico en Google Sheets mediante comandos interactivos. Soporta jornadas normales con pausas de almuerzo o salidas directas.
+*   **💰 Gestión Financiera y Deudas (Nuevo v1.10.0):** Sistema contable integrado. Incluye comandos para alta de deudas (`/nueva_deuda`), registro de abonos (`/abonar`), simulación de proyectos (`/simular`), y cierres mensuales automatizados (`/cierre_mensual`).
 *   **🧠 Agendamiento con Lenguaje Natural:** Interpretación semántica de mensajes libres (ej: *"hacer el laboratorio mañana a la tarde"*) utilizando el modelo `gemini-2.5-flash` para extraer hitos con precisión cronológica.
 *   **📋 Panel Visual de Avisos:** Interfaz móvil interactiva con cuadrículas de botones en tiempo real para visualizar, limpiar de forma automática y eliminar recordatorios en caliente sin generar spam en el chat.
 *   **🔔 Control de Alertas Anti-Spam:** Sistema de notificaciones programadas por hitos temporales que avisa de manera automática a los 30, 7, 5, 3 y 1 días de anticipación de cada evento.
@@ -28,17 +29,18 @@
 ## 📂 Estructura del Proyecto
 
 ```text
-mysite/
-│
-├── com/
-|   └──bot.py               # Orquestador del Bot, manejadores de comandos y botones
-├── logic/
-│   └── logic.py            # Núcleo lógico: Sheets, PDF, Gemini e hilos de control
+Gamma_bot/
+├── com/                    # Manejadores de comandos de Telegram (ej. deudas.py)
+├── logic/                  # Lógica de negocio core (Financiero, Asistencia, Cron jobs)
+├── repositories/           # Capa de acceso a datos (Abstracción de Google Sheets)
+├── services/               # Integraciones con servicios externos (Telegram API, Calendar, Drive)
+├── tests/                  # Suite de pruebas unitarias y de integración (pytest)
+├── docs/                   # Documentación de arquitectura, QA y release notes
 ├── reportes/               # Repositorio local de PDFs contables generados
-├── .env                    # Variables de entorno confidenciales
+├── flask_app.py            # Servidor Webhook / Entrypoint del Bot
+├── config.py               # Configuraciones globales
 ├── credentials.json        # Claves de acceso de Google Cloud Service Account
-├── periodo_actual.txt      # Pestaña activa del mes en Google Sheets
-└── avisos.json             # Base de datos persistente para alertas temporales
+└── .env                    # Variables de entorno confidenciales
 ```
 
 ---

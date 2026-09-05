@@ -54,6 +54,7 @@ def mock_message():
     msg.chat.id = 12345
     msg.from_user = MagicMock(spec=User)
     msg.from_user.id = 67890
+    msg.from_user.username = "testuser"
     msg.message_id = 111
     return msg
 
@@ -62,6 +63,7 @@ def mock_call(mock_message):
     call = MagicMock(spec=CallbackQuery)
     call.id = "call_id_1"
     call.message = mock_message
+    call.from_user = mock_message.from_user
     return call
 
 def get_callback_handlers(bot, app):
@@ -174,8 +176,8 @@ def test_comando_avisos_with_items(mock_bot, mock_gamma_app, mock_message):
     
     handler(mock_message)
     
-    mock_bot.reply_to.assert_called_once()
-    args, kwargs = mock_bot.reply_to.call_args
+    mock_bot.send_message.assert_called_once()
+    args, kwargs = mock_bot.send_message.call_args
     assert "Aviso 1" in args[1]
     assert "Aviso 2" in args[1]
     assert "Aviso 3" in args[1]
@@ -235,8 +237,8 @@ def test_callback_borrar_aviso_failure(mock_bot, mock_gamma_app, mock_call):
     
     borrar_handler(mock_call)
     
-    mock_bot.send_message.assert_called_once()
-    assert "error al eliminar" in mock_bot.send_message.call_args[0][1]
+    assert mock_bot.send_message.call_count == 2
+    assert "error al eliminar" in mock_bot.send_message.call_args_list[0][0][1]
 
 def test_callback_borrar_aviso_out_of_bounds(mock_bot, mock_gamma_app, mock_call):
     handlers = get_callback_handlers(mock_bot, mock_gamma_app)
@@ -305,9 +307,10 @@ def test_procesar_frase_aviso_success(mock_estado, mock_aiservice, mock_bot, moc
     
     mock_aiservice.interpretar_frase_con_ia.assert_called_once_with("entregar tp mañana")
     mock_estado.set.assert_called_once_with(12345, datos_ia)
-    mock_bot.edit_message_text.assert_called_once()
-    args, kwargs = mock_bot.edit_message_text.call_args
-    assert "Previsualización" in args[0]
+    mock_bot.delete_message.assert_called_once()
+    assert mock_bot.send_message.call_count == 2
+    args, kwargs = mock_bot.send_message.call_args
+    assert "Previsualización" in args[1]
     assert kwargs.get("reply_markup") is not None
 
 @patch('com.handlers.avisos.AIService')

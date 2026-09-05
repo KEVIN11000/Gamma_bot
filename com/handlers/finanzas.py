@@ -102,13 +102,13 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             EstadoGestor.set(cache_key, datos)
 
             neto = "{:,}".format(
-                gamma_app.agente_financiero._limpiar_monto(datos.get("neto", 0))
+                gamma_app.agente_financiero.limpiar_monto(datos.get("neto", 0))
             ).replace(",", ".")
             iva = "{:,}".format(
-                gamma_app.agente_financiero._limpiar_monto(datos.get("iva", 0))
+                gamma_app.agente_financiero.limpiar_monto(datos.get("iva", 0))
             ).replace(",", ".")
             total = "{:,}".format(
-                gamma_app.agente_financiero._limpiar_monto(datos.get("total", 0))
+                gamma_app.agente_financiero.limpiar_monto(datos.get("total", 0))
             ).replace(",", ".")
 
             texto_confirmacion = (
