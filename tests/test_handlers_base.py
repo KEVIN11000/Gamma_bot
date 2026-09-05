@@ -1,10 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch, mock_open
 import os
-from telebot.types import Message
 
 # Mock decorators BEFORE importing the module to test, or patch them inside the module
-import com.handlers.base as base_handlers
 from com.handlers.base import _registrar_comandos_menu, register_base_handlers
 
 @pytest.fixture
@@ -35,7 +33,7 @@ def test_registrar_comandos_menu_prod(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 10
+    assert len(commands_called) == 15
     command_names = [c.command for c in commands_called]
     assert "debug" not in command_names
 
@@ -44,7 +42,7 @@ def test_registrar_comandos_menu_dev(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 11
+    assert len(commands_called) == 16
     command_names = [c.command for c in commands_called]
     assert "debug" in command_names
 

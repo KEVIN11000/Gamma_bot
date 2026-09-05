@@ -1,4 +1,3 @@
-import os
 from dotenv import load_dotenv
 from flask_app import app
 from logger_config import setup_logger

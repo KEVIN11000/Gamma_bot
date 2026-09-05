@@ -32,8 +32,13 @@ class TestSheetsRepository(unittest.TestCase):
     def test_insert_simulacion(self):
         self.repo.insert_simulacion({"proyecto": "A"})
 
-    def test_update_simulacion_estado(self):
+    @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
+    def test_update_simulacion_estado(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [{"id_proyecto": "123", "estado": "pendiente"}]
+        mock_get_sheet.return_value = mock_ws
         self.repo.update_simulacion_estado("123", "aprobado")
+        mock_ws.update_cell.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()

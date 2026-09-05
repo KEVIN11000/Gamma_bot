@@ -12,7 +12,6 @@ from com.core.security import auth_required, verificar_usuario_manual
 from logger_config import setup_logger
 from logic.ai_service import AIService
 from logic.logic import EstadoGestor
-from com.core.utils import reply_with_expiration
 
 logger = setup_logger("avisos_handler")
 

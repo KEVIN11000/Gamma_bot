@@ -1,6 +1,6 @@
 import unittest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Ensure we don't write to /tmp on Windows during tests, but our code hardcodes /tmp,
 # so we mock open or just let it fail/write to the C: drive if it can. 
@@ -61,7 +61,7 @@ class TestFinancieroLogic(unittest.TestCase):
         
         drive_id = execute_monthly_closing(9, 2026)
         self.assertEqual(drive_id, "mock_drive_id")
-        import os, tempfile
+        import tempfile
         expected_path = os.path.join(tempfile.gettempdir(), "backup_2026_9.csv")
         mock_open.assert_called_once_with(expected_path, "w")
 

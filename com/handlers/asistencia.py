@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 from com.core.utils import reply_with_expiration
 
 from com.core.errors import safe_handler
-from com.core.security import auth_required, verificar_usuario_manual
+from com.core.security import auth_required
 from logger_config import setup_logger
 from logic.logic import EstadoGestor
 from services.asistencia_service import (
@@ -18,7 +17,6 @@ from services.asistencia_service import (
     capturar_descuento_reporte,
     generar_y_enviar_reporte_por_hoja,
 )
-from com.core.utils import reply_with_expiration
 
 logger = setup_logger("asistencia_handler")
 

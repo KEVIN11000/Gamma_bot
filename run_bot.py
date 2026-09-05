@@ -1,4 +1,3 @@
-import os
 from dotenv import load_dotenv
 from com.bot import GAMMA
 from logger_config import setup_logger

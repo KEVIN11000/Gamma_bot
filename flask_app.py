@@ -315,4 +315,5 @@ def cron_asesor_ia() -> Any:
     return (
         ("✅ Insights del Asesor IA enviados.", 200)
         if exito
+        else ("❌ Error en Asesor IA.", 500)
     )

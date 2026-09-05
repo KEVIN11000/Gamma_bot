@@ -2,8 +2,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 # Mock the decorators BEFORE importing the handlers
-import sys
-import os
 
 patch('com.core.security.auth_required', lambda bot: lambda f: f).start()
 patch('com.core.errors.safe_handler', lambda bot, logger: lambda f: f).start()

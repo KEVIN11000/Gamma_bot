@@ -1,6 +1,4 @@
 import pytest
-import os
-import time
 from unittest.mock import MagicMock, patch
 from com.core.utils import _load_pending, _save_pending, limpiar_menus_expirados, reply_with_expiration
 
