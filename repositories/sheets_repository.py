@@ -47,59 +47,76 @@ class SheetsRepository:
         except Exception:
             return self._wb.add_worksheet(title=sheet_name, rows=100, cols=20)
 
-    # Flujo A / Deudas_Maestro
-    def insert_deuda(self, deuda_dict: dict) -> None:
-        ws = self._get_sheet("Deudas_Maestro")
-        ws.append_row(list(deuda_dict.values()))
+    # --- Obligaciones_Maestro ---
+    def insert_obligacion(self, obligacion_dict: dict) -> None:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        headers = ["ID_Obligacion", "Tipo", "Nombre_Concepto", "Monto_Inicial", "Saldo_Actual", "Estado", "Tasa_Interes", "Fecha_Vencimiento", "Cuotas", "Event_ID"]
+        row = [obligacion_dict.get(h, "") for h in headers]
+        ws.append_row(row)
 
-    # Flujo B / Deudas_Maestro
-    def get_deudas_activas(self) -> list[dict]:
-        ws = self._get_sheet("Deudas_Maestro")
+    def update_obligacion_estado(self, id_obligacion: str, estado: str) -> None:
+        ws = self._get_sheet("Obligaciones_Maestro")
         records = ws.get_all_records()
-        return [r for r in records if str(r.get("estado", "")).lower() == "activa"]
+        for idx, r in enumerate(records, start=2): # +1 for header, +1 for 0-index
+            if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
+                keys_lower = [k.lower() for k in r.keys()]
+                estado_idx = keys_lower.index("estado") + 1 if "estado" in keys_lower else -1
+                if estado_idx > 0:
+                    ws.update_cell(idx, estado_idx, estado)
+                break
 
-    # Flujo C / Pagos_Abonos_Detalle
-    def insert_pago_abono(self, pago_dict: dict) -> None:
-        ws = self._get_sheet("Pagos_Abonos_Detalle")
-        ws.append_row(list(pago_dict.values()))
+    def get_obligacion_by_id(self, id_obligacion: str) -> dict:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        records = ws.get_all_records()
+        for r in records:
+            if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
+                return r
+        return {}
+        
+    def get_obligaciones_activas(self) -> list[dict]:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        records = ws.get_all_records()
+        return [r for r in records if str(r.get("Estado", "")).lower() == "activo"]
 
-    # Libro_Diario
+    # --- Libro_Diario ---
     def insert_movimiento_diario(self, movimiento_dict: dict) -> None:
         ws = self._get_sheet("Libro_Diario")
-        ws.append_row(list(movimiento_dict.values()))
+        headers = ["ID_Transaccion", "Fecha", "Concepto", "Tipo_Movimiento", "Monto_Total", "Tasa_IVA", "Monto_Gravado", "Monto_IVA", "Clasificacion_IVA", "ID_Obligacion"]
+        row = [movimiento_dict.get(h, "") for h in headers]
+        ws.append_row(row)
 
-    def get_movimientos_mes(self, month: int, year: int) -> list[dict]:
+    def get_movimientos_mes(self, month: str, year: str) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
         records = ws.get_all_records()
-        return [r for r in records if str(r.get("mes", "")) == str(month) and str(r.get("year", "")) == str(year)]
+        result = []
+        for r in records:
+            fecha_str = str(r.get("Fecha", ""))
+            if f"{year}-{str(month).zfill(2)}" in fecha_str or f"{str(month).zfill(2)}-{year}" in fecha_str:
+                result.append(r)
+        return result
 
     def get_all_movimientos(self) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
         return ws.get_all_records()
 
-    # Flujo D / Cierres_Mensuales
-    def insert_cierre_mensual(self, cierre_dict: dict) -> None:
-        ws = self._get_sheet("Cierres_Mensuales")
-        ws.append_row(list(cierre_dict.values()))
+    # --- Cierres_Historicos ---
+    def get_last_cierre_mensual(self) -> dict:
+        ws = self._get_sheet("Cierres_Historicos")
+        records = ws.get_all_records()
+        if records:
+            return records[-1]
+        return {}
 
-    # Presupuesto_Base
+    def insert_cierre_mensual(self, cierre_dict: dict) -> None:
+        ws = self._get_sheet("Cierres_Historicos")
+        headers = ["Mes_Anio", "Total_Ingresos_Efectivo", "Total_Egresos_Efectivo", "IVA_Debito_Fiscal", "IVA_Credito_Fiscal", "Liquidacion_IVA", "Estado_IVA", "Margen_Libre_Disponible", "Saldo_Acumulado_Actual"]
+        row = [cierre_dict.get(h, "") for h in headers]
+        ws.append_row(row)
+
+    # --- Presupuesto_Base ---
     def get_presupuesto_base(self) -> dict:
         ws = self._get_sheet("Presupuesto_Base")
         records = ws.get_all_records()
         if records:
             return records[0]
         return {}
-
-    # Flujo E / Simulador_Proyectos
-    def insert_simulacion(self, simulacion_dict: dict) -> None:
-        ws = self._get_sheet("Simulador_Proyectos")
-        ws.append_row(list(simulacion_dict.values()))
-
-    # Flujo F / Simulador_Proyectos
-    def update_simulacion_estado(self, project_id: str, estado: str) -> None:
-        ws = self._get_sheet("Simulador_Proyectos")
-        records = ws.get_all_records()
-        for idx, r in enumerate(records, start=2): # +1 for header, +1 for 0-index
-            if str(r.get("id_proyecto", "")) == str(project_id):
-                ws.update_cell(idx, list(r.keys()).index("estado") + 1, estado)
-                break

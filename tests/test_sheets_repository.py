@@ -1,44 +1,64 @@
 import unittest
 from repositories.sheets_repository import SheetsRepository
+import unittest.mock
 
 class TestSheetsRepository(unittest.TestCase):
     def setUp(self):
         self.repo = SheetsRepository()
 
-    def test_insert_deuda(self):
-        self.repo.insert_deuda({"monto": 1000})
+    def test_insert_obligacion(self):
+        self.repo.insert_obligacion({"ID_Obligacion": "123"})
 
-    def test_get_deudas_activas(self):
-        result = self.repo.get_deudas_activas()
-        self.assertEqual(result, [])
+    @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
+    def test_update_obligacion_estado(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [{"ID_Obligacion": "123", "Estado": "Simulado"}]
+        mock_get_sheet.return_value = mock_ws
+        self.repo.update_obligacion_estado("123", "Activo")
+        mock_ws.update_cell.assert_called_once()
 
-    def test_insert_pago_abono(self):
-        self.repo.insert_pago_abono({"monto": 500})
+    @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
+    def test_get_obligacion_by_id(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [{"ID_Obligacion": "123"}]
+        mock_get_sheet.return_value = mock_ws
+        res = self.repo.get_obligacion_by_id("123")
+        self.assertEqual(res, {"ID_Obligacion": "123"})
+
+    @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
+    def test_get_obligaciones_activas(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [{"ID_Obligacion": "123", "Estado": "Activo"}, {"ID_Obligacion": "456", "Estado": "Simulado"}]
+        mock_get_sheet.return_value = mock_ws
+        result = self.repo.get_obligaciones_activas()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["ID_Obligacion"], "123")
 
     def test_insert_movimiento_diario(self):
-        self.repo.insert_movimiento_diario({"monto": 100})
+        self.repo.insert_movimiento_diario({"Monto_Total": 100})
 
-    def test_get_movimientos_mes(self):
-        result = self.repo.get_movimientos_mes(5, 2023)
-        self.assertEqual(result, [])
+    @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
+    def test_get_movimientos_mes(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [{"Fecha": "2023-05-15"}]
+        mock_get_sheet.return_value = mock_ws
+        result = self.repo.get_movimientos_mes("5", "2023")
+        self.assertEqual(len(result), 1)
 
     def test_insert_cierre_mensual(self):
-        self.repo.insert_cierre_mensual({"total": 2000})
+        self.repo.insert_cierre_mensual({"Total_Ingresos_Efectivo": 2000})
+
+    @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
+    def test_get_last_cierre_mensual(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [{"Saldo_Acumulado_Actual": 100}, {"Saldo_Acumulado_Actual": 300}]
+        mock_get_sheet.return_value = mock_ws
+        res = self.repo.get_last_cierre_mensual()
+        self.assertEqual(res["Saldo_Acumulado_Actual"], 300)
 
     def test_get_presupuesto_base(self):
         result = self.repo.get_presupuesto_base()
         self.assertEqual(result, {})
-
-    def test_insert_simulacion(self):
-        self.repo.insert_simulacion({"proyecto": "A"})
-
-    @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
-    def test_update_simulacion_estado(self, mock_get_sheet):
-        mock_ws = unittest.mock.MagicMock()
-        mock_ws.get_all_records.return_value = [{"id_proyecto": "123", "estado": "pendiente"}]
-        mock_get_sheet.return_value = mock_ws
-        self.repo.update_simulacion_estado("123", "aprobado")
-        mock_ws.update_cell.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()

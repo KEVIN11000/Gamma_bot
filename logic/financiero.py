@@ -430,75 +430,119 @@ import uuid
 def create_debt(entity: str, concept: str, total_amount: int, quotas: int, first_due_date: str) -> str:
     repo = SheetsRepository()
     debt_id = str(uuid.uuid4())[:8]
-    deuda_dict = {
-        "id_deuda": debt_id,
-        "entidad": entity,
-        "concepto": concept,
-        "monto_total": total_amount,
-        "cuotas": quotas,
-        "primer_vencimiento": first_due_date,
-        "estado": "activa"
+    event_id = CalendarService.create_event(f"Vencimiento {entity}", first_due_date, f"Pago de deuda: {concept}")
+    obligacion_dict = {
+        "ID_Obligacion": debt_id,
+        "Tipo": "Deuda",
+        "Nombre_Concepto": concept,
+        "Monto_Inicial": total_amount,
+        "Saldo_Actual": total_amount,
+        "Estado": "Activo",
+        "Tasa_Interes": 0,
+        "Fecha_Vencimiento": first_due_date,
+        "Cuotas": quotas,
+        "Event_ID": event_id
     }
-    repo.insert_deuda(deuda_dict)
-    CalendarService.create_event(f"Vencimiento {entity}", first_due_date, f"Pago de deuda: {concept}")
+    repo.insert_obligacion(obligacion_dict)
     return debt_id
 
 def get_active_debts(debt_id: str = None) -> list[dict]:
     repo = SheetsRepository()
-    debts = repo.get_deudas_activas()
+    debts = repo.get_obligaciones_activas()
     if debt_id:
-        debts = [d for d in debts if d.get("id_deuda") == debt_id]
+        debts = [d for d in debts if str(d.get("ID_Obligacion", "")) == str(debt_id)]
     return debts
 
-def register_payment(debt_id: str, amount: int, date: str) -> None:
+def safe_int(value) -> int:
+    try:
+        if not value: return 0
+        return int(float(str(value).strip()))
+    except ValueError:
+        return 0
+
+def calcular_iva(monto_total: int, tasa_iva: str) -> tuple[int, int]:
+    tasa_iva = str(tasa_iva).strip().lower()
+    if tasa_iva == "10%":
+        gravado = round(monto_total / 1.1)
+        iva = monto_total - gravado
+    elif tasa_iva == "5%":
+        gravado = round(monto_total / 1.05)
+        iva = monto_total - gravado
+    else:
+        gravado = monto_total
+        iva = 0
+    return gravado, iva
+
+def register_payment(debt_id: str, amount: int, date: str, tasa_iva: str = "Exento") -> None:
     repo = SheetsRepository()
-    pago_dict = {
-        "id_deuda": debt_id,
-        "monto": amount,
-        "fecha": date
-    }
-    repo.insert_pago_abono(pago_dict)
+    import uuid
+    
+    gravado, iva = calcular_iva(amount, tasa_iva)
     
     movimiento_dict = {
-        "fecha": date,
-        "tipo_movimiento": "Gasto",
-        "proveedor_cliente": "Pago Deuda",
-        "nro_factura": "S/N",
-        "neto": amount,
-        "iva": 0,
-        "total": amount,
-        "categoria": "Pago Deuda",
-        "comprobante": "S/N",
-        "file_id": "",
-        "mes": date[5:7] if len(date) >= 7 else ""
+        "ID_Transaccion": str(uuid.uuid4())[:8],
+        "Fecha": date,
+        "Concepto": "Pago Deuda",
+        "Tipo_Movimiento": "Egreso",
+        "Monto_Total": amount,
+        "Tasa_IVA": tasa_iva,
+        "Monto_Gravado": gravado,
+        "Monto_IVA": iva,
+        "Clasificacion_IVA": "N/A" if tasa_iva.lower() == "exento" else "Crédito Fiscal",
+        "ID_Obligacion": debt_id
     }
     repo.insert_movimiento_diario(movimiento_dict)
     
-    # In a real scenario we'd query the event_id for the debt.
-    CalendarService.mark_event_completed(f"mock_event_id_for_{debt_id}")
+    obligacion = repo.get_obligacion_by_id(debt_id)
+    event_id = obligacion.get("Event_ID") if obligacion else ""
+    if event_id:
+        CalendarService.mark_event_completed(event_id)
 
 def execute_monthly_closing(month: int, year: int) -> str:
     repo = SheetsRepository()
-    # Logic to aggregate data from Libro_Diario
-    movimientos = repo.get_movimientos_mes(month, year)
-    total_gastos = sum(m.get("total", 0) for m in movimientos if m.get("tipo_movimiento") == "Gasto")
-    total_ingresos = sum(m.get("total", 0) for m in movimientos if m.get("tipo_movimiento") == "Ingreso")
+    movimientos = repo.get_movimientos_mes(str(month), str(year))
+    
+    total_gastos = sum(safe_int(m.get("Monto_Total", 0)) for m in movimientos if str(m.get("Tipo_Movimiento", "")).lower() == "egreso")
+    total_ingresos = sum(safe_int(m.get("Monto_Total", 0)) for m in movimientos if str(m.get("Tipo_Movimiento", "")).lower() == "ingreso")
+    
+    iva_debito_fiscal = sum(safe_int(m.get("Monto_IVA", 0)) for m in movimientos if str(m.get("Clasificacion_IVA", "")).lower() in ["débito fiscal", "debito fiscal"])
+    iva_credito_fiscal = sum(safe_int(m.get("Monto_IVA", 0)) for m in movimientos if str(m.get("Clasificacion_IVA", "")).lower() in ["crédito fiscal", "credito fiscal"])
+    
+    liquidacion_iva = iva_debito_fiscal - iva_credito_fiscal
+    estado_iva = "A Pagar" if liquidacion_iva > 0 else "Saldo a Favor"
+    
+    provision_impuestos = liquidacion_iva if liquidacion_iva > 0 else 0
+    margen_libre = total_ingresos - total_gastos - provision_impuestos
+    
+    last_cierre = repo.get_last_cierre_mensual()
+    saldo_acumulado_anterior = safe_int(last_cierre.get("Saldo_Acumulado_Actual", 0)) if last_cierre else 0
+    saldo_acumulado_actual = saldo_acumulado_anterior + margen_libre
     
     cierre_dict = {
-        "mes": month,
-        "year": year,
-        "total_gastos": total_gastos,
-        "total_ingresos": total_ingresos,
-        "balance": total_ingresos - total_gastos
+        "Mes_Anio": f"{str(month).zfill(2)}-{year}",
+        "Total_Ingresos_Efectivo": total_ingresos,
+        "Total_Egresos_Efectivo": total_gastos,
+        "IVA_Debito_Fiscal": iva_debito_fiscal,
+        "IVA_Credito_Fiscal": iva_credito_fiscal,
+        "Liquidacion_IVA": liquidacion_iva,
+        "Estado_IVA": estado_iva,
+        "Margen_Libre_Disponible": margen_libre,
+        "Saldo_Acumulado_Actual": saldo_acumulado_actual
     }
     repo.insert_cierre_mensual(cierre_dict)
     
     import tempfile
     import os
-    # Generate backup
+    import csv
+    
     backup_path = os.path.join(tempfile.gettempdir(), f"backup_{year}_{month}.csv")
-    with open(backup_path, "w") as f:
-        f.write("mock backup content")
+    with open(backup_path, "w", newline='', encoding='utf-8') as f:
+        if movimientos:
+            writer = csv.DictWriter(f, fieldnames=movimientos[0].keys())
+            writer.writeheader()
+            writer.writerows(movimientos)
+        else:
+            f.write("No hay movimientos para este mes.")
         
     drive_id = DriveService.upload_backup(backup_path)
     return drive_id
@@ -508,10 +552,10 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
     presupuesto = repo.get_presupuesto_base()
     
     # 1. Gastos fijos
-    GF = int(presupuesto.get("gastos_fijos", presupuesto.get("Gastos Fijos", 0)))
+    GF = safe_int(presupuesto.get("gastos_fijos", presupuesto.get("Gastos Fijos", 0)))
     
     # 2. Lógica de Ingresos (Fijo vs Promedio Variable)
-    I = int(presupuesto.get("ingresos", presupuesto.get("Ingresos", 0)))
+    I = safe_int(presupuesto.get("ingresos", presupuesto.get("Ingresos", 0)))
     origen_ingreso = "Fijo (Presupuesto Base)"
     
     if I == 0:
@@ -520,10 +564,10 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
         total_ingresos_historicos = 0
         
         for m in movimientos:
-            tipo = str(m.get("tipo_movimiento", m.get("Tipo Movimiento", ""))).strip().lower()
+            tipo = str(m.get("Tipo_Movimiento", m.get("tipo_movimiento", ""))).strip().lower()
             if tipo == "ingreso":
-                monto_mov = int(m.get("total", m.get("Total", 0)))
-                fecha = str(m.get("fecha", m.get("Fecha", ""))).strip()
+                monto_mov = safe_int(m.get("Monto_Total", m.get("total", 0)))
+                fecha = str(m.get("Fecha", m.get("fecha", ""))).strip()
                 mes_str = fecha[:7] if len(fecha) >= 7 else "desc"
                 meses_activos.add(mes_str)
                 total_ingresos_historicos += monto_mov
@@ -536,13 +580,14 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
             I = 1 # Para evitar división por cero en la fórmula
             origen_ingreso = "Sin historial (Asumido 0)"
         
-    deudas = repo.get_deudas_activas()
+    deudas = repo.get_obligaciones_activas()
     QD_act = 0
     for d in deudas:
-        m_total = int(d.get("monto_total", 0))
-        cuotas = int(d.get("cuotas", 1))
-        if cuotas > 0:
-            QD_act += m_total // cuotas
+        m_total = safe_int(d.get("Monto_Inicial", 0))
+        cuotas = safe_int(d.get("Cuotas", 1))
+        if cuotas <= 0:
+            cuotas = 1
+        QD_act += m_total // cuotas
             
     QD_new = monto // meses if meses > 0 else monto
     
@@ -560,15 +605,19 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
         mensaje = "Operación de Alto Riesgo. La cuota supera tu capacidad de pago o te deja en saldo rojo."
         
     project_id = str(uuid.uuid4())[:8]
-    sim_dict = {
-        "id_proyecto": project_id,
-        "monto": monto,
-        "meses": meses,
-        "concepto": concept,
-        "cuota_estimada": QD_new,
-        "estado": "simulado"
+    obligacion_dict = {
+        "ID_Obligacion": project_id,
+        "Tipo": "Proyecto",
+        "Nombre_Concepto": concept,
+        "Monto_Inicial": monto,
+        "Saldo_Actual": monto,
+        "Estado": "Simulado",
+        "Tasa_Interes": 0,
+        "Fecha_Vencimiento": "",
+        "Cuotas": meses,
+        "Event_ID": ""
     }
-    repo.insert_simulacion(sim_dict)
+    repo.insert_obligacion(obligacion_dict)
     
     def gs(num):
         return f"{int(num):,}".replace(",", ".")
@@ -591,6 +640,7 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
 
 def approve_project(project_id: str) -> None:
     repo = SheetsRepository()
-    repo.update_simulacion_estado(project_id, "aprobado")
+    repo.update_obligacion_estado(project_id, "Activo")
+
     # Transition to Deudas_Maestro could be done here as well by getting simulation details
 
