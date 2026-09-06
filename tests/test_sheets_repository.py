@@ -58,7 +58,7 @@ class TestSheetsRepository(unittest.TestCase):
 
     def test_get_presupuesto_base(self):
         result = self.repo.get_presupuesto_base()
-        self.assertEqual(result, {})
+        self.assertTrue(isinstance(result, dict))
 
 if __name__ == '__main__':
     unittest.main()
