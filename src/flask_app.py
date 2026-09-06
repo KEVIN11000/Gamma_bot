@@ -25,7 +25,7 @@ app = Flask(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["10 per minute"], storage_uri="memory://")
 limiter.init_app(app)
 bot_instance = GAMMA()
-base_path = Path(__file__).resolve().parent
+base_path = Path(__file__).resolve().parent.parent
 
 
 @app.route(f"/{config.TOKEN}", methods=["POST"])
