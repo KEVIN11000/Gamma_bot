@@ -14,6 +14,9 @@ from flask import Flask, abort, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+
 import config
 from com.bot import GAMMA
 from logger_config import setup_logger

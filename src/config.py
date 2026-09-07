@@ -1,5 +1,8 @@
 import os
 from typing import List, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Load environment variables with minimal validation
 TOKEN: str = os.getenv("TOKEN", "")
