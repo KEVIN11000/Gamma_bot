@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
-from src.com.bot import GAMMA
-from src.logger_config import setup_logger
+from com.bot import GAMMA
+from logger_config import setup_logger
 
 logger = setup_logger("run_bot")
 

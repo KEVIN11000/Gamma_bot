@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch, mock_open
 import os
 
 # Mock decorators BEFORE importing the module to test, or patch them inside the module
-from src.com.handlers.base import _registrar_comandos_menu, register_base_handlers
+from com.handlers.base import _registrar_comandos_menu, register_base_handlers
 
 @pytest.fixture
 def bot_mock():
@@ -46,8 +46,8 @@ def test_registrar_comandos_menu_dev(bot_mock):
     command_names = [c.command for c in commands_called]
     assert "debug" in command_names
 
-@patch("src.com.handlers.base.auth_required")
-@patch("src.com.handlers.base.safe_handler")
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
 def test_comando_debug_prod(mock_safe, mock_auth, bot_mock, mock_message):
     # Mock decorators to pass-through
     mock_auth.return_value = lambda f: f
@@ -65,8 +65,8 @@ def test_comando_debug_prod(mock_safe, mock_auth, bot_mock, mock_message):
             "🔒 El comando de depuración está desactivado en este entorno de producción."
         )
 
-@patch("src.com.handlers.base.auth_required")
-@patch("src.com.handlers.base.safe_handler")
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
 def test_comando_debug_dev_invalid(mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f
@@ -79,9 +79,9 @@ def test_comando_debug_dev_invalid(mock_safe, mock_auth, bot_mock, mock_message)
         bot_mock.reply_to.assert_called_once()
         assert "⚠️ *Comando incorrecto.*" in bot_mock.reply_to.call_args[0][1]
 
-@patch("src.com.handlers.base.auth_required")
-@patch("src.com.handlers.base.safe_handler")
-@patch("src.com.handlers.base.Path.exists")
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
+@patch("com.handlers.base.Path.exists")
 def test_comando_debug_dev_app_not_exists(mock_exists, mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f
@@ -96,9 +96,9 @@ def test_comando_debug_dev_app_not_exists(mock_exists, mock_safe, mock_auth, bot
         bot_mock.reply_to.assert_called_once()
         assert "El archivo" in bot_mock.reply_to.call_args[0][1]
 
-@patch("src.com.handlers.base.auth_required")
-@patch("src.com.handlers.base.safe_handler")
-@patch("src.com.handlers.base.Path.exists")
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
+@patch("com.handlers.base.Path.exists")
 def test_comando_debug_dev_app_exists_empty(mock_exists, mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f
@@ -116,9 +116,9 @@ def test_comando_debug_dev_app_exists_empty(mock_exists, mock_safe, mock_auth, b
         bot_mock.reply_to.assert_called_once()
         assert "[El archivo existe pero está vacío]" in bot_mock.reply_to.call_args[0][1]
 
-@patch("src.com.handlers.base.auth_required")
-@patch("src.com.handlers.base.safe_handler")
-@patch("src.com.handlers.base.Path.exists")
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
+@patch("com.handlers.base.Path.exists")
 def test_comando_debug_dev_app_exists_content(mock_exists, mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f
@@ -136,10 +136,10 @@ def test_comando_debug_dev_app_exists_content(mock_exists, mock_safe, mock_auth,
         bot_mock.reply_to.assert_called_once()
         assert "log1" in bot_mock.reply_to.call_args[0][1]
 
-@patch("src.com.handlers.base.auth_required")
-@patch("src.com.handlers.base.safe_handler")
-@patch("src.com.handlers.base._registrar_comandos_menu")
-@patch("src.com.handlers.base.Path.exists")
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
+@patch("com.handlers.base._registrar_comandos_menu")
+@patch("com.handlers.base.Path.exists")
 def test_comando_start(mock_exists, mock_registrar, mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f
@@ -160,10 +160,10 @@ def test_comando_start(mock_exists, mock_registrar, mock_safe, mock_auth, bot_mo
         assert "1.0.0" in bot_mock.reply_to.call_args[0][1]
         assert "/debug" not in bot_mock.reply_to.call_args[0][1]
 
-@patch("src.com.handlers.base.auth_required")
-@patch("src.com.handlers.base.safe_handler")
-@patch("src.com.handlers.base._registrar_comandos_menu")
-@patch("src.com.handlers.base.Path.exists")
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
+@patch("com.handlers.base._registrar_comandos_menu")
+@patch("com.handlers.base.Path.exists")
 def test_comando_start_dev(mock_exists, mock_registrar, mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f

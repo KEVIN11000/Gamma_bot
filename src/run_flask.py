@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
-from src.flask_app import app
-from src.logger_config import setup_logger
+from flask_app import app
+from logger_config import setup_logger
 
 logger = setup_logger("run_flask")
 

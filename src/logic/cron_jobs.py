@@ -8,7 +8,7 @@ from typing import Any
 import pytz
 import requests
 
-from src.logger_config import setup_logger
+from logger_config import setup_logger
 
 logger = setup_logger("cron_jobs")
 
@@ -27,7 +27,7 @@ def resumen_semanal(bot: Any, chat_id: Any, spreadsheet_id: Any) -> Any:
     Llamado por cron-job.org todos los viernes a las 18:00 hs (Asunción).
     """
     try:
-        from src.logic.logic import ConexionSheets
+        from logic.logic import ConexionSheets
 
         MONTO_POR_HORA = 14634  # Gs. por hora
 
@@ -240,7 +240,7 @@ def informe_estadistico_mensual(gamma_app: Any, chat_id: Any) -> Any:
     con fines puramente estadísticos. No cierra la hoja de asistencia.
     """
     try:
-        from src.logic.pdf_service import PDFService
+        from logic.pdf_service import PDFService
 
         bot = gamma_app.bot
         logger.info("[cron_mensual] Iniciando informe estadístico.")
@@ -297,7 +297,7 @@ def alerta_asesor_financiero(gamma_app: Any, chat_id: Any) -> Any:
     y los envía al usuario de forma proactiva.
     """
     try:
-        from src.logic.ai_service import AIService
+        from logic.ai_service import AIService
 
         bot = gamma_app.bot
         logger.info("[asesor_ia] Iniciando generación de insights proactivos.")

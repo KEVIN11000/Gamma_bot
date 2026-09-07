@@ -10,7 +10,7 @@ os.environ["MONTO_POR_HORA"] = "30000"
 
 @pytest.fixture(autouse=True)
 def mock_google_services(monkeypatch):
-    from src.logic.logic import ConexionSheets
+    from logic.logic import ConexionSheets
     
     mock_cliente = MagicMock()
     mock_cliente.open_by_key.return_value = MagicMock()

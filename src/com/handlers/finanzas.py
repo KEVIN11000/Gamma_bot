@@ -4,13 +4,13 @@ from typing import Any
 
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
-from src.com.core.utils import reply_with_expiration
+from com.core.utils import reply_with_expiration
 
-from src.com.core.errors import safe_handler
-from src.com.core.security import auth_required
-from src.logger_config import setup_logger
-from src.logic.ai_service import AIService
-from src.logic.logic import EstadoGestor
+from com.core.errors import safe_handler
+from com.core.security import auth_required
+from logger_config import setup_logger
+from logic.ai_service import AIService
+from logic.logic import EstadoGestor
 
 logger = setup_logger("finanzas_handler")
 

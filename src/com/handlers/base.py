@@ -7,9 +7,9 @@ from typing import Any
 from telebot import TeleBot
 from telebot.types import BotCommand
 
-from src.com.core.errors import safe_handler
-from src.com.core.security import auth_required
-from src.logger_config import setup_logger
+from com.core.errors import safe_handler
+from com.core.security import auth_required
+from logger_config import setup_logger
 
 logger = setup_logger("base_handler")
 

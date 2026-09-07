@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 import pytz
 import telebot
 
-from src.logger_config import setup_logger
-from src.logic.financiero import AgenteFinanciero
-from src.logic.logic import AgenteAsistenciaMaterias, AgenteAutonomoHoras
+from logger_config import setup_logger
+from logic.financiero import AgenteFinanciero
+from logic.logic import AgenteAsistenciaMaterias, AgenteAutonomoHoras
 
 logger = setup_logger("bot")
 
@@ -37,8 +37,8 @@ class GAMMA:
         self._registrar_manejadores()
 
     def _registrar_manejadores(self):
-        from src.repositories.sheets_repository import SheetsRepository
-        from src.services.telegram_service import TelegramService
+        from repositories.sheets_repository import SheetsRepository
+        from services.telegram_service import TelegramService
 
         repo = SheetsRepository()
         service = TelegramService(repo)

@@ -6,14 +6,14 @@ import time
 
 import pytz
 
-from src.logger_config import setup_logger
-from src.logic.constants import (
+from logger_config import setup_logger
+from logic.constants import (
     ENCABEZADOS_LIBRO_DIARIO,
     HOJA_LIBRO_DIARIO,
     HOJA_LIBRO_DIARIO_TEST,
     TIMEZONE,
 )
-from src.logic.logic import ConexionSheets
+from logic.logic import ConexionSheets
 
 logger = setup_logger("financiero")
 
@@ -326,7 +326,7 @@ class AgenteFinanciero:
         Raises:
             Exception: Description of the exception.
         """
-        from src.logic.pdf_service import DatosReporte
+        from logic.pdf_service import DatosReporte
 
         datos = self.ws.get_all_values()
         if not datos or len(datos) < 2:
@@ -422,9 +422,9 @@ class AgenteFinanciero:
         return reporte, None
 
 # Business logic for Data Schema Abstractions
-from src.repositories.sheets_repository import SheetsRepository
-from src.services.calendar_service import CalendarService
-from src.services.drive_service import DriveService
+from repositories.sheets_repository import SheetsRepository
+from services.calendar_service import CalendarService
+from services.drive_service import DriveService
 import uuid
 
 def create_debt(entity: str, concept: str, total_amount: int, quotas: int, first_due_date: str) -> str:

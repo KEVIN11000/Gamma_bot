@@ -1,6 +1,6 @@
 import unittest
-from src.services.calendar_service import CalendarService
-from src.services.drive_service import DriveService
+from services.calendar_service import CalendarService
+from services.drive_service import DriveService
 
 class TestServices(unittest.TestCase):
     def test_calendar_create_event(self):

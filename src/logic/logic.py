@@ -10,8 +10,8 @@ from pathlib import Path
 import pytz
 from dotenv import load_dotenv
 
-from src.logger_config import setup_logger
-from src.logic.constants import (
+from logger_config import setup_logger
+from logic.constants import (
     COLUMNAS_DIRECTO,
     COLUMNAS_LETRAS,
     COLUMNAS_NORMAL,
@@ -473,7 +473,7 @@ class AgenteAutonomoHoras:
         Raises:
             Exception: Description of the exception.
         """
-        from src.logic.pdf_service import DatosReporte
+        from logic.pdf_service import DatosReporte
 
         hojas = self.wb.worksheets()
         if nombre_hoja:

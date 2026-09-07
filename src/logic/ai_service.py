@@ -8,7 +8,7 @@ import pytz
 from google import genai
 from google.genai import types
 
-from src.logger_config import setup_logger
+from logger_config import setup_logger
 
 logger = setup_logger("ai_service")
 

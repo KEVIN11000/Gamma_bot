@@ -5,7 +5,7 @@ from unittest.mock import patch
 # Ensure we don't write to /tmp on Windows during tests, but our code hardcodes /tmp,
 # so we mock open or just let it fail/write to the C: drive if it can. 
 # Better to mock open.
-from src.logic.financiero import (
+from logic.financiero import (
     create_debt,
     get_active_debts,
     register_payment,
@@ -16,8 +16,8 @@ from src.logic.financiero import (
 
 class TestFinancieroLogic(unittest.TestCase):
 
-    @patch('src.logic.financiero.SheetsRepository')
-    @patch('src.logic.financiero.CalendarService')
+    @patch('logic.financiero.SheetsRepository')
+    @patch('logic.financiero.CalendarService')
     def test_create_debt(self, MockCalendar, MockRepo):
         repo_instance = MockRepo.return_value
         debt_id = create_debt("Banco X", "Prestamo", 10000, 12, "2026-10-01")
@@ -25,7 +25,7 @@ class TestFinancieroLogic(unittest.TestCase):
         repo_instance.insert_obligacion.assert_called_once()
         MockCalendar.create_event.assert_called_once()
 
-    @patch('src.logic.financiero.SheetsRepository')
+    @patch('logic.financiero.SheetsRepository')
     def test_get_active_debts(self, MockRepo):
         repo_instance = MockRepo.return_value
         repo_instance.get_obligaciones_activas.return_value = [{"ID_Obligacion": "123", "Estado": "Activo"}]
@@ -39,16 +39,16 @@ class TestFinancieroLogic(unittest.TestCase):
         debts = get_active_debts(debt_id="456")
         self.assertEqual(len(debts), 0)
 
-    @patch('src.logic.financiero.SheetsRepository')
-    @patch('src.logic.financiero.CalendarService')
+    @patch('logic.financiero.SheetsRepository')
+    @patch('logic.financiero.CalendarService')
     def test_register_payment(self, MockCalendar, MockRepo):
         repo_instance = MockRepo.return_value
         register_payment("123", 500, "2026-09-04")
         repo_instance.insert_movimiento_diario.assert_called_once()
         MockCalendar.mark_event_completed.assert_called_once()
 
-    @patch('src.logic.financiero.SheetsRepository')
-    @patch('src.logic.financiero.DriveService')
+    @patch('logic.financiero.SheetsRepository')
+    @patch('logic.financiero.DriveService')
     @patch('builtins.open', new_callable=unittest.mock.mock_open)
     def test_execute_monthly_closing(self, mock_open, MockDrive, MockRepo):
         repo_instance = MockRepo.return_value
@@ -102,7 +102,7 @@ class TestFinancieroLogic(unittest.TestCase):
             "Saldo_Acumulado_Actual": -300
         })
 
-    @patch('src.logic.financiero.SheetsRepository')
+    @patch('logic.financiero.SheetsRepository')
     def test_simulate_project(self, MockRepo):
         repo_instance = MockRepo.return_value
         repo_instance.get_presupuesto_base.return_value = {"ingresos": 5000}
@@ -112,7 +112,7 @@ class TestFinancieroLogic(unittest.TestCase):
         self.assertIsNotNone(project_id)
         repo_instance.insert_obligacion.assert_called_once()
 
-    @patch('src.logic.financiero.SheetsRepository')
+    @patch('logic.financiero.SheetsRepository')
     def test_approve_project(self, MockRepo):
         repo_instance = MockRepo.return_value
         approve_project("789")

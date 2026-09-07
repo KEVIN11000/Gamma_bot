@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 from telebot import TeleBot
 from telebot.types import Message, CallbackQuery, Chat, User
 
-from src.com.handlers.asistencia import register_asistencia_handlers
+from com.handlers.asistencia import register_asistencia_handlers
 
 
 @pytest.fixture(autouse=True)
 def mock_auth():
-    with patch("src.com.core.security.get_authorized_users", return_value={123}):
+    with patch("com.core.security.get_authorized_users", return_value={123}):
         yield
 
 
@@ -139,8 +139,8 @@ def test_comando_cierre(registered_handlers, mock_bot):
 
 
 @patch("time.time", return_value=1000000000)
-@patch("src.com.handlers.asistencia.generar_y_enviar_reporte")
-@patch("src.com.handlers.asistencia.EstadoGestor")
+@patch("com.handlers.asistencia.generar_y_enviar_reporte")
+@patch("com.handlers.asistencia.EstadoGestor")
 def test_callback_cierre(mock_estado, mock_generar_reporte, mock_time, registered_handlers, mock_bot, mock_gamma_app):
     handler = get_callback_handler(registered_handlers, "cierre_confirmar")
     
@@ -182,8 +182,8 @@ def test_callback_cierre(mock_estado, mock_generar_reporte, mock_time, registere
     mock_bot.register_next_step_handler.assert_called_once()
 
 
-@patch("src.com.handlers.asistencia.iniciar_flujo_reporte_horas")
-@patch("src.com.handlers.asistencia.generar_y_enviar_reporte_financiero")
+@patch("com.handlers.asistencia.iniciar_flujo_reporte_horas")
+@patch("com.handlers.asistencia.generar_y_enviar_reporte_financiero")
 def test_comando_reporte(mock_financiero, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
     handler = registered_handlers["cmd_reporte"]
     
@@ -200,10 +200,10 @@ def test_comando_reporte(mock_financiero, mock_horas, registered_handlers, mock_
     mock_bot.send_message.assert_called_once()
 
 
-@patch("src.com.handlers.asistencia.iniciar_flujo_reporte_horas")
-@patch("src.com.handlers.asistencia.generar_y_enviar_reporte_financiero")
-@patch("src.com.handlers.asistencia.generar_y_enviar_reporte_por_hoja")
-@patch("src.com.handlers.asistencia.EstadoGestor")
+@patch("com.handlers.asistencia.iniciar_flujo_reporte_horas")
+@patch("com.handlers.asistencia.generar_y_enviar_reporte_financiero")
+@patch("com.handlers.asistencia.generar_y_enviar_reporte_por_hoja")
+@patch("com.handlers.asistencia.EstadoGestor")
 def test_callback_reporte(mock_estado, mock_por_hoja, mock_financiero, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
     handler = get_callback_handler(registered_handlers, "reporte_cancelar")
     

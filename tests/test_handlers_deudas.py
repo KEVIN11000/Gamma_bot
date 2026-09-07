@@ -3,10 +3,10 @@ from unittest.mock import MagicMock, patch
 
 # Mock the decorators BEFORE importing the handlers
 
-patch('src.com.core.security.auth_required', lambda bot: lambda f: f).start()
-patch('src.com.core.errors.safe_handler', lambda bot, logger: lambda f: f).start()
+patch('com.core.security.auth_required', lambda bot: lambda f: f).start()
+patch('com.core.errors.safe_handler', lambda bot, logger: lambda f: f).start()
 
-from src.com.handlers.deudas import register_deudas_handlers
+from com.handlers.deudas import register_deudas_handlers
 
 class TestDeudasHandlers(unittest.TestCase):
     def setUp(self):
@@ -28,7 +28,7 @@ class TestDeudasHandlers(unittest.TestCase):
         
         register_deudas_handlers(self.bot_mock, self.gamma_app_mock)
 
-    @patch('src.com.handlers.deudas.create_debt')
+    @patch('com.handlers.deudas.create_debt')
     def test_handle_nueva_deuda(self, mock_create_debt):
         mock_create_debt.return_value = "id_123"
         msg = MagicMock()
@@ -37,7 +37,7 @@ class TestDeudasHandlers(unittest.TestCase):
         mock_create_debt.assert_called_once_with("Banco", "Auto", 10000, 12, "2026-10-01")
         self.bot_mock.reply_to.assert_called_once()
 
-    @patch('src.com.handlers.deudas.get_active_debts')
+    @patch('com.handlers.deudas.get_active_debts')
     def test_handle_deudas(self, mock_get_active):
         mock_get_active.return_value = [{"id_deuda": "123", "entidad": "Banco", "monto_total": 500}]
         msg = MagicMock()
@@ -46,7 +46,7 @@ class TestDeudasHandlers(unittest.TestCase):
         mock_get_active.assert_called_once_with(None)
         self.bot_mock.reply_to.assert_called_once()
         
-    @patch('src.com.handlers.deudas.register_payment')
+    @patch('com.handlers.deudas.register_payment')
     def test_handle_abonar(self, mock_register):
         msg = MagicMock()
         msg.text = "/abonar 123 500 2026-09-04"
@@ -54,7 +54,7 @@ class TestDeudasHandlers(unittest.TestCase):
         mock_register.assert_called_once_with("123", 500, "2026-09-04")
         self.bot_mock.reply_to.assert_called_once()
 
-    @patch('src.com.handlers.deudas.execute_monthly_closing')
+    @patch('com.handlers.deudas.execute_monthly_closing')
     def test_handle_cierre_mensual(self, mock_execute):
         mock_execute.return_value = "drive_123"
         msg = MagicMock()
@@ -63,7 +63,7 @@ class TestDeudasHandlers(unittest.TestCase):
         mock_execute.assert_called_once_with(9, 2026)
         self.bot_mock.reply_to.assert_called_once()
 
-    @patch('src.com.handlers.deudas.simulate_project')
+    @patch('com.handlers.deudas.simulate_project')
     def test_handle_simular(self, mock_simulate):
         mock_simulate.return_value = "proj_123"
         msg = MagicMock()
@@ -72,7 +72,7 @@ class TestDeudasHandlers(unittest.TestCase):
         mock_simulate.assert_called_once_with(1000, 12, "Auto_nuevo")
         self.bot_mock.reply_to.assert_called_once()
 
-    @patch('src.com.handlers.deudas.approve_project')
+    @patch('com.handlers.deudas.approve_project')
     def test_handle_aprobar_proyecto(self, mock_approve):
         msg = MagicMock()
         msg.text = "/aprobar_proyecto proj_123"
