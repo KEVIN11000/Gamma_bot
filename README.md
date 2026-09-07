@@ -7,7 +7,7 @@
 ## 🚀 Características Principales
 
 *   **⏱️ Sistema Inteligente de Marcado:** Control de asistencia dinámico en Google Sheets mediante comandos interactivos. Soporta jornadas normales con pausas de almuerzo o salidas directas.
-*   **💰 Gestión Financiera y Deudas (Nuevo v1.10.0):** Sistema contable integrado. Incluye comandos para alta de deudas (`/nueva_deuda`), registro de abonos (`/abonar`), simulación de proyectos (`/simular`), y cierres mensuales automatizados (`/cierre_mensual`).
+*   **💰 Gestión Financiera y Deudas (Nuevo v1.11.0):** Sistema contable integrado. Incluye comandos para alta de deudas (`/nueva_deuda`), registro de abonos (`/abonar`), simulación de proyectos (`/simular`), y cierres mensuales automatizados (`/cierre_mensual`).
 *   **🧠 Agendamiento con Lenguaje Natural:** Interpretación semántica de mensajes libres (ej: *"hacer el laboratorio mañana a la tarde"*) utilizando el modelo `gemini-2.5-flash` para extraer hitos con precisión cronológica.
 *   **📋 Panel Visual de Avisos:** Interfaz móvil interactiva con cuadrículas de botones en tiempo real para visualizar, limpiar de forma automática y eliminar recordatorios en caliente sin generar spam en el chat.
 *   **🔔 Control de Alertas Anti-Spam:** Sistema de notificaciones programadas por hitos temporales que avisa de manera automática a los 30, 7, 5, 3 y 1 días de anticipación de cada evento.
