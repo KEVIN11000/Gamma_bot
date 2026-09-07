@@ -2,9 +2,9 @@ from pathlib import Path
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from com.core.security import verificar_usuario_manual
-from logic.logic import EstadoGestor
-from logic.pdf_service import PDFService
+from src.com.core.security import verificar_usuario_manual
+from src.logic.logic import EstadoGestor
+from src.logic.pdf_service import PDFService
 
 
 def iniciar_flujo_reporte_horas(

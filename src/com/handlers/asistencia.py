@@ -3,13 +3,13 @@ from __future__ import annotations
 
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
-from com.core.utils import reply_with_expiration
+from src.com.core.utils import reply_with_expiration
 
-from com.core.errors import safe_handler
-from com.core.security import auth_required
-from logger_config import setup_logger
-from logic.logic import EstadoGestor
-from services.asistencia_service import (
+from src.com.core.errors import safe_handler
+from src.com.core.security import auth_required
+from src.logger_config import setup_logger
+from src.logic.logic import EstadoGestor
+from src.services.asistencia_service import (
     iniciar_flujo_reporte_horas,
     generar_y_enviar_reporte_financiero,
     capturar_monto_descuento,

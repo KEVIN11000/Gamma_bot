@@ -1,11 +1,11 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from com.core.utils import _load_pending, _save_pending, limpiar_menus_expirados, reply_with_expiration
+from src.com.core.utils import _load_pending, _save_pending, limpiar_menus_expirados, reply_with_expiration
 
 @pytest.fixture
 def temp_pending_file(tmp_path):
     file_path = tmp_path / "pending_deletions.json"
-    with patch("com.core.utils.PENDING_FILE", str(file_path)):
+    with patch("src.com.core.utils.PENDING_FILE", str(file_path)):
         yield str(file_path)
 
 def test_load_save_pending(temp_pending_file):

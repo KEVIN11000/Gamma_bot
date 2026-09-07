@@ -4,10 +4,10 @@ from typing import Any
 from telebot import TeleBot
 import shlex
 
-from com.core.errors import safe_handler
-from com.core.security import auth_required
-from logger_config import setup_logger
-from logic.financiero import (
+from src.com.core.errors import safe_handler
+from src.com.core.security import auth_required
+from src.logger_config import setup_logger
+from src.logic.financiero import (
     create_debt,
     get_active_debts,
     register_payment,

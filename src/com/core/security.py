@@ -7,7 +7,7 @@ from typing import Any
 
 from telebot import TeleBot
 
-from logger_config import setup_logger
+from src.logger_config import setup_logger
 
 logger = setup_logger("security")
 

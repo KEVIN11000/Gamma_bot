@@ -14,11 +14,11 @@ from flask import Flask, abort, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-import config
-from com.bot import GAMMA
-from logger_config import setup_logger
-from logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs
-from com.core.utils import limpiar_menus_expirados
+import src.config
+from src.com.bot import GAMMA
+from src.logger_config import setup_logger
+from src.logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs
+from src.com.core.utils import limpiar_menus_expirados
 
 logger = setup_logger("flask")
 app = Flask(__name__)
@@ -31,7 +31,7 @@ base_path = Path(__file__).resolve().parent.parent
 @app.route(f"/{config.TOKEN}", methods=["POST"])
 @limiter.limit("10 per minute")
 def webhook() -> Any:
-    from com.core.utils import limpiar_menus_expirados
+    from src.com.core.utils import limpiar_menus_expirados
     try:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception:
@@ -204,7 +204,7 @@ def _validar_cron_secret() -> Any:
     Reads CRON_SECRET from the environment on each request, allowing
     all calls in development when the variable is unset or empty.
     """
-    from com.core.utils import limpiar_menus_expirados
+    from src.com.core.utils import limpiar_menus_expirados
     try:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception:
@@ -287,7 +287,7 @@ def cron_cierre_mensual() -> Any:
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
-    from logic.cron_jobs import informe_estadistico_mensual
+    from src.logic.cron_jobs import informe_estadistico_mensual
 
     exito = informe_estadistico_mensual(bot_instance, chat_id)
     return (
@@ -309,7 +309,7 @@ def cron_asesor_ia() -> Any:
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
-    from logic.cron_jobs import alerta_asesor_financiero
+    from src.logic.cron_jobs import alerta_asesor_financiero
 
     exito = alerta_asesor_financiero(bot_instance, chat_id)
     return (

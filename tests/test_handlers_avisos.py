@@ -2,12 +2,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Mock decorators before importing the module
-patch('com.core.security.auth_required', lambda bot: lambda f: f).start()
-patch('com.core.errors.safe_handler', lambda bot, logger: lambda f: f).start()
+patch('src.com.core.security.auth_required', lambda bot: lambda f: f).start()
+patch('src.com.core.errors.safe_handler', lambda bot, logger: lambda f: f).start()
 
 import telebot
 from telebot.types import Message, CallbackQuery, Chat, User
-from com.handlers.avisos import (
+from src.com.handlers.avisos import (
     register_avisos_handlers,
     _capturar_frase_aviso_secuencial,
     _procesar_frase_aviso
@@ -83,7 +83,7 @@ def test_comando_aviso_with_args(mock_bot, mock_gamma_app, mock_message):
     
     mock_message.text = "/aviso entregar laboratorio mañana"
     
-    with patch('com.handlers.avisos._procesar_frase_aviso') as mock_procesar:
+    with patch('src.com.handlers.avisos._procesar_frase_aviso') as mock_procesar:
         handler(mock_message)
         mock_procesar.assert_called_once_with(mock_message, "entregar laboratorio mañana", mock_bot, mock_gamma_app)
 
@@ -99,7 +99,7 @@ def test_comando_aviso_without_args(mock_bot, mock_gamma_app, mock_message):
     mock_bot.reply_to.assert_called_once()
     mock_bot.register_next_step_handler.assert_called_once()
 
-@patch('com.handlers.avisos.EstadoGestor')
+@patch('src.com.handlers.avisos.EstadoGestor')
 def test_callback_aviso_cancelar(mock_estado, mock_bot, mock_gamma_app, mock_call):
     handlers = get_callback_handlers(mock_bot, mock_gamma_app)
     aviso_handler = next(f for func, f in handlers if func(MagicMock(data="aviso_test")))
@@ -111,7 +111,7 @@ def test_callback_aviso_cancelar(mock_estado, mock_bot, mock_gamma_app, mock_cal
     mock_bot.edit_message_text.assert_called_once()
     assert "cancelado" in mock_bot.edit_message_text.call_args[0][0]
 
-@patch('com.handlers.avisos.EstadoGestor')
+@patch('src.com.handlers.avisos.EstadoGestor')
 def test_callback_aviso_confirmar_expired(mock_estado, mock_bot, mock_gamma_app, mock_call):
     handlers = get_callback_handlers(mock_bot, mock_gamma_app)
     aviso_handler = next(f for func, f in handlers if func(MagicMock(data="aviso_test")))
@@ -124,7 +124,7 @@ def test_callback_aviso_confirmar_expired(mock_estado, mock_bot, mock_gamma_app,
     mock_bot.edit_message_text.assert_called_once()
     assert "Expiró" in mock_bot.edit_message_text.call_args[0][0]
 
-@patch('com.handlers.avisos.EstadoGestor')
+@patch('src.com.handlers.avisos.EstadoGestor')
 def test_callback_aviso_confirmar_success(mock_estado, mock_bot, mock_gamma_app, mock_call):
     handlers = get_callback_handlers(mock_bot, mock_gamma_app)
     aviso_handler = next(f for func, f in handlers if func(MagicMock(data="aviso_test")))
@@ -140,7 +140,7 @@ def test_callback_aviso_confirmar_success(mock_estado, mock_bot, mock_gamma_app,
     assert mock_bot.edit_message_text.call_count == 2
     assert "Guardado OK" in mock_bot.edit_message_text.call_args[0][0]
 
-@patch('com.handlers.avisos.EstadoGestor')
+@patch('src.com.handlers.avisos.EstadoGestor')
 def test_callback_aviso_exception(mock_estado, mock_bot, mock_gamma_app, mock_call):
     handlers = get_callback_handlers(mock_bot, mock_gamma_app)
     aviso_handler = next(f for func, f in handlers if func(MagicMock(data="aviso_test")))
@@ -261,14 +261,14 @@ def test_callback_borrar_aviso_exception(mock_bot, mock_gamma_app, mock_call):
     mock_bot.send_message.assert_called_once()
     assert "Test Error" in mock_bot.send_message.call_args[0][1]
 
-@patch('com.handlers.avisos.verificar_usuario_manual')
+@patch('src.com.handlers.avisos.verificar_usuario_manual')
 def test_capturar_frase_aviso_secuencial_invalid_not_verified(mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = False
     _capturar_frase_aviso_secuencial(mock_message, mock_bot, mock_gamma_app)
     # Shouldn't do anything
     mock_bot.reply_to.assert_not_called()
 
-@patch('com.handlers.avisos.verificar_usuario_manual')
+@patch('src.com.handlers.avisos.verificar_usuario_manual')
 def test_capturar_frase_aviso_secuencial_invalid_text(mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
     mock_message.text = "/comando_invalido"
@@ -278,8 +278,8 @@ def test_capturar_frase_aviso_secuencial_invalid_text(mock_verificar, mock_bot, 
     mock_bot.reply_to.assert_called_once()
     assert "Operación cancelada" in mock_bot.reply_to.call_args[0][1]
 
-@patch('com.handlers.avisos.verificar_usuario_manual')
-@patch('com.handlers.avisos._procesar_frase_aviso')
+@patch('src.com.handlers.avisos.verificar_usuario_manual')
+@patch('src.com.handlers.avisos._procesar_frase_aviso')
 def test_capturar_frase_aviso_secuencial_valid(mock_procesar, mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
     mock_message.text = "entregar tp"
@@ -288,8 +288,8 @@ def test_capturar_frase_aviso_secuencial_valid(mock_procesar, mock_verificar, mo
     
     mock_procesar.assert_called_once_with(mock_message, "entregar tp", mock_bot, mock_gamma_app)
 
-@patch('com.handlers.avisos.AIService')
-@patch('com.handlers.avisos.EstadoGestor')
+@patch('src.com.handlers.avisos.AIService')
+@patch('src.com.handlers.avisos.EstadoGestor')
 def test_procesar_frase_aviso_success(mock_estado, mock_aiservice, mock_bot, mock_gamma_app, mock_message):
     mock_msg_espera = MagicMock()
     mock_msg_espera.message_id = 999
@@ -312,7 +312,7 @@ def test_procesar_frase_aviso_success(mock_estado, mock_aiservice, mock_bot, moc
     assert "Previsualización" in args[1]
     assert kwargs.get("reply_markup") is not None
 
-@patch('com.handlers.avisos.AIService')
+@patch('src.com.handlers.avisos.AIService')
 def test_procesar_frase_aviso_error(mock_aiservice, mock_bot, mock_gamma_app, mock_message):
     mock_msg_espera = MagicMock()
     mock_msg_espera.message_id = 999

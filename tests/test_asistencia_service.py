@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch, mock_open
 from telebot.types import Message, Chat, InlineKeyboardMarkup
 
-from services.asistencia_service import (
+from src.services.asistencia_service import (
     iniciar_flujo_reporte_horas,
     generar_y_enviar_reporte_financiero,
     capturar_monto_descuento,
@@ -58,7 +58,7 @@ def test_iniciar_flujo_reporte_horas_con_nombres(mock_bot, mock_gamma_app, mock_
     mock_bot.edit_message_text.assert_called_once()
 
 
-@patch("services.asistencia_service.PDFService")
+@patch("src.services.asistencia_service.PDFService")
 def test_generar_y_enviar_reporte_financiero_error(mock_pdf_service, mock_bot, mock_gamma_app, mock_message):
     mock_gamma_app.agente_financiero.preparar_datos_reporte.return_value = (None, "Error al preparar")
     
@@ -73,7 +73,7 @@ def test_generar_y_enviar_reporte_financiero_error(mock_pdf_service, mock_bot, m
     mock_bot.send_message.assert_called_with(mock_message.chat.id, "Error al preparar")
 
 
-@patch("services.asistencia_service.PDFService")
+@patch("src.services.asistencia_service.PDFService")
 def test_generar_y_enviar_reporte_financiero_exito_sin_pdf(mock_pdf_service, mock_bot, mock_gamma_app, mock_message):
     mock_gamma_app.agente_financiero.preparar_datos_reporte.return_value = ({"datos": 1}, None)
     mock_pdf_service.generar_reporte_generico.return_value = (None, "Mensaje de pdf error")
@@ -82,7 +82,7 @@ def test_generar_y_enviar_reporte_financiero_exito_sin_pdf(mock_pdf_service, moc
     mock_bot.send_message.assert_called_with(mock_message.chat.id, "Mensaje de pdf error")
 
 
-@patch("services.asistencia_service.PDFService")
+@patch("src.services.asistencia_service.PDFService")
 @patch("builtins.open", new_callable=mock_open, read_data=b"data")
 def test_generar_y_enviar_reporte_financiero_exito_con_pdf(mock_file, mock_pdf_service, mock_bot, mock_gamma_app, mock_message):
     mock_gamma_app.agente_financiero.preparar_datos_reporte.return_value = ({"datos": 1}, None)
@@ -93,9 +93,9 @@ def test_generar_y_enviar_reporte_financiero_exito_con_pdf(mock_file, mock_pdf_s
     assert mock_bot.send_document.call_args[1]["caption"] == "📊 Reporte generado"
 
 
-@patch("services.asistencia_service.verificar_usuario_manual")
-@patch("services.asistencia_service.generar_y_enviar_reporte")
-@patch("services.asistencia_service.EstadoGestor")
+@patch("src.services.asistencia_service.verificar_usuario_manual")
+@patch("src.services.asistencia_service.generar_y_enviar_reporte")
+@patch("src.services.asistencia_service.EstadoGestor")
 def test_capturar_monto_descuento_valido(mock_estado, mock_generar, mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
     mock_estado.pop.return_value = False
@@ -104,7 +104,7 @@ def test_capturar_monto_descuento_valido(mock_estado, mock_generar, mock_verific
     mock_generar.assert_called_once_with(mock_bot, mock_gamma_app, mock_message, descuento=150050.0, incluir_iva=False)
 
 
-@patch("services.asistencia_service.verificar_usuario_manual")
+@patch("src.services.asistencia_service.verificar_usuario_manual")
 def test_capturar_monto_descuento_invalido(mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
     
@@ -125,7 +125,7 @@ def test_capturar_monto_descuento_invalido(mock_verificar, mock_bot, mock_gamma_
     mock_bot.reply_to.assert_not_called()
 
 
-@patch("services.asistencia_service.PDFService")
+@patch("src.services.asistencia_service.PDFService")
 @patch("builtins.open", new_callable=mock_open, read_data=b"data")
 def test_generar_y_enviar_reporte(mock_file, mock_pdf_service, mock_bot, mock_gamma_app, mock_message):
     mock_gamma_app.agente_excel.preparar_datos_reporte.return_value = ({"d": 1}, None)
@@ -149,9 +149,9 @@ def test_generar_y_enviar_reporte(mock_file, mock_pdf_service, mock_bot, mock_ga
     mock_bot.send_message.assert_called_with(mock_message.chat.id, "Fallo PDF")
 
 
-@patch("services.asistencia_service.verificar_usuario_manual")
-@patch("services.asistencia_service.EstadoGestor")
-@patch("services.asistencia_service.generar_y_enviar_reporte_por_hoja")
+@patch("src.services.asistencia_service.verificar_usuario_manual")
+@patch("src.services.asistencia_service.EstadoGestor")
+@patch("src.services.asistencia_service.generar_y_enviar_reporte_por_hoja")
 def test_capturar_descuento_reporte_valido(mock_generar_hoja, mock_estado, mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
     # First pop: nombre_hoja; second pop: iva flag
@@ -162,8 +162,8 @@ def test_capturar_descuento_reporte_valido(mock_generar_hoja, mock_estado, mock_
     mock_generar_hoja.assert_called_once_with(mock_bot, mock_gamma_app, mock_message, "Hoja1", descuento=200.0, incluir_iva=False)
 
 
-@patch("services.asistencia_service.verificar_usuario_manual")
-@patch("services.asistencia_service.EstadoGestor")
+@patch("src.services.asistencia_service.verificar_usuario_manual")
+@patch("src.services.asistencia_service.EstadoGestor")
 def test_capturar_descuento_reporte_errores(mock_estado, mock_verificar, mock_bot, mock_gamma_app, mock_message):
     mock_verificar.return_value = True
     
@@ -191,7 +191,7 @@ def test_capturar_descuento_reporte_errores(mock_estado, mock_verificar, mock_bo
     mock_bot.reply_to.assert_not_called()
 
 
-@patch("services.asistencia_service.PDFService")
+@patch("src.services.asistencia_service.PDFService")
 @patch("builtins.open", new_callable=mock_open, read_data=b"data")
 def test_generar_y_enviar_reporte_por_hoja(mock_file, mock_pdf_service, mock_bot, mock_gamma_app, mock_message):
     # Exito

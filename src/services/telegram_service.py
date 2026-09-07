@@ -23,11 +23,11 @@ class TelegramService:
         ``com.handlers`` package and forwards the ``bot`` and ``gamma_app``
         objects. Handlers may later retrieve ``self.repository`` if needed.
         """
-        from com.handlers.asistencia import register_asistencia_handlers
-        from com.handlers.avisos import register_avisos_handlers
-        from com.handlers.base import register_base_handlers
-        from com.handlers.finanzas import register_finanzas_handlers
-        from com.handlers.deudas import register_deudas_handlers
+        from src.com.handlers.asistencia import register_asistencia_handlers
+        from src.com.handlers.avisos import register_avisos_handlers
+        from src.com.handlers.base import register_base_handlers
+        from src.com.handlers.finanzas import register_finanzas_handlers
+        from src.com.handlers.deudas import register_deudas_handlers
 
         register_base_handlers(bot, gamma_app)
         register_asistencia_handlers(bot, gamma_app)
