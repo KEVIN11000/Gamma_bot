@@ -25,19 +25,24 @@ def safe_handler(bot: TeleBot, logger: logging.Logger) -> Any:
                     f"❌ Error interno en '{func.__name__}': {e}\n{error_trace}"
                 )
 
+                # Check if it's a RefreshError (invalid credentials)
+                error_msg = "❌ Error interno en el bot. Inténtalo de nuevo más tarde."
+                if "invalid_grant" in str(e) or e.__class__.__name__ == "RefreshError":
+                    error_msg = "❌ Error de credenciales (Google Sheets). El administrador debe actualizar 'credentials.json' en el servidor y reiniciar la app."
+
                 try:
                     if hasattr(obj, "data"):
                         # Es un CallbackQuery
                         bot.send_message(
                             obj.message.chat.id,
-                            "❌ Error interno en el bot. Inténtalo de nuevo más tarde.",
+                            error_msg,
                         )
                         bot.answer_callback_query(obj.id, "Error interno.")
                     else:
                         # Es un Message
                         bot.reply_to(
                             obj,
-                            "❌ Error interno en el bot. Inténtalo de nuevo más tarde.",
+                            error_msg,
                         )
                 except Exception as send_e:
                     logger.error(
