@@ -36,7 +36,7 @@ class SheetsRepository:
 
     def _ensure_headers(self, ws, sheet_name: str) -> None:
         headers_map = {
-            "Obligaciones_Maestro": ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones"],
+            "Obligaciones_Maestro": ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID"],
             "Libro_Diario": ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes", "ID_Obligacion", "Tasa_IVA", "Monto_Gravado", "Monto_IVA", "Clasificacion_IVA"],
             "Cierres_Historicos": ["ID_Cierre", "Mes", "Anio", "Total_Ingresos", "Total_Gastos", "Total_Deudas_Pagadas", "Debito_Fiscal", "Credito_Fiscal", "Liquidacion_IVA", "Estado_IVA", "Margen_Libre_Disponible", "Saldo_Acumulado", "Fecha_Cierre", "Archivo_Backup_Drive"],
             "Presupuesto_Base": ["Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs", "Tipo_Ingreso_Gasto", "Observaciones"]
@@ -68,7 +68,7 @@ class SheetsRepository:
     # --- Obligaciones_Maestro ---
     def insert_obligacion(self, obligacion_dict: dict) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        headers = ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones"]
+        headers = ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID"]
         row = [obligacion_dict.get(h, "") for h in headers]
         ws.append_row(row)
 

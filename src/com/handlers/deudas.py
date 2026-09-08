@@ -51,10 +51,21 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             if not debts:
                 bot.reply_to(message, "No hay deudas activas.")
                 return
-            response = "Deudas activas:\n"
+            response = "📋 *Deudas activas:*\n"
             for d in debts:
-                response += f"- ID: {d.get('id_deuda')} | Entidad: {d.get('entidad')} | Monto: {d.get('monto_total')}\n"
-            bot.reply_to(message, response)
+                nombre = d.get('Nombre', 'N/A')
+                monto = d.get('Monto_Inicial', 0)
+                cuota = d.get('Cuota_Referencia_Gs', 'N/A')
+                saldo = d.get('Saldo_Actual', 0)
+                response += (
+                    f"─────────────────\n"
+                    f"🆔 `{d.get('ID_Obligacion', 'N/A')}`\n"
+                    f"📝 {nombre}\n"
+                    f"💰 Monto: Gs. {int(monto):,}\n".replace(",", ".") +
+                    f"📊 Cuota Ref: Gs. {int(cuota):,}\n".replace(",", ".") +
+                    f"💳 Saldo: Gs. {int(saldo):,}\n".replace(",", ".")
+                )
+            bot.reply_to(message, response, parse_mode="Markdown")
         except Exception as e:
             bot.reply_to(message, f"Error: {e}")
 

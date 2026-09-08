@@ -431,15 +431,17 @@ def create_debt(entity: str, concept: str, total_amount: int, quotas: int, first
     repo = SheetsRepository()
     debt_id = str(uuid.uuid4())[:8]
     event_id = CalendarService.create_event(f"Vencimiento {entity}", first_due_date, f"Pago de deuda: {concept}")
+    cuota_ref = total_amount // quotas if quotas > 0 else total_amount
     obligacion_dict = {
         "ID_Obligacion": debt_id,
         "Tipo": "Deuda",
-        "Nombre_Concepto": concept,
+        "Nombre": concept,
         "Monto_Inicial": total_amount,
         "Saldo_Actual": total_amount,
         "Estado": "Activo",
-        "Tasa_Interes": 0,
-        "Fecha_Vencimiento": first_due_date,
+        "Cuota_Referencia_Gs": cuota_ref,
+        "Fecha_Inicio": first_due_date,
+        "Observaciones": f"Entidad: {entity}",
         "Cuotas": quotas,
         "Event_ID": event_id
     }
@@ -480,16 +482,22 @@ def register_payment(debt_id: str, amount: int, date: str, tasa_iva: str = "Exen
     gravado, iva = calcular_iva(amount, tasa_iva)
     
     movimiento_dict = {
-        "ID_Transaccion": str(uuid.uuid4())[:8],
         "Fecha": date,
-        "Concepto": "Pago Deuda",
-        "Tipo_Movimiento": "Egreso",
-        "Monto_Total": amount,
+        "Movimiento": "Egreso",
+        "Proveedor/Cliente": "Pago Deuda",
+        "Nro Factura": "S/N",
+        "Neto": gravado,
+        "IVA": iva,
+        "Total": amount,
+        "Categoría": "Deudas",
+        "Comprobante": "Recibo",
+        "Rastro/Foto": "",
+        "Mes": "",
+        "ID_Obligacion": debt_id,
         "Tasa_IVA": tasa_iva,
         "Monto_Gravado": gravado,
         "Monto_IVA": iva,
-        "Clasificacion_IVA": "N/A" if tasa_iva.lower() == "exento" else "Crédito Fiscal",
-        "ID_Obligacion": debt_id
+        "Clasificacion_IVA": "N/A" if tasa_iva.lower() == "exento" else "Crédito Fiscal"
     }
     repo.insert_movimiento_diario(movimiento_dict)
     
@@ -605,15 +613,17 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
         mensaje = "Operación de Alto Riesgo. La cuota supera tu capacidad de pago o te deja en saldo rojo."
         
     project_id = str(uuid.uuid4())[:8]
+    cuota_ref = monto // meses if meses > 0 else monto
     obligacion_dict = {
         "ID_Obligacion": project_id,
         "Tipo": "Proyecto",
-        "Nombre_Concepto": concept,
+        "Nombre": concept,
         "Monto_Inicial": monto,
         "Saldo_Actual": monto,
         "Estado": "Simulado",
-        "Tasa_Interes": 0,
-        "Fecha_Vencimiento": "",
+        "Cuota_Referencia_Gs": cuota_ref,
+        "Fecha_Inicio": "",
+        "Observaciones": "",
         "Cuotas": meses,
         "Event_ID": ""
     }

@@ -75,14 +75,22 @@ class ConexionSheets:
                 return None
             import gspread
             from google.oauth2.service_account import Credentials
+            from google.auth.exceptions import RefreshError
 
-            credenciales = Credentials.from_service_account_file(
-                str(path_json), scopes=scopes
-            )
-            cls._cliente = gspread.authorize(credenciales)
-            logger.info(
-                "🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton)."
-            )
+            try:
+                credenciales = Credentials.from_service_account_file(
+                    str(path_json), scopes=scopes
+                )
+                cls._cliente = gspread.authorize(credenciales)
+                logger.info(
+                    "🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton)."
+                )
+            except RefreshError as e:
+                logger.error(f"❌ Error de autenticación en Google Sheets: credenciales inválidas ({e}).")
+                return None
+            except Exception as e:
+                logger.error(f"❌ Error al autorizar Google Sheets: {e}")
+                return None
         return cls._cliente
 
     @classmethod
@@ -178,6 +186,7 @@ class AgenteAutonomoHoras:
             Exception: Description of the exception.
         """
         if self._ws is None:
+            import gspread
             base_path = BASE_DIR
             path_txt = base_path / "periodo_actual.txt"
             # Ensure the directory exists
@@ -186,7 +195,15 @@ class AgenteAutonomoHoras:
                 nombre_inicial = self.mes if self.mes else "Mayo 2026"
                 path_txt.write_text(nombre_inicial, encoding="utf-8")
             nombre_hoja = path_txt.read_text(encoding="utf-8").strip()
-            self._ws = self.wb.worksheet(nombre_hoja)
+            
+            try:
+                self._ws = self.wb.worksheet(nombre_hoja)
+            except gspread.exceptions.WorksheetNotFound:
+                logger.warning(f"⚠️ La hoja '{nombre_hoja}' no existe. Creándola automáticamente.")
+                self._ws = self.wb.add_worksheet(title=nombre_hoja, rows="60", cols="10")
+                encabezados = ENCABEZADOS_HORAS
+                self._ws.update("A1:G1", [encabezados])
+                
         return self._ws
 
     def fin_de(self):

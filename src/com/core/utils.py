@@ -39,8 +39,26 @@ def limpiar_menus_expirados(bot: Any):
     if to_delete:
         _save_pending(data)
 
+import logging
+
+logger = logging.getLogger("utils")
+
+class MockChat:
+    def __init__(self, chat_id):
+        self.id = chat_id
+
+class MockMessage:
+    def __init__(self, chat_id, message_id):
+        self.chat = MockChat(chat_id)
+        self.message_id = message_id
+
 def reply_with_expiration(bot: Any, chat_id: Any, text: str, timeout: int = 30, **kwargs):
-    msg = bot.send_message(chat_id, text, **kwargs)
+    try:
+        msg = bot.send_message(chat_id, text, **kwargs)
+    except Exception as e:
+        logger.error(f"Error sending message to {chat_id}: {e}")
+        # Return a mock message so the caller doesn't break
+        return MockMessage(chat_id, -1)
     
     # Save to file queue
     data = _load_pending()
