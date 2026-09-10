@@ -1,8 +1,10 @@
 import os
 from typing import List, Optional
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 # Load environment variables with minimal validation
 TOKEN: str = os.getenv("TOKEN", "")
