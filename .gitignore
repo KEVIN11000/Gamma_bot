@@ -1,13 +1,13 @@
 .env
 credentials.json
-avisos.json
+*.json
+!avisos.json
 periodo_actual.txt
 gen_log.txt
 gen_log_*.txt
-deploy_msg.json
 sheet.xlsx
 estado_temporal.db
-estado_temporal.json
+venv/
 __pycache__/
 *.pyc
 .pytest_cache/

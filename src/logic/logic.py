@@ -7,6 +7,10 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from google import genai  # noqa: F401
+from google.genai import types  # noqa: F401
+import gspread
+
 import pytz
 from dotenv import load_dotenv
 
@@ -28,7 +32,8 @@ from logic.constants import (
 BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BASE_DIR / ".env")
 
-tz_py = pytz.timezone(TIMEZONE)
+# Zona horaria oficial para operaciones de Gamma Bot
+tz_py = pytz.timezone("America/Asuncion")
 
 logger = setup_logger("logic")
 

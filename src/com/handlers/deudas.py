@@ -44,6 +44,15 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     @auth_required(bot)
     @safe_handler(bot, logger)
     def handle_deudas(message):
+        def _safe_int(v):
+            try:
+                if isinstance(v, str):
+                    v = v.strip()
+                if not v or v == "N/A":
+                    return 0
+                return int(float(v))
+            except Exception:
+                return 0
         try:
             parts = shlex.split(message.text)
             debt_id = parts[1] if len(parts) > 1 else None
@@ -61,9 +70,9 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                     f"─────────────────\n"
                     f"🆔 `{d.get('ID_Obligacion', 'N/A')}`\n"
                     f"📝 {nombre}\n"
-                    f"💰 Monto: Gs. {int(monto):,}\n".replace(",", ".") +
-                    f"📊 Cuota Ref: Gs. {int(cuota):,}\n".replace(",", ".") +
-                    f"💳 Saldo: Gs. {int(saldo):,}\n".replace(",", ".")
+                    f"💰 Monto: Gs. {_safe_int(monto):,}\n".replace(",", ".") +
+                    f"📊 Cuota Ref: Gs. {_safe_int(cuota):,}\n".replace(",", ".") +
+                    f"💳 Saldo: Gs. {_safe_int(saldo):,}\n".replace(",", ".")
                 )
             bot.reply_to(message, response, parse_mode="Markdown")
         except Exception as e:

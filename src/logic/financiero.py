@@ -457,7 +457,8 @@ def get_active_debts(debt_id: str = None) -> list[dict]:
 
 def safe_int(value) -> int:
     try:
-        if not value: return 0
+        if not value:
+            return 0
         return int(float(str(value).strip()))
     except ValueError:
         return 0
