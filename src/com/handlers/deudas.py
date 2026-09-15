@@ -13,7 +13,10 @@ from logic.financiero import (
     register_payment,
     execute_monthly_closing,
     simulate_project,
-    approve_project
+    approve_project,
+    proyectar_cola_deudas,
+    simular_impacto_abono,
+    obtener_cronograma_vencimientos
 )
 
 logger = setup_logger("deudas_handler")
@@ -27,7 +30,7 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         try:
             parts = shlex.split(message.text)
             if len(parts) < 6:
-                bot.reply_to(message, "Uso: /nueva_deuda \"Entidad\" \"Concepto\" <Monto> <Cuotas> <Primer_Venc>")
+                bot.reply_to(message, "Uso: /nueva_deuda \"Entidad\" \"Concepto\" <Monto> <Cuotas> <Primer_Venc> [Dia_Vencimiento]")
                 return
             entity = parts[1]
             concept = parts[2]
@@ -35,8 +38,108 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             quotas = int(parts[4])
             first_due = parts[5]
             
-            debt_id = create_debt(entity, concept, amount, quotas, first_due)
-            bot.reply_to(message, f"Deuda creada con ID: {debt_id}")
+            dia_venc = int(parts[6]) if len(parts) > 6 else 0
+            
+            debt_id = create_debt(entity, concept, amount, quotas, first_due, dia_vencimiento=dia_venc)
+            bot.reply_to(message, f"Deuda creada con ID: `{debt_id}`", parse_mode="Markdown")
+        except Exception as e:
+            bot.reply_to(message, f"Error: {e}")
+
+    @bot.message_handler(commands=["estrategia", "cola_deudas"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_estrategia(message):
+        try:
+            parts = shlex.split(message.text)
+            criterio = "prioridad"
+            if len(parts) > 1 and parts[1] in ["saldo", "prioridad"]:
+                criterio = parts[1]
+                
+            res = proyectar_cola_deudas(criterio)
+            margen = res["margen_ataque"]
+            proy = res["proyeccion"]
+            
+            if not proy:
+                bot.reply_to(message, "No hay deudas en la cola.")
+                return
+                
+            response = f"🎯 *Estrategia de Pago Bola de Nieve* ({criterio})\n"
+            response += f"💰 *Margen de Ataque Base:* Gs. {margen:,}\n\n".replace(",", ".")
+            
+            for i, p in enumerate(proy, 1):
+                estado = "🔴 VENCIDA" if p["vencida"] else "🟢 Al día"
+                response += (
+                    f"{i}. *{p['nombre']}* (ID: `{p.get('id', 'N/A')}`)\n"
+                    f"   Estado: {estado}\n"
+                    f"   Pago mensual proyectado: Gs. {p['pago_mensual_proyectado']:,}\n".replace(",", ".") +
+                    f"   Meses estimados: {p['meses_estimados']} (Fin: {p['fecha_fin']})\n\n"
+                )
+            bot.reply_to(message, response, parse_mode="Markdown")
+        except Exception as e:
+            bot.reply_to(message, f"Error: {e}")
+
+    @bot.message_handler(commands=["foco"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_foco(message):
+        try:
+            res = proyectar_cola_deudas("prioridad")
+            proy = res["proyeccion"]
+            if not proy:
+                bot.reply_to(message, "No hay deudas en foco.")
+                return
+            foco = proy[0]
+            bot.reply_to(message, f"🎯 *Foco Actual:* {foco['nombre']} (ID: `{foco.get('id', 'N/A')}`)\nPago mensual proyectado: Gs. {foco['pago_mensual_proyectado']:,}\nMeses estimados: {foco['meses_estimados']}".replace(",", "."), parse_mode="Markdown")
+        except Exception as e:
+            bot.reply_to(message, f"Error: {e}")
+
+    @bot.message_handler(commands=["evaluar_abono"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_evaluar_abono(message):
+        try:
+            parts = shlex.split(message.text)
+            if len(parts) < 3:
+                bot.reply_to(message, "Uso: /evaluar_abono <Monto_Extra> <ID_Deuda>")
+                return
+            monto = int(parts[1])
+            debt_id = parts[2]
+            
+            res = simular_impacto_abono(monto, debt_id)
+            if "error" in res:
+                bot.reply_to(message, f"Error: {res['error']}")
+                return
+                
+            response = (
+                f"📊 *Simulación de Abono Extra*\n"
+                f"Monto Extra: Gs. {monto:,}\n".replace(",", ".") +
+                f"Saldo Anterior: Gs. {res['saldo_anterior']:,}\n".replace(",", ".") +
+                f"Saldo Nuevo: Gs. {res['saldo_nuevo']:,}\n".replace(",", ".") +
+                f"Meses Ahorrados: {res['meses_ahorrados']}\n"
+                f"Meses Restantes (Nueva Proyección): {res['meses_restantes']}"
+            )
+            bot.reply_to(message, response, parse_mode="Markdown")
+        except Exception as e:
+            bot.reply_to(message, f"Error: {e}")
+
+    @bot.message_handler(commands=["vencimientos"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_vencimientos(message):
+        try:
+            res = obtener_cronograma_vencimientos()
+            vencimientos = res["vencimientos"]
+            if not vencimientos:
+                bot.reply_to(message, "No hay vencimientos programados.")
+                return
+                
+            response = f"📅 *Vencimientos del Mes ({res['mes_actual']})*\n\n"
+            for v in vencimientos:
+                response += (
+                    f"Día {v['dia_vencimiento']}: *{v['nombre']}* (ID: `{v['id']}`)\n"
+                    f"   Cuota: Gs. {v['cuota']:,} | Saldo: Gs. {v['saldo']:,}\n\n".replace(",", ".")
+                )
+            bot.reply_to(message, response, parse_mode="Markdown")
         except Exception as e:
             bot.reply_to(message, f"Error: {e}")
 

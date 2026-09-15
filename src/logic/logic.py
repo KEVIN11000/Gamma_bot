@@ -4,14 +4,13 @@ import json
 import os
 from typing import Any
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from google import genai  # noqa: F401
 from google.genai import types  # noqa: F401
 import gspread
 
-import pytz
 from dotenv import load_dotenv
 
 from logger_config import setup_logger
@@ -33,9 +32,32 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BASE_DIR / ".env")
 
 # Zona horaria oficial para operaciones de Gamma Bot
-tz_py = pytz.timezone("America/Asuncion")
+TZ_PARAGUAY = timezone(timedelta(hours=-3))
+
+def get_now_py() -> datetime:
+    return datetime.now(TZ_PARAGUAY)
+
+def get_today_py_date() -> datetime:
+    now = get_now_py()
+    return datetime(now.year, now.month, now.day, tzinfo=TZ_PARAGUAY)
+
+def format_timestamp_py(dt: datetime = None, formato: str = "%d/%m/%Y %H:%M") -> str:
+    if dt is None:
+        dt = get_now_py()
+    return dt.strftime(formato)
+
+def safe_int(value, default=0):
+    if value is None or value == "":
+        return default
+    if isinstance(value, str):
+        value = value.replace(",", "").strip()
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
 
 logger = setup_logger("logic")
+
 
 
 # Helper to escape potential formula injection in Google Sheets
@@ -221,7 +243,7 @@ class AgenteAutonomoHoras:
         Raises:
             Exception: Description of the exception.
         """
-        ahora = datetime.now(tz_py)
+        ahora = get_now_py()
         dia = DIAS_SEMANA[ahora.weekday()]
         free_day = DIA_LIBRE
 
@@ -252,7 +274,7 @@ class AgenteAutonomoHoras:
         Raises:
             Exception: If an error occurs communicating with Google Sheets.
         """
-        ahora = datetime.now(tz_py)
+        ahora = get_now_py()
         hoy_str = ahora.strftime("%d/%m/%Y")
 
         self._cargar_hoja_activa()
@@ -313,7 +335,7 @@ class AgenteAutonomoHoras:
             logger.info(msg)
             return msg
 
-        hora_ahora = datetime.now(tz_py).strftime("%H:%M")
+        hora_ahora = get_now_py().strftime("%H:%M")
 
         if hasattr(self, "fin_de") and self.fin_de():
             log_msg = f"{hora_ahora} Dia libre, no hay marcas que hacer!!!"
@@ -410,7 +432,7 @@ class AgenteAutonomoHoras:
                 anio_siguiente = anio_actual
             nombre_hoja_nueva = f"{mes_siguiente} {anio_siguiente}"
         else:
-            ahora = datetime.now(tz_py)
+            ahora = get_now_py()
             nombre_hoja_nueva = f"Periodo_{ahora.strftime('%d_%m_%Y')}"
 
         try:
@@ -617,8 +639,15 @@ class AgenteAutonomoHoras:
                 dt_inicio = datetime.strptime(fecha_hora_str, "%d/%m/%Y %H:%M")
             except ValueError:
                 return "❌ Error: La IA no devolvió un formato de fecha válido. Por favor, intenta de nuevo."
-            dt_inicio = tz_py.localize(dt_inicio)
+            dt_inicio = dt_inicio.replace(tzinfo=TZ_PARAGUAY)
             dt_fin = dt_inicio + timedelta(hours=1)
+
+            reminders_overrides = datos_evento.get("reminders", [
+                {"method": "popup", "minutes": 24 * 60},
+                {"method": "popup", "minutes": 2 * 60},
+                {"method": "popup", "minutes": 60},
+                {"method": "popup", "minutes": 15},
+            ])
 
             evento = {
                 "summary": datos_evento["titulo"],
@@ -632,12 +661,7 @@ class AgenteAutonomoHoras:
                 },
                 "reminders": {
                     "useDefault": False,
-                    "overrides": [
-                        {"method": "popup", "minutes": 24 * 60},
-                        {"method": "popup", "minutes": 2 * 60},
-                        {"method": "popup", "minutes": 60},
-                        {"method": "popup", "minutes": 15},
-                    ],
+                    "overrides": reminders_overrides,
                 },
             }
 
@@ -671,7 +695,7 @@ class AgenteAutonomoHoras:
 
         try:
             servicio = ConexionSheets.obtener_servicio_calendar()
-            ahora = datetime.now(tz_py)
+            ahora = get_now_py()
             ahora_iso = ahora.isoformat()
 
             # 🆕 Limitar la búsqueda
@@ -972,7 +996,7 @@ class AgenteAsistenciaMaterias:
             Exception: Description of the exception.
         """
         try:
-            ahora = datetime.now(tz_py)
+            ahora = get_now_py()
             materia, tipo = self.obtener_materia_actual(ahora)
             if not materia:
                 return (

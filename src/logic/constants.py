@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Constants used across the Gamma_bot project
 
-VERSION = "1.8.7"
+VERSION = "1.12.0"
 
 # Sheet names
 HOJA_LIBRO_DIARIO = "Libro_Diario"
@@ -67,4 +67,4 @@ MONTO_POR_HORA_DEFAULT = "14634"
 EXPIRACION_BOTONES_SECONDS = 86400
 
 # Timezone
-TIMEZONE = "America/Buenos_Aires"
+TIMEZONE = "America/Asuncion"

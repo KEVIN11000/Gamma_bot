@@ -5,15 +5,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import pytz
 import requests
 
 from logger_config import setup_logger
+from logic.logic import AgenteAutonomoHoras, get_now_py
+from logic.constants import TIMEZONE
 
 logger = setup_logger("cron_jobs")
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-tz_py = pytz.timezone("America/Asuncion")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PUNTO 2 — Resumen Semanal de Productividad
@@ -43,7 +43,7 @@ def resumen_semanal(bot: Any, chat_id: Any, spreadsheet_id: Any) -> Any:
         logger.info(f"Leyendo hoja activa para resumen semanal: '{ws.title}'")
 
         # Calcular rango de la semana actual (lunes → hoy viernes)
-        hoy = datetime.now(tz_py)
+        hoy = get_now_py()
         lunes = hoy - timedelta(days=hoy.weekday())  # weekday() 0=Lunes
         fechas_semana = set()
         for i in range(5):  # Lunes a Viernes
@@ -168,7 +168,7 @@ def notificacion_clima(bot: Any, chat_id: Any) -> Any:
                 "\n🌂 _Posibles lluvias por la tarde. Lleva el paraguas por las dudas._"
             )
 
-        hoy = datetime.now(tz_py).strftime("%A %d de %B").capitalize()
+        hoy = get_now_py().strftime("%A %d de %B").capitalize()
 
         mensaje = (
             f"{emoji} *Buenos días — Pronóstico de hoy*\n"
@@ -207,7 +207,7 @@ def rotar_logs() -> Any:
     try:
 
         path_actual = BASE_DIR / "gen_log.txt"
-        anio_anterior = datetime.now(tz_py).year - 1
+        anio_anterior = get_now_py().year - 1
         path_backup = BASE_DIR / f"gen_log_{anio_anterior}.txt"
 
         if path_actual.exists():
@@ -216,7 +216,7 @@ def rotar_logs() -> Any:
         # Crear un log nuevo y limpio
         with open(path_actual, "w", encoding="utf-8") as f:
             f.write(
-                f"[LOG INICIADO] {datetime.now(tz_py).strftime('%Y-%m-%d %H:%M:%S')} — Rotación anual completada.\n"
+                f"[LOG INICIADO] {get_now_py().strftime('%Y-%m-%d %H:%M:%S')} — Rotación anual completada.\n"
             )
 
         logger.info(
@@ -332,3 +332,60 @@ def alerta_asesor_financiero(gamma_app: Any, chat_id: Any) -> Any:
     except Exception as e:
         logger.error(f"alerta_asesor_financiero: {e}")
         return False
+
+def sincronizar_avisos_vencimientos() -> dict:
+    """
+    Sincroniza los vencimientos de deudas activas con Google Calendar.
+    Genera un objeto de evento para el mes actual y lo pasa a guardar_aviso_calendar.
+    Reglas de antelación temporal de avisos: 7, 5, 3 y 1 días antes.
+    """
+    from repositories.sheets_repository import SheetsRepository
+    from logic.logic import get_now_py, AgenteAutonomoHoras, safe_int
+    import os
+    import calendar
+    
+    repo = SheetsRepository()
+    obligaciones = repo.get_todas_obligaciones()
+    hoy = get_now_py()
+    
+    agente = AgenteAutonomoHoras(spreadsheet_id=os.getenv("SPREADSHEET_ID") or "")
+    
+    count_ok = 0
+    count_err = 0
+    
+    for d in obligaciones:
+        if str(d.get("Estado", "")).lower() == "activo":
+            dia = safe_int(d.get("Dia_Vencimiento", 0))
+            if dia > 0:
+                ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+                dia_evento = dia if dia <= ultimo_dia else ultimo_dia
+                
+                fecha_evento = hoy.replace(day=dia_evento)
+                
+                titulo = f"Vencimiento: {d.get('Nombre', 'Deuda')} (Gs. {safe_int(d.get('Cuota_Referencia_Gs', 0)):,})".replace(",", ".")
+                fecha_str = fecha_evento.strftime("%d/%m/%Y")
+                
+                # Reglas de antelación en minutos: 7, 5, 3 y 1 días
+                reminders = [
+                    {"method": "popup", "minutes": 7 * 24 * 60},
+                    {"method": "popup", "minutes": 5 * 24 * 60},
+                    {"method": "popup", "minutes": 3 * 24 * 60},
+                    {"method": "popup", "minutes": 1 * 24 * 60},
+                ]
+                
+                datos_evento = {
+                    "titulo": titulo,
+                    "fecha": fecha_str,
+                    "hora": "08:00",
+                    "reminders": reminders
+                }
+                
+                res = agente.guardar_aviso_calendar(datos_evento)
+                if "Error" in res or "❌" in res:
+                    logger.error(f"Error sincronizando {titulo}: {res}")
+                    count_err += 1
+                else:
+                    count_ok += 1
+                    
+    logger.info(f"Sincronización de avisos completada: {count_ok} OK, {count_err} Errores.")
+    return {"status": "ok", "synced": count_ok, "errors": count_err}

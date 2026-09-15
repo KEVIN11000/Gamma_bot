@@ -25,3 +25,4 @@ mypy.ini
 repositories/
 VERSION
 docs/
+scripts/

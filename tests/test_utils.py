@@ -60,3 +60,28 @@ def test_reply_with_expiration(mock_time, mock_timer, temp_pending_file):
     mock_bot.delete_message.assert_called_once_with(123, 456)
     data = _load_pending()
     assert "123_456" not in data
+
+def test_safe_int_validations():
+    # Attempt to import from logic.logic first, fallback to logic.financiero
+    try:
+        from logic.logic import safe_int
+    except ImportError:
+        from logic.financiero import safe_int
+        
+    assert safe_int("") == 0
+    
+    # Valida que no crashee con un número con comas y decimales
+    res = safe_int("1,500.5")
+    assert isinstance(res, int)
+
+def test_time_utc3():
+    from logic.logic import get_now_py, get_today_py_date, format_timestamp_py
+    
+    now = get_now_py()
+    assert now.utcoffset().total_seconds() == -10800
+    
+    today = get_today_py_date()
+    assert today is not None
+    
+    ts = format_timestamp_py()
+    assert isinstance(ts, str)

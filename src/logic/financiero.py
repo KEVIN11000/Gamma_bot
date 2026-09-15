@@ -4,8 +4,6 @@ import os
 import re
 import time
 
-import pytz
-
 from logger_config import setup_logger
 from logic.constants import (
     ENCABEZADOS_LIBRO_DIARIO,
@@ -13,12 +11,9 @@ from logic.constants import (
     HOJA_LIBRO_DIARIO_TEST,
     TIMEZONE,
 )
-from logic.logic import ConexionSheets
+from logic.logic import ConexionSheets, safe_int
 
 logger = setup_logger("financiero")
-
-tz_py = pytz.timezone(TIMEZONE)
-
 
 class AgenteFinanciero:
     """
@@ -427,11 +422,148 @@ from services.calendar_service import CalendarService
 from services.drive_service import DriveService
 import uuid
 
-def create_debt(entity: str, concept: str, total_amount: int, quotas: int, first_due_date: str) -> str:
+def calcular_margen_de_ataque() -> int:
+    repo = SheetsRepository()
+    ingresos_base, gastos_fijos = repo.obtener_presupuesto_base_completo()
+    deudas_activas = repo.get_obligaciones_activas()
+    
+    suma_cuotas = sum(safe_int(d.get("Cuota_Referencia_Gs", 0)) for d in deudas_activas)
+    
+    margen = ingresos_base - gastos_fijos - suma_cuotas
+    return margen if margen > 0 else 0
+
+def proyectar_cola_deudas(criterio="prioridad") -> dict:
+    repo = SheetsRepository()
+    deudas = repo.get_obligaciones_activas()
+    margen_ataque = calcular_margen_de_ataque()
+    
+    from dateutil.relativedelta import relativedelta
+    from logic.logic import get_now_py
+    import math
+    
+    now = get_now_py()
+    hoy = now.date()
+    
+    cola = []
+    for d in deudas:
+        vencida = False
+        dia_vencimiento = safe_int(d.get("Dia_Vencimiento", 0))
+        if dia_vencimiento > 0 and dia_vencimiento < hoy.day:
+            vencida = True
+            
+        prioridad = safe_int(d.get("Orden_Prioridad", 999))
+        saldo = safe_int(d.get("Saldo_Actual", 0))
+        cuota = safe_int(d.get("Cuota_Referencia_Gs", 0))
+        
+        cola.append({
+            "id": str(d.get("ID_Obligacion", "")),
+            "nombre": str(d.get("Nombre", "")),
+            "saldo": saldo,
+            "cuota": cuota,
+            "prioridad": prioridad,
+            "vencida": vencida
+        })
+        
+    if criterio == "prioridad":
+        cola.sort(key=lambda x: (not x["vencida"], x["prioridad"]))
+    else: 
+        cola.sort(key=lambda x: (not x["vencida"], x["saldo"]))
+        
+    margen_disponible = margen_ataque
+    resultados = []
+    
+    for d in cola:
+        saldo = d["saldo"]
+        cuota = d["cuota"]
+        
+        pago_mensual = cuota + margen_disponible
+        if pago_mensual <= 0:
+            meses_restantes = 999
+        else:
+            meses_restantes = math.ceil(saldo / pago_mensual)
+            
+        fecha_fin = hoy + relativedelta(months=meses_restantes)
+        
+        resultados.append({
+            "id": d["id"],
+            "nombre": d["nombre"],
+            "vencida": d["vencida"],
+            "meses_estimados": meses_restantes,
+            "fecha_fin": fecha_fin.strftime("%m/%Y"),
+            "pago_mensual_proyectado": pago_mensual
+        })
+        
+        margen_disponible += cuota 
+        
+    return {
+        "margen_ataque": margen_ataque,
+        "proyeccion": resultados
+    }
+
+def simular_impacto_abono(monto_extra: int, id_obligacion: str) -> dict:
+    repo = SheetsRepository()
+    obligacion = repo.get_obligacion_by_id(id_obligacion)
+    if not obligacion:
+        return {"error": "Obligación no encontrada"}
+        
+    saldo_actual = safe_int(obligacion.get("Saldo_Actual", 0))
+    cuota = safe_int(obligacion.get("Cuota_Referencia_Gs", 0))
+    
+    if cuota <= 0:
+        return {"error": "Cuota base es 0"}
+        
+    import math
+    meses_originales = math.ceil(saldo_actual / cuota) if saldo_actual > 0 else 0
+    
+    nuevo_saldo = saldo_actual - monto_extra
+    if nuevo_saldo <= 0:
+        meses_nuevos = 0
+    else:
+        meses_nuevos = math.ceil(nuevo_saldo / cuota)
+        
+    return {
+        "saldo_anterior": saldo_actual,
+        "saldo_nuevo": max(0, nuevo_saldo),
+        "meses_ahorrados": max(0, meses_originales - meses_nuevos),
+        "meses_restantes": meses_nuevos
+    }
+
+def obtener_cronograma_vencimientos() -> dict:
+    repo = SheetsRepository()
+    todas = repo.get_todas_obligaciones()
+    
+    from logic.logic import get_now_py
+    hoy = get_now_py().date()
+    
+    vencimientos = []
+    for d in todas:
+        if str(d.get("Estado", "")).lower() == "activo":
+            dia = safe_int(d.get("Dia_Vencimiento", 0))
+            if dia > 0:
+                vencimientos.append({
+                    "id": d.get("ID_Obligacion", ""),
+                    "nombre": d.get("Nombre", ""),
+                    "dia_vencimiento": dia,
+                    "cuota": safe_int(d.get("Cuota_Referencia_Gs", 0)),
+                    "saldo": safe_int(d.get("Saldo_Actual", 0))
+                })
+                
+    vencimientos.sort(key=lambda x: x["dia_vencimiento"])
+    
+    return {
+        "mes_actual": hoy.month,
+        "vencimientos": vencimientos
+    }
+
+def create_debt(entity: str, concept: str, total_amount: int, quotas: int, first_due_date: str, dia_vencimiento: int = 0, cuotas_totales: int = None) -> str:
     repo = SheetsRepository()
     debt_id = str(uuid.uuid4())[:8]
     event_id = CalendarService.create_event(f"Vencimiento {entity}", first_due_date, f"Pago de deuda: {concept}")
     cuota_ref = total_amount // quotas if quotas > 0 else total_amount
+    
+    if cuotas_totales is None:
+        cuotas_totales = quotas
+        
     obligacion_dict = {
         "ID_Obligacion": debt_id,
         "Tipo": "Deuda",
@@ -443,7 +575,11 @@ def create_debt(entity: str, concept: str, total_amount: int, quotas: int, first
         "Fecha_Inicio": first_due_date,
         "Observaciones": f"Entidad: {entity}",
         "Cuotas": quotas,
-        "Event_ID": event_id
+        "Event_ID": event_id,
+        "Dia_Vencimiento": dia_vencimiento,
+        "Cuotas_Totales": cuotas_totales,
+        "Cuotas_Restantes": quotas,
+        "Orden_Prioridad": 999
     }
     repo.insert_obligacion(obligacion_dict)
     return debt_id
@@ -455,13 +591,7 @@ def get_active_debts(debt_id: str = None) -> list[dict]:
         debts = [d for d in debts if str(d.get("ID_Obligacion", "")) == str(debt_id)]
     return debts
 
-def safe_int(value) -> int:
-    try:
-        if not value:
-            return 0
-        return int(float(str(value).strip()))
-    except ValueError:
-        return 0
+
 
 def calcular_iva(monto_total: int, tasa_iva: str) -> tuple[int, int]:
     tasa_iva = str(tasa_iva).strip().lower()
@@ -503,9 +633,19 @@ def register_payment(debt_id: str, amount: int, date: str, tasa_iva: str = "Exen
     repo.insert_movimiento_diario(movimiento_dict)
     
     obligacion = repo.get_obligacion_by_id(debt_id)
-    event_id = obligacion.get("Event_ID") if obligacion else ""
-    if event_id:
-        CalendarService.mark_event_completed(event_id)
+    if obligacion:
+        saldo_actual = safe_int(obligacion.get("Saldo_Actual", 0))
+        cuotas_restantes = safe_int(obligacion.get("Cuotas_Restantes", 0))
+        
+        nuevo_saldo = saldo_actual - amount
+        nuevo_estado = "Saldada" if nuevo_saldo <= 0 else None
+        nuevas_cuotas = cuotas_restantes - 1 if cuotas_restantes > 0 else 0
+        
+        repo.update_obligacion_saldo(debt_id, nuevo_saldo, nuevas_cuotas, nuevo_estado)
+        
+        event_id = obligacion.get("Event_ID")
+        if event_id:
+            CalendarService.mark_event_completed(event_id)
 
 def execute_monthly_closing(month: int, year: int) -> str:
     repo = SheetsRepository()

@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-import pytz
 import telebot
 
 from logger_config import setup_logger
@@ -12,8 +11,6 @@ from logic.financiero import AgenteFinanciero
 from logic.logic import AgenteAsistenciaMaterias, AgenteAutonomoHoras
 
 logger = setup_logger("bot")
-
-tz_py = pytz.timezone("America/Buenos_Aires")
 BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 

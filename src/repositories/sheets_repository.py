@@ -36,7 +36,7 @@ class SheetsRepository:
 
     def _ensure_headers(self, ws, sheet_name: str) -> None:
         headers_map = {
-            "Obligaciones_Maestro": ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID"],
+            "Obligaciones_Maestro": ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID", "Dia_Vencimiento", "Cuotas_Totales", "Cuotas_Restantes", "Orden_Prioridad"],
             "Libro_Diario": ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes", "ID_Obligacion", "Tasa_IVA", "Monto_Gravado", "Monto_IVA", "Clasificacion_IVA"],
             "Cierres_Historicos": ["ID_Cierre", "Mes", "Anio", "Total_Ingresos", "Total_Gastos", "Total_Deudas_Pagadas", "Debito_Fiscal", "Credito_Fiscal", "Liquidacion_IVA", "Estado_IVA", "Margen_Libre_Disponible", "Saldo_Acumulado", "Fecha_Cierre", "Archivo_Backup_Drive"],
             "Presupuesto_Base": ["Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs", "Tipo_Ingreso_Gasto", "Observaciones"]
@@ -68,7 +68,7 @@ class SheetsRepository:
     # --- Obligaciones_Maestro ---
     def insert_obligacion(self, obligacion_dict: dict) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        headers = ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID"]
+        headers = ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID", "Dia_Vencimiento", "Cuotas_Totales", "Cuotas_Restantes", "Orden_Prioridad"]
         row = [obligacion_dict.get(h, "") for h in headers]
         ws.append_row(row)
 
@@ -95,6 +95,40 @@ class SheetsRepository:
         ws = self._get_sheet("Obligaciones_Maestro")
         records = ws.get_all_records()
         return [r for r in records if str(r.get("Estado", "")).lower() == "activo"]
+
+    def update_obligacion_saldo(self, id_obligacion: str, nuevo_saldo: int, cuotas_restantes: int = None, nuevo_estado: str = None) -> None:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        records = ws.get_all_records()
+        for idx, r in enumerate(records, start=2):
+            if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
+                keys_lower = [k.lower() for k in r.keys()]
+                if "saldo_actual" in keys_lower:
+                    saldo_idx = keys_lower.index("saldo_actual") + 1
+                    ws.update_cell(idx, saldo_idx, nuevo_saldo)
+                
+                if cuotas_restantes is not None and "cuotas_restantes" in keys_lower:
+                    cuotas_idx = keys_lower.index("cuotas_restantes") + 1
+                    ws.update_cell(idx, cuotas_idx, cuotas_restantes)
+                
+                if nuevo_estado is not None and "estado" in keys_lower:
+                    estado_idx = keys_lower.index("estado") + 1
+                    ws.update_cell(idx, estado_idx, nuevo_estado)
+                break
+
+    def update_obligacion_prioridad(self, id_obligacion: str, orden_prioridad: int) -> None:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        records = ws.get_all_records()
+        for idx, r in enumerate(records, start=2):
+            if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
+                keys_lower = [k.lower() for k in r.keys()]
+                if "orden_prioridad" in keys_lower:
+                    prio_idx = keys_lower.index("orden_prioridad") + 1
+                    ws.update_cell(idx, prio_idx, orden_prioridad)
+                break
+
+    def get_todas_obligaciones(self) -> list[dict]:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        return ws.get_all_records()
 
     # --- Libro_Diario ---
     def insert_movimiento_diario(self, movimiento_dict: dict) -> None:
@@ -138,3 +172,18 @@ class SheetsRepository:
         if records:
             return records[0]
         return {}
+
+    def obtener_presupuesto_base_completo(self) -> tuple[int, int]:
+        from logic.logic import safe_int
+        ws = self._get_sheet("Presupuesto_Base")
+        records = ws.get_all_records()
+        total_ingreso = 0
+        total_costos = 0
+        for r in records:
+            tipo_flujo = str(r.get("Tipo_Flujo", r.get("Tipo_Ingreso_Gasto", ""))).lower().strip()
+            monto = safe_int(r.get("Monto_Mensual_Gs", 0))
+            if "ingreso" in tipo_flujo:
+                total_ingreso += monto
+            elif "egreso" in tipo_flujo or "gasto" in tipo_flujo:
+                total_costos += monto
+        return total_ingreso, total_costos

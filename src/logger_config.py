@@ -1,25 +1,24 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
-import pytz
 import os
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "gen_log.txt"
-tz_py = pytz.timezone("America/Buenos_Aires")
+TZ_PARAGUAY = timezone(timedelta(hours=-3))
 
 
 class TimezoneFormatter(logging.Formatter):
     def converter(self, timestamp):
-        dt = datetime.fromtimestamp(timestamp, tz_py)
+        dt = datetime.fromtimestamp(timestamp, TZ_PARAGUAY)
         return dt.timetuple()
 
     def formatTime(self, record, datefmt=None):
-        dt = datetime.fromtimestamp(record.created, tz_py)
+        dt = datetime.fromtimestamp(record.created, TZ_PARAGUAY)
         if datefmt:
             return dt.strftime(datefmt)
         return dt.strftime("%Y-%m-%d %H:%M:%S")

@@ -4,14 +4,13 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-
-import pytz
+from typing import List, Optional
 
 from logger_config import setup_logger
+from logic.logic import get_now_py
 
 logger = setup_logger("pdf_service")
 
-tz_py = pytz.timezone("America/Buenos_Aires")
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -137,7 +136,7 @@ class PDFService:
             story.append(Paragraph(datos.subtitulo, e_sub))
             story.append(
                 Paragraph(
-                    f"Generado: {datetime.now(tz_py).strftime('%d/%m/%Y  %I:%M %p')}",
+                    f"Generado: {get_now_py().strftime('%d/%m/%Y  %I:%M %p')}",
                     e_sub,
                 )
             )

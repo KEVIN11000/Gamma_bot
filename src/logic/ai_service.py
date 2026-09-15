@@ -4,15 +4,13 @@ import json
 import os
 from datetime import datetime
 
-import pytz
 from google import genai
 from google.genai import types
 
 from logger_config import setup_logger
+from logic.logic import get_now_py, format_timestamp_py
 
 logger = setup_logger("ai_service")
-
-tz_py = pytz.timezone("America/Buenos_Aires")
 
 
 class AIService:
@@ -21,7 +19,7 @@ class AIService:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return {"error": "Configuración de IA incompleta en el servidor."}
-        ahora = datetime.now(tz_py)
+        ahora = get_now_py()
         fecha_hoy_str = ahora.strftime("%d/%m")
         mes_actual = ahora.strftime("%B")
         prompt_sistema = (
@@ -110,7 +108,7 @@ class AIService:
         mi_nombre = os.getenv("MI_NOMBRE_FACTURA", "Sin Nombre")
         if not api_key:
             return {"error": "Configuración de IA incompleta en el servidor."}
-        ahora = datetime.now(tz_py)
+        ahora = get_now_py()
         fecha_hoy_str = ahora.strftime("%d/%m")
         mes_actual = ahora.strftime("%B")
         prompt_sistema = (
@@ -169,7 +167,7 @@ class AIService:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return {"error": "Configuración de IA incompleta en el servidor."}
-        ahora = datetime.now(tz_py)
+        ahora = get_now_py()
         dias_semana = [
             "Lunes",
             "Martes",
