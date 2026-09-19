@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 import config
+config.validate_production_config()
 from com.bot import GAMMA
 from logger_config import setup_logger
 from logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs
@@ -73,6 +74,8 @@ def webhook() -> Any:
 
 @app.route("/set_webhook")
 def set_webhook() -> Any:
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
     url_app = "https://kevin11000.pythonanywhere.com"
     success = bot_instance.bot.set_webhook(url=f"{url_app}/{bot_instance.token}")
     if success:
@@ -86,8 +89,8 @@ def home() -> Any:
 
 
 # ── Auto-deploy desde GitHub ──────────────────────────────────────────────────
-@limiter.limit("10 per minute")
 @app.route("/deploy", methods=["POST"])
+@limiter.limit("10 per minute")
 def deploy() -> Any:
     """
     Endpoint llamado por el webhook de GitHub en cada push a Main-stable.
@@ -95,17 +98,15 @@ def deploy() -> Any:
     Tras el git pull, toca el archivo WSGI para forzar el reload de la app
     en PythonAnywhere (funciona en cuentas gratuitas sin API externa).
     """
-    # Validate GitHub webhook signature if secret is set (mandatory in production)
-    if config.GITHUB_WEBHOOK_SECRET:
-        secret = config.GITHUB_WEBHOOK_SECRET.encode()
-        signature_header = request.headers.get("X-Hub-Signature-256", "")
-        body = request.get_data()
-        expected = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, signature_header):
-            abort(403, "Firma inválida")
-    elif config.is_production():
-        abort(403, "Missing GITHUB_WEBHOOK_SECRET")
-    # If no secret and not production, skip signature verification (development mode)
+    # Always require webhook secret
+    if not config.GITHUB_WEBHOOK_SECRET:
+        abort(403, "GITHUB_WEBHOOK_SECRET no configurado")
+    secret = config.GITHUB_WEBHOOK_SECRET.encode()
+    signature_header = request.headers.get("X-Hub-Signature-256", "")
+    body = request.get_data()
+    expected = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature_header):
+        abort(403, "Firma inválida")
 
     # 2. Filtrar: solo actuar en push a Main-stable
     payload = request.get_json(silent=True) or {}
@@ -202,33 +203,21 @@ def deploy() -> Any:
 
 
 # ── Cron Jobs (llamados por cron-job.org) ────────────────────────────────────
-def _validar_cron_secret() -> Any:
+def _validar_cron_secret() -> bool:
     """Verify the secret token for cron endpoints.
-    Reads CRON_SECRET from the environment on each request, allowing
-    all calls in development when the variable is unset or empty.
+    Returns True if valid, False otherwise.
+    Always requires CRON_SECRET — no bypass for any environment.
     """
-    from com.core.utils import limpiar_menus_expirados
-    try:
-        limpiar_menus_expirados(bot_instance.bot)
-    except Exception:
-        pass
     secret = os.getenv("CRON_SECRET")
-    # If no secret is defined, allow in non‑production environments
     if not secret:
-        return not config.is_production()
-    token_enviado = request.headers.get("X-Cron-Secret", "") or request.args.get(
-        "secret", ""
-    )
-    return token_enviado == secret
-@limiter.limit("10 per minute")
+        return False
+    token_enviado = request.headers.get("X-Cron-Secret", "")
+    return hmac.compare_digest(token_enviado, secret)
 @app.route("/cron/resumen-semanal", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def cron_resumen_semanal() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    try:
-        limpiar_menus_expirados(bot_instance.bot)
-    except Exception as e:
-        logger.error(f"Error en limpiar_menus_expirados: {e}")
     chat_id = os.environ.get("CHAT_ID")
     spreadsheet_id = os.environ.get("SPREADSHEET_ID")
     if not chat_id or not spreadsheet_id:
@@ -241,15 +230,11 @@ def cron_resumen_semanal() -> Any:
     )
 
 
-@limiter.limit("10 per minute")
 @app.route("/cron/clima", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def cron_clima() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    try:
-        limpiar_menus_expirados(bot_instance.bot)
-    except Exception as e:
-        logger.error(f"Error en limpiar_menus_expirados: {e}")
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
@@ -261,15 +246,11 @@ def cron_clima() -> Any:
     )
 
 
-@limiter.limit("10 per minute")
 @app.route("/cron/rotar-logs", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def cron_rotar_logs() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    try:
-        limpiar_menus_expirados(bot_instance.bot)
-    except Exception as e:
-        logger.error(f"Error en limpiar_menus_expirados: {e}")
     exito = rotar_logs()
     return (
         ("✅ Logs rotados correctamente.", 200)
@@ -278,15 +259,11 @@ def cron_rotar_logs() -> Any:
     )
 
 
-@limiter.limit("10 per minute")
 @app.route("/cron/cierre-mensual", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def cron_cierre_mensual() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    try:
-        limpiar_menus_expirados(bot_instance.bot)
-    except Exception as e:
-        logger.error(f"Error en limpiar_menus_expirados: {e}")
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
@@ -300,15 +277,11 @@ def cron_cierre_mensual() -> Any:
     )
 
 
-@limiter.limit("10 per minute")
 @app.route("/cron/asesor-ia", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def cron_asesor_ia() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
-    try:
-        limpiar_menus_expirados(bot_instance.bot)
-    except Exception as e:
-        logger.error(f"Error en limpiar_menus_expirados: {e}")
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500

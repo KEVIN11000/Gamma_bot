@@ -2,7 +2,9 @@ from __future__ import annotations
 
 # Constants used across the Gamma_bot project
 
-VERSION = "1.12.0"
+from pathlib import Path as _Path
+_VERSION_FILE = _Path(__file__).resolve().parents[1] / "VERSION"
+VERSION = _VERSION_FILE.read_text(encoding="utf-8").strip() if _VERSION_FILE.exists() else "0.0.0"
 
 # Sheet names
 HOJA_LIBRO_DIARIO = "Libro_Diario"
@@ -50,7 +52,34 @@ ENCABEZADOS_LIBRO_DIARIO = [
     "Comprobante",
     "Rastro/Foto",
     "Mes",
+    "ID_Obligacion",
+    "Tasa_IVA",
+    "Monto_Gravado",
+    "Monto_IVA",
+    "Clasificacion_IVA",
 ]
+
+ENCABEZADOS_CIERRES_HISTORICOS = [
+    "ID_Cierre", "Mes", "Anio", "Total_Ingresos", "Total_Gastos",
+    "Total_Deudas_Pagadas", "Debito_Fiscal", "Credito_Fiscal",
+    "Liquidacion_IVA", "Estado_IVA", "Margen_Libre_Disponible",
+    "Saldo_Acumulado", "Fecha_Cierre", "Archivo_Backup_Drive",
+]
+
+ENCABEZADOS_OBLIGACIONES_MAESTRO = [
+    "ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual",
+    "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones",
+    "Cuotas", "Event_ID", "Dia_Vencimiento", "Cuotas_Totales",
+    "Cuotas_Restantes", "Orden_Prioridad",
+]
+
+ENCABEZADOS_PRESUPUESTO_BASE = [
+    "Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs",
+    "Tipo_Ingreso_Gasto", "Observaciones",
+]
+
+TIPO_INGRESO = "Ingreso"
+TIPO_EGRESO = "Egreso"
 ENCABEZADOS_MATERIAS = [
     "Día",
     "Fecha",

@@ -34,7 +34,7 @@ class TestDeudasHandlers(unittest.TestCase):
         msg = MagicMock()
         msg.text = "/nueva_deuda Banco Auto 10000 12 2026-10-01"
         self.handlers["nueva_deuda"](msg)
-        mock_create_debt.assert_called_once_with("Banco", "Auto", 10000, 12, "2026-10-01")
+        mock_create_debt.assert_called_once_with("Banco", "Auto", 10000, 12, "2026-10-01", dia_vencimiento=0)
         self.bot_mock.reply_to.assert_called_once()
 
     @patch('com.handlers.deudas.get_active_debts')

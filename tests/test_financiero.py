@@ -58,38 +58,71 @@ class TestFinancieroLogic(unittest.TestCase):
 
     @patch('logic.financiero.SheetsRepository')
     @patch('logic.financiero.DriveService')
+    @patch('logic.financiero.get_now_py')
     @patch('builtins.open', new_callable=unittest.mock.mock_open)
-    def test_execute_monthly_closing(self, mock_open, MockDrive, MockRepo):
+    def test_execute_monthly_closing(self, mock_open, mock_get_now, MockDrive, MockRepo):
+        import datetime
+        from dateutil.tz import tzutc
+        mock_get_now.return_value = datetime.datetime(2026, 9, 30, tzinfo=tzutc())
+        
         repo_instance = MockRepo.return_value
         
-        # Test case 1
+        # Feed mocks with REAL column names (matching ENCABEZADOS_LIBRO_DIARIO)
         repo_instance.get_movimientos_mes.return_value = [
-            {"Tipo_Movimiento": "Ingreso", "Monto_Total": 1000, "Monto_IVA": 100, "Clasificacion_IVA": "Débito Fiscal"},
-            {"Tipo_Movimiento": "Egreso", "Monto_Total": 200, "Monto_IVA": 20, "Clasificacion_IVA": "Crédito Fiscal"}
+            {"Movimiento": "Ingreso", "Total": 1000000, "Monto_IVA": 90909,
+             "Clasificacion_IVA": "Débito Fiscal", "Categoría": "Ventas"},
+            {"Movimiento": "Egreso", "Total": 200000, "Monto_IVA": 18182,
+             "Clasificacion_IVA": "Crédito Fiscal", "Categoría": "Insumos"},
+            {"Movimiento": "Egreso", "Total": 150000, "Monto_IVA": 0,
+             "Clasificacion_IVA": "N/A", "Categoría": "Deudas"},
         ]
-        repo_instance.get_last_cierre_mensual.return_value = {"Saldo_Acumulado_Actual": 500}
+        repo_instance.get_last_cierre_mensual.return_value = {"Saldo_Acumulado": 500000}
         MockDrive.upload_backup.return_value = "mock_drive_id"
         
         drive_id = execute_monthly_closing(9, 2026)
-        self.assertEqual(drive_id, "mock_drive_id")
         
+        # Assert the cierre was written with correct values
         repo_instance.insert_cierre_mensual.assert_called_once()
+        cierre_written = repo_instance.insert_cierre_mensual.call_args[0][0]
+        
+        self.assertEqual(cierre_written["Mes"], "09")
+        self.assertEqual(cierre_written["Anio"], 2026)
+        self.assertEqual(cierre_written["Total_Ingresos"], 1000000)
+        self.assertEqual(cierre_written["Total_Gastos"], 350000)  # 200k + 150k
+        self.assertEqual(cierre_written["Total_Deudas_Pagadas"], 150000)
+        self.assertEqual(cierre_written["Debito_Fiscal"], 90909)
+        self.assertEqual(cierre_written["Credito_Fiscal"], 18182)
+        self.assertEqual(cierre_written["Liquidacion_IVA"], 90909 - 18182)
+        self.assertEqual(cierre_written["Estado_IVA"], "A Pagar")
+        # Saldo_Acumulado = anterior (500k) + margen_libre (1M - 350k - provision)
+        provision = 90909 - 18182  # = 72727
+        expected_margen = 1000000 - 350000 - provision
+        expected_saldo = 500000 + expected_margen
+        self.assertEqual(cierre_written["Saldo_Acumulado"], expected_saldo)
+        self.assertEqual(cierre_written["Archivo_Backup_Drive"], "mock_drive_id")
+        
+        # Test case 2: Empty initial balance
         repo_instance.insert_cierre_mensual.reset_mock()
-
-        # Test case 2
         repo_instance.get_movimientos_mes.return_value = [
-            {"Tipo_Movimiento": "Ingreso", "Monto_Total": 500, "Monto_IVA": 50, "Clasificacion_IVA": "Débito Fiscal"},
-            {"Tipo_Movimiento": "Egreso", "Monto_Total": 800, "Monto_IVA": 80, "Clasificacion_IVA": "Crédito Fiscal"}
+            {"Movimiento": "Ingreso", "Total": 500000, "Monto_IVA": 45454,
+             "Clasificacion_IVA": "Débito Fiscal", "Categoría": "Ventas"},
+            {"Movimiento": "Gasto", "Total": 800000, "Monto_IVA": 72727,
+             "Clasificacion_IVA": "Crédito Fiscal", "Categoría": "Compras"},
         ]
         repo_instance.get_last_cierre_mensual.return_value = {}
         
         execute_monthly_closing(10, 2026)
-        repo_instance.insert_cierre_mensual.assert_called_once()
+        cierre2 = repo_instance.insert_cierre_mensual.call_args[0][0]
+        self.assertEqual(cierre2["Total_Ingresos"], 500000)
+        self.assertEqual(cierre2["Total_Gastos"], 800000)
+        # With empty last cierre, saldo starts from 0
+        self.assertEqual(cierre2["Saldo_Acumulado"],
+                         0 + 500000 - 800000 - max(45454 - 72727, 0))
 
     @patch('logic.financiero.SheetsRepository')
     def test_simulate_project(self, MockRepo):
         repo_instance = MockRepo.return_value
-        repo_instance.get_presupuesto_base.return_value = {"ingresos": 5000}
+        repo_instance.obtener_presupuesto_base_completo.return_value = (5000, 1000)
         repo_instance.get_obligaciones_activas.return_value = []
         
         project_id = simulate_project(1000, 12, "Auto")

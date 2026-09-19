@@ -17,8 +17,8 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 class GAMMA:
     def __init__(self):
-        self.token = os.getenv("TOKEN") or "dummy_token"
-        self.sheet_id = os.getenv("SPREADSHEET_ID") or "dummy_sheet_id"
+        self.token = os.getenv("TOKEN", "")
+        self.sheet_id = os.getenv("SPREADSHEET_ID", "")
 
         if not all([self.token, self.sheet_id]):
             raise ValueError(

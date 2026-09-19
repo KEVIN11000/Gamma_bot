@@ -7,11 +7,14 @@ import time
 from logger_config import setup_logger
 from logic.constants import (
     ENCABEZADOS_LIBRO_DIARIO,
+    ENCABEZADOS_CIERRES_HISTORICOS,
     HOJA_LIBRO_DIARIO,
     HOJA_LIBRO_DIARIO_TEST,
     TIMEZONE,
+    TIPO_INGRESO,
+    TIPO_EGRESO,
 )
-from logic.logic import ConexionSheets, safe_int
+from logic.logic import ConexionSheets, safe_int, get_now_py
 
 logger = setup_logger("financiero")
 
@@ -135,9 +138,8 @@ class AgenteFinanciero:
             nombre_hoja = HOJA_LIBRO_DIARIO_TEST if modo_dev else HOJA_LIBRO_DIARIO
 
             if nombre_hoja not in titulos_existentes:
-                self._ws = wb.add_worksheet(title=nombre_hoja, rows=1000, cols=11)
-                encabezados = ENCABEZADOS_LIBRO_DIARIO
-                self._retry_operation(self._ws.update, "A1:K1", [encabezados])
+                self._ws = wb.add_worksheet(title=nombre_hoja, rows=1000, cols=len(ENCABEZADOS_LIBRO_DIARIO))
+                self._retry_operation(self._ws.update, f"A1:{chr(64 + len(ENCABEZADOS_LIBRO_DIARIO))}1", [ENCABEZADOS_LIBRO_DIARIO])
                 logger.info(f"✅ Se creó la pestaña {nombre_hoja} en Google Sheets.")
             else:
                 self._ws = wb.worksheet(nombre_hoja)
@@ -216,24 +218,8 @@ class AgenteFinanciero:
                         f"Operación cancelada."
                     )
 
-            # Obtener próxima fila vacía
-            col_fechas = self.ws.col_values(1)
-            fila = len(col_fechas) + 1
-
             # Sanitizar valores contra inyección de fórmulas (Reporte AppSec)
             def sanitizar(val):
-                """
-                sanitizar method/function.
-
-                Args:
-                    val: Description for val.
-
-                Returns:
-                    Description of the return value.
-
-                Raises:
-                    Exception: Description of the exception.
-                """
                 s = str(val)
                 if s.startswith(("=", "+", "-", "@")):
                     return f"'{s}"
@@ -251,9 +237,18 @@ class AgenteFinanciero:
                 sanitizar(datos.get("comprobante", "")),
                 sanitizar(datos.get("file_id", "")),
                 sanitizar(datos.get("mes", "")),
+                sanitizar(datos.get("id_obligacion", "")),
+                sanitizar(datos.get("tasa_iva", "")),
+                self.limpiar_monto(datos.get("monto_gravado", 0)),
+                self.limpiar_monto(datos.get("monto_iva", 0)),
+                sanitizar(datos.get("clasificacion_iva", "")),
             ]
 
-            self._retry_operation(self.ws.update, f"A{fila}:K{fila}", [valores])
+            self._retry_operation(
+                self.ws.append_row,
+                valores,
+                value_input_option="USER_ENTERED",
+            )
 
             icono = "🟢" if datos.get("tipo_movimiento") == "Ingreso" else "🔴"
             monto_fmt = "{:,}".format(int(datos.get("total", 0))).replace(",", ".")
@@ -283,18 +278,20 @@ class AgenteFinanciero:
             total_ingresos = 0
             total_gastos = 0
 
-            for fila in registros:
-                if len(fila) < 7:
-                    continue
+            for idx, fila in enumerate(registros):
+                # Pad short rows instead of skipping
+                fila = (fila + [""] * 7)[:max(len(fila), 7)]
                 tipo = fila[1].strip().lower()
-                monto = fila[6].strip()
-                try:
-                    monto_val = int(monto)
-                except ValueError:
-                    continue
+                monto_raw = fila[6].strip()
+                monto_val = safe_int(monto_raw)
+                if monto_val == 0 and monto_raw not in ("", "0"):
+                    logger.warning(
+                        f"obtener_balance: fila {idx + 2} descartada — "
+                        f"monto no parseable: '{monto_raw}'"
+                    )
                 if tipo == "ingreso":
                     total_ingresos += monto_val
-                elif tipo == "gasto":
+                elif tipo in ("egreso", "gasto"):
                     total_gastos += monto_val
 
             flujo_neto = total_ingresos - total_gastos
@@ -306,7 +303,7 @@ class AgenteFinanciero:
             }
         except Exception as e:
             logger.error(f"❌ Error al obtener balance: {e}")
-            return None
+            return {}
 
     def preparar_datos_reporte(self, mes=None):
         """
@@ -374,7 +371,7 @@ class AgenteFinanciero:
 
             if tipo.lower() == "ingreso":
                 total_ingresos += monto_val
-            elif tipo.lower() == "gasto":
+            elif tipo.lower() in ("egreso", "gasto"):
                 total_gastos += monto_val
 
             filas_filtradas.append([f[0], tipo, f[2], f[3], monto_fmt, f[7]])
@@ -471,6 +468,7 @@ def proyectar_cola_deudas(criterio="prioridad") -> dict:
         
     margen_disponible = margen_ataque
     resultados = []
+    fecha_inicio_disponible = hoy  # First debt starts from today
     
     for d in cola:
         saldo = d["saldo"]
@@ -482,7 +480,7 @@ def proyectar_cola_deudas(criterio="prioridad") -> dict:
         else:
             meses_restantes = math.ceil(saldo / pago_mensual)
             
-        fecha_fin = hoy + relativedelta(months=meses_restantes)
+        fecha_fin = fecha_inicio_disponible + relativedelta(months=meses_restantes)
         
         resultados.append({
             "id": d["id"],
@@ -493,6 +491,8 @@ def proyectar_cola_deudas(criterio="prioridad") -> dict:
             "pago_mensual_proyectado": pago_mensual
         })
         
+        # Next debt only starts receiving the extra margin after this one is paid off
+        fecha_inicio_disponible = fecha_fin
         margen_disponible += cuota 
         
     return {
@@ -614,7 +614,7 @@ def register_payment(debt_id: str, amount: int, date: str, tasa_iva: str = "Exen
     
     movimiento_dict = {
         "Fecha": date,
-        "Movimiento": "Egreso",
+        "Movimiento": TIPO_EGRESO,
         "Proveedor/Cliente": "Pago Deuda",
         "Nro Factura": "S/N",
         "Neto": gravado,
@@ -648,14 +648,27 @@ def register_payment(debt_id: str, amount: int, date: str, tasa_iva: str = "Exen
             CalendarService.mark_event_completed(event_id)
 
 def execute_monthly_closing(month: int, year: int) -> str:
+    import tempfile
+    import os
+    import csv
+    import uuid
+
     repo = SheetsRepository()
     movimientos = repo.get_movimientos_mes(str(month), str(year))
     
-    total_gastos = sum(safe_int(m.get("Monto_Total", 0)) for m in movimientos if str(m.get("Tipo_Movimiento", "")).lower() == "egreso")
-    total_ingresos = sum(safe_int(m.get("Monto_Total", 0)) for m in movimientos if str(m.get("Tipo_Movimiento", "")).lower() == "ingreso")
+    total_gastos = sum(safe_int(m.get("Total", 0)) for m in movimientos
+                       if str(m.get("Movimiento", "")).lower() in ("egreso", "gasto"))
+    total_ingresos = sum(safe_int(m.get("Total", 0)) for m in movimientos
+                         if str(m.get("Movimiento", "")).lower() == "ingreso")
     
-    iva_debito_fiscal = sum(safe_int(m.get("Monto_IVA", 0)) for m in movimientos if str(m.get("Clasificacion_IVA", "")).lower() in ["débito fiscal", "debito fiscal"])
-    iva_credito_fiscal = sum(safe_int(m.get("Monto_IVA", 0)) for m in movimientos if str(m.get("Clasificacion_IVA", "")).lower() in ["crédito fiscal", "credito fiscal"])
+    total_deudas_pagadas = sum(safe_int(m.get("Total", 0)) for m in movimientos
+                               if str(m.get("Movimiento", "")).lower() in ("egreso", "gasto")
+                               and str(m.get("Categoría", m.get("Categoria", ""))).lower() == "deudas")
+    
+    iva_debito_fiscal = sum(safe_int(m.get("Monto_IVA", 0)) for m in movimientos
+                            if str(m.get("Clasificacion_IVA", "")).lower() in ("débito fiscal", "debito fiscal"))
+    iva_credito_fiscal = sum(safe_int(m.get("Monto_IVA", 0)) for m in movimientos
+                             if str(m.get("Clasificacion_IVA", "")).lower() in ("crédito fiscal", "credito fiscal"))
     
     liquidacion_iva = iva_debito_fiscal - iva_credito_fiscal
     estado_iva = "A Pagar" if liquidacion_iva > 0 else "Saldo a Favor"
@@ -664,25 +677,25 @@ def execute_monthly_closing(month: int, year: int) -> str:
     margen_libre = total_ingresos - total_gastos - provision_impuestos
     
     last_cierre = repo.get_last_cierre_mensual()
-    saldo_acumulado_anterior = safe_int(last_cierre.get("Saldo_Acumulado_Actual", 0)) if last_cierre else 0
+    saldo_acumulado_anterior = safe_int(last_cierre.get("Saldo_Acumulado", 0)) if last_cierre else 0
     saldo_acumulado_actual = saldo_acumulado_anterior + margen_libre
     
     cierre_dict = {
-        "Mes_Anio": f"{str(month).zfill(2)}-{year}",
-        "Total_Ingresos_Efectivo": total_ingresos,
-        "Total_Egresos_Efectivo": total_gastos,
-        "IVA_Debito_Fiscal": iva_debito_fiscal,
-        "IVA_Credito_Fiscal": iva_credito_fiscal,
+        "ID_Cierre": str(uuid.uuid4())[:8],
+        "Mes": str(month).zfill(2),
+        "Anio": year,
+        "Total_Ingresos": total_ingresos,
+        "Total_Gastos": total_gastos,
+        "Total_Deudas_Pagadas": total_deudas_pagadas,
+        "Debito_Fiscal": iva_debito_fiscal,
+        "Credito_Fiscal": iva_credito_fiscal,
         "Liquidacion_IVA": liquidacion_iva,
         "Estado_IVA": estado_iva,
         "Margen_Libre_Disponible": margen_libre,
-        "Saldo_Acumulado_Actual": saldo_acumulado_actual
+        "Saldo_Acumulado": saldo_acumulado_actual,
+        "Fecha_Cierre": get_now_py().strftime("%d/%m/%Y"),
+        "Archivo_Backup_Drive": "",
     }
-    repo.insert_cierre_mensual(cierre_dict)
-    
-    import tempfile
-    import os
-    import csv
     
     backup_path = os.path.join(tempfile.gettempdir(), f"backup_{year}_{month}.csv")
     with open(backup_path, "w", newline='', encoding='utf-8') as f:
@@ -694,18 +707,17 @@ def execute_monthly_closing(month: int, year: int) -> str:
             f.write("No hay movimientos para este mes.")
         
     drive_id = DriveService.upload_backup(backup_path)
+    # Update the cierre with the drive ID
+    cierre_dict["Archivo_Backup_Drive"] = drive_id
+    repo.insert_cierre_mensual(cierre_dict)
     return drive_id
 
 def simulate_project(monto: int, meses: int, concept: str = "") -> str:
     repo = SheetsRepository()
-    presupuesto = repo.get_presupuesto_base()
     
-    # 1. Gastos fijos
-    GF = safe_int(presupuesto.get("gastos_fijos", presupuesto.get("Gastos Fijos", 0)))
-    
-    # 2. Lógica de Ingresos (Fijo vs Promedio Variable)
-    I = safe_int(presupuesto.get("ingresos", presupuesto.get("Ingresos", 0)))
-    origen_ingreso = "Fijo (Presupuesto Base)"
+    # Use the correct method that sums all budget items
+    I, GF = repo.obtener_presupuesto_base_completo()
+    origen_ingreso = "Presupuesto Base"
     
     if I == 0:
         movimientos = repo.get_all_movimientos()
@@ -713,10 +725,10 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
         total_ingresos_historicos = 0
         
         for m in movimientos:
-            tipo = str(m.get("Tipo_Movimiento", m.get("tipo_movimiento", ""))).strip().lower()
+            tipo = str(m.get("Movimiento", "")).strip().lower()
             if tipo == "ingreso":
-                monto_mov = safe_int(m.get("Monto_Total", m.get("total", 0)))
-                fecha = str(m.get("Fecha", m.get("fecha", ""))).strip()
+                monto_mov = safe_int(m.get("Total", 0))
+                fecha = str(m.get("Fecha", "")).strip()
                 mes_str = fecha[:7] if len(fecha) >= 7 else "desc"
                 meses_activos.add(mes_str)
                 total_ingresos_historicos += monto_mov

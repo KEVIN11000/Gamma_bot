@@ -4,7 +4,9 @@ import threading
 import time
 from typing import Any
 
-PENDING_FILE = os.path.join("data", "pending_deletions.json")
+from pathlib import Path as _Path
+_UTILS_BASE = _Path(__file__).resolve().parents[2]  # resolves to src/
+PENDING_FILE = str(_UTILS_BASE / "data" / "pending_deletions.json")
 
 def _load_pending() -> dict:
     if not os.path.exists(PENDING_FILE):

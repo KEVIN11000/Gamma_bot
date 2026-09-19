@@ -22,7 +22,3 @@ coverage.xml
 htmlcov/
 scratch_*.py
 mypy.ini
-repositories/
-VERSION
-docs/
-scripts/

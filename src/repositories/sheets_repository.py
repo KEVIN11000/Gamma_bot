@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from logic.constants import (
+    ENCABEZADOS_LIBRO_DIARIO,
+    ENCABEZADOS_CIERRES_HISTORICOS,
+    ENCABEZADOS_OBLIGACIONES_MAESTRO,
+    ENCABEZADOS_PRESUPUESTO_BASE,
+)
+
 # Simple repository that delegates to existing logic classes.
 # In a full refactor we would replace direct calls to AgenteFinanciero, etc.
 
@@ -36,10 +43,10 @@ class SheetsRepository:
 
     def _ensure_headers(self, ws, sheet_name: str) -> None:
         headers_map = {
-            "Obligaciones_Maestro": ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID", "Dia_Vencimiento", "Cuotas_Totales", "Cuotas_Restantes", "Orden_Prioridad"],
-            "Libro_Diario": ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes", "ID_Obligacion", "Tasa_IVA", "Monto_Gravado", "Monto_IVA", "Clasificacion_IVA"],
-            "Cierres_Historicos": ["ID_Cierre", "Mes", "Anio", "Total_Ingresos", "Total_Gastos", "Total_Deudas_Pagadas", "Debito_Fiscal", "Credito_Fiscal", "Liquidacion_IVA", "Estado_IVA", "Margen_Libre_Disponible", "Saldo_Acumulado", "Fecha_Cierre", "Archivo_Backup_Drive"],
-            "Presupuesto_Base": ["Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs", "Tipo_Ingreso_Gasto", "Observaciones"]
+            "Obligaciones_Maestro": ENCABEZADOS_OBLIGACIONES_MAESTRO,
+            "Libro_Diario": ENCABEZADOS_LIBRO_DIARIO,
+            "Cierres_Historicos": ENCABEZADOS_CIERRES_HISTORICOS,
+            "Presupuesto_Base": ENCABEZADOS_PRESUPUESTO_BASE,
         }
         if sheet_name in headers_map:
             try:
@@ -68,7 +75,7 @@ class SheetsRepository:
     # --- Obligaciones_Maestro ---
     def insert_obligacion(self, obligacion_dict: dict) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        headers = ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones", "Cuotas", "Event_ID", "Dia_Vencimiento", "Cuotas_Totales", "Cuotas_Restantes", "Orden_Prioridad"]
+        headers = ENCABEZADOS_OBLIGACIONES_MAESTRO
         row = [obligacion_dict.get(h, "") for h in headers]
         ws.append_row(row)
 
@@ -133,17 +140,22 @@ class SheetsRepository:
     # --- Libro_Diario ---
     def insert_movimiento_diario(self, movimiento_dict: dict) -> None:
         ws = self._get_sheet("Libro_Diario")
-        headers = ["Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto", "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes", "ID_Obligacion", "Tasa_IVA", "Monto_Gravado", "Monto_IVA", "Clasificacion_IVA"]
+        headers = ENCABEZADOS_LIBRO_DIARIO
         row = [movimiento_dict.get(h, "") for h in headers]
         ws.append_row(row)
 
     def get_movimientos_mes(self, month: str, year: str) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
         records = ws.get_all_records()
+        target_mes = f"{str(month).zfill(2)}/{year}"
         result = []
         for r in records:
+            mes_str = str(r.get("Mes", ""))
             fecha_str = str(r.get("Fecha", ""))
-            if f"{year}-{str(month).zfill(2)}" in fecha_str or f"{str(month).zfill(2)}-{year}" in fecha_str:
+            # Match on Mes column (format "MM/YYYY") or fallback to Fecha containing the month/year
+            if mes_str == target_mes:
+                result.append(r)
+            elif f"/{str(month).zfill(2)}/{year}" in fecha_str:
                 result.append(r)
         return result
 
@@ -161,7 +173,7 @@ class SheetsRepository:
 
     def insert_cierre_mensual(self, cierre_dict: dict) -> None:
         ws = self._get_sheet("Cierres_Historicos")
-        headers = ["ID_Cierre", "Mes", "Anio", "Total_Ingresos", "Total_Gastos", "Total_Deudas_Pagadas", "Debito_Fiscal", "Credito_Fiscal", "Liquidacion_IVA", "Estado_IVA", "Margen_Libre_Disponible", "Saldo_Acumulado", "Fecha_Cierre", "Archivo_Backup_Drive"]
+        headers = ENCABEZADOS_CIERRES_HISTORICOS
         row = [cierre_dict.get(h, "") for h in headers]
         ws.append_row(row)
 

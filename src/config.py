@@ -36,3 +36,20 @@ def mask_chat_id(chat_id: int) -> str:
     """Return a masked representation of a chat id, showing only the last 4 digits."""
     s = str(chat_id)
     return "*" * max(len(s) - 4, 0) + s[-4:]
+
+
+def validate_production_config() -> None:
+    """Fail startup if critical env vars are missing in production."""
+    if not is_production():
+        return
+    missing = []
+    if not GITHUB_WEBHOOK_SECRET:
+        missing.append("GITHUB_WEBHOOK_SECRET")
+    if not CRON_SECRET:
+        missing.append("CRON_SECRET")
+    if not TOKEN:
+        missing.append("TOKEN")
+    if missing:
+        raise RuntimeError(
+            f"Variables de entorno requeridas en producción: {', '.join(missing)}"
+        )
