@@ -2,7 +2,7 @@
 
 **Fase cerrada:** v1.13.0 (Correcciones y Auditoría)
 **Fecha de cierre:** 2026-09-18
-**Estado del build/tests:** ✅ pasando — 94 tests (pytest) con éxito, compileall sin errores.
+**Estado del build/tests:** ❌ fallando — 6 tests rotos (desactualizados tras las refactorizaciones de seguridad y contabilidad).
 
 ---
 
@@ -39,6 +39,11 @@
 
 ## 4. Pendientes explícitos para la próxima fase
 
+- [ ] Arreglar 6 tests rotos por las refactorizaciones recientes:
+  - `test_auth_security.py` falla al intentar arrancar la app sin secrets en test.
+  - `test_integration_local.py` (FakeWorksheet mock no soporta `value_input_option` de `append_row()`).
+  - `test_services.py` (Tests de Drive y Calendar esperan un mock ID en vez de `""`).
+  - `test_sheets_repository.py` (Mock de `get_movimientos_mes` usa `Fecha` en vez de la nueva columna `Mes`).
 - [ ] (Atrasado) Crear un script puntual para recalcular/sobrescribir todos los "Cierres Históricos" de la planilla Google Sheets a fin de homologarlos al nuevo esquema unificado.
 - [ ] Retomar refactorización UI: Transicionar la botonera hacia menús Inline agrupando la totalidad de los *slash-commands* bajo un botón principal ("Comandos").
 - [ ] Evaluar y remediar cualquier warning `None` en las cascadas de `obtener_cliente()` sobre utilidades de menor prioridad (bot/deudas).
