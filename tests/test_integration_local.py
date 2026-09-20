@@ -37,7 +37,7 @@ class FakeWorksheet:
         if headers:
             self._data.append(headers)
 
-    def append_row(self, row: list):
+    def append_row(self, row: list, **kwargs):
         # Pad row to match header width
         if self._data:
             width = len(self._data[0])

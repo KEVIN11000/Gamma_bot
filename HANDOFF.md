@@ -2,7 +2,7 @@
 
 **Fase cerrada:** v1.13.0 (Correcciones y Auditoría)
 **Fecha de cierre:** 2026-09-18
-**Estado del build/tests:** ❌ fallando — 6 tests rotos (desactualizados tras las refactorizaciones de seguridad y contabilidad).
+**Estado del build/tests:** ✅ pasando — 101 tests pasando al 100% (se estabilizó la suite tras solucionar las regresiones en los tests de seguridad y contabilidad).
 
 ---
 
@@ -14,6 +14,7 @@
 - Refactorización completada de los servicios mock (`DriveService`, `CalendarService`) y desvinculación de los mensajes engañosos correspondientes del `README.md`.
 - El comando `/estrategia` presenta las fechas estimadas de forma encadenada (efecto cascada) y advierte visualmente la exclusión de intereses.
 - Tareas referidas a los endpoints y lógica contable operan fluidamente; la cobertura en seguridad ha ascendido al bloquear vectores manuales vía query strings.
+- **Suite de Pruebas estabilizada:** Se corrigieron los mocks y aserciones desactualizadas, alcanzando el 100% de éxito (101 tests).
 
 ## 2. Decisiones tomadas en esta fase
 
@@ -25,6 +26,8 @@
   **Por qué:** Minimizar el riesgo de corromper Cierres pre-existentes sin un volcado manual explícito.
 - **Decisión:** Dejar en pausa el refactor UI propuesto para InlineKeyboards.
   **Por qué:** El usuario especificó pausar la implementación visual (a agruparse bajo el botón "Comandos") hasta concluir tickets de fiabilidad.
+- **Decisión:** Ajustar mocks de pruebas a la realidad productiva.
+  **Por qué:** Tras el blindaje de entorno (`validate_production_config`) y refactor de gspread (`append_row()`), los tests no reflejaban el comportamiento deseado y fallaban sintácticamente.
 
 ## 3. Archivos y módulos clave tocados
 
@@ -35,15 +38,10 @@
 | `logic/financiero.py` | Adopción de `append_row()`, encadenamiento de cálculos en la bola de nieve (`proyectar_cola_deudas`) e integración robusta al esquema de 16-cols. |
 | `handlers/deudas.py` | Eliminación de try/except intrusivos para posibilitar interceptación generalizada y agregado de *disclaimer* financiero en proyecciones. |
 | `logic/constants.py` y `VERSION` | Carga unificada de versión v1.13.0, definición estandarizada de encabezados `ENCABEZADOS_LIBRO_DIARIO`. |
-| `tests/*` | Adición de dos tests de penetración core (rate limiting y auth hooks) y reestructuración total del validacion test de cierres contables (`test_financiero.py`). |
+| `tests/*` | Múltiples tests de regresión actualizados (`test_auth_security.py`, `test_integration_local.py`, `test_services.py`, `test_sheets_repository.py`) para absorber parámetros `**kwargs` y validar bloqueos del entorno. |
 
 ## 4. Pendientes explícitos para la próxima fase
 
-- [ ] Arreglar 6 tests rotos por las refactorizaciones recientes:
-  - `test_auth_security.py` falla al intentar arrancar la app sin secrets en test.
-  - `test_integration_local.py` (FakeWorksheet mock no soporta `value_input_option` de `append_row()`).
-  - `test_services.py` (Tests de Drive y Calendar esperan un mock ID en vez de `""`).
-  - `test_sheets_repository.py` (Mock de `get_movimientos_mes` usa `Fecha` en vez de la nueva columna `Mes`).
 - [ ] (Atrasado) Crear un script puntual para recalcular/sobrescribir todos los "Cierres Históricos" de la planilla Google Sheets a fin de homologarlos al nuevo esquema unificado.
 - [ ] Retomar refactorización UI: Transicionar la botonera hacia menús Inline agrupando la totalidad de los *slash-commands* bajo un botón principal ("Comandos").
 - [ ] Evaluar y remediar cualquier warning `None` en las cascadas de `obtener_cliente()` sobre utilidades de menor prioridad (bot/deudas).

@@ -49,13 +49,13 @@ class TestAuthSecurity(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_deploy_403_without_webhook_secret_production(self):
-        """POST /deploy without GITHUB_WEBHOOK_SECRET in production must return 403."""
-        client = self._make_app({
-            'GITHUB_WEBHOOK_SECRET': None,
-            'FLASK_ENV': 'production',
-        })
-        resp = client.post('/deploy', data=b'{}')
-        self.assertEqual(resp.status_code, 403)
+        """POST /deploy without GITHUB_WEBHOOK_SECRET in production must return 403 or fail to start."""
+        with self.assertRaises(RuntimeError) as context:
+            client = self._make_app({
+                'GITHUB_WEBHOOK_SECRET': None,
+                'FLASK_ENV': 'production',
+            })
+        self.assertIn("Variables de entorno requeridas en producci", str(context.exception))
 
     def test_cron_403_without_cron_secret(self):
         """GET /cron/clima without CRON_SECRET must return 403."""

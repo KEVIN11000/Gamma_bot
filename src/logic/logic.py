@@ -50,7 +50,7 @@ def safe_int(value, default=0):
     if value is None or value == "":
         return default
     if isinstance(value, str):
-        value = value.replace(",", "").strip()
+        value = value.replace(",", "").replace('"', '').replace("'", "").strip()
     try:
         return int(float(value))
     except (ValueError, TypeError):

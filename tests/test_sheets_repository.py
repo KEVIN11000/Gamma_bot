@@ -62,7 +62,7 @@ class TestSheetsRepository(unittest.TestCase):
     @unittest.mock.patch('repositories.sheets_repository.SheetsRepository._get_sheet')
     def test_get_movimientos_mes(self, mock_get_sheet):
         mock_ws = unittest.mock.MagicMock()
-        mock_ws.get_all_records.return_value = [{"Fecha": "2023-05-15"}]
+        mock_ws.get_all_records.return_value = [{"Fecha": "15/05/2023", "Mes": "05/2023"}]
         mock_get_sheet.return_value = mock_ws
         result = self.repo.get_movimientos_mes("5", "2023")
         self.assertEqual(len(result), 1)
