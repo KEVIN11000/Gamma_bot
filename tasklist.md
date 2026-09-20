@@ -1,26 +1,22 @@
-# Tasklist: Estabilización de Suite de Pruebas (v1.13.0)
+# Tasklist: Hotfix GSpreadException (Empty Headers)
 
-Esta lista detalla las tareas necesarias para reparar los 6 tests rotos reportados en el `HANDOFF.md` tras las últimas refactorizaciones de seguridad y esquema contable.
+Esta lista detalla las tareas para corregir el error `GSpreadException: the header row in the worksheet contains duplicates: ['']` reportado en los logs del servidor al invocar `get_all_records()`. Este error se introdujo con la actualización de la librería `gspread` (v6.0+).
 
-## Fase 1: Correcciones en la capa de Seguridad
-- [x] **1. `test_auth_security.py`**:
-  - *Problema*: La prueba `test_deploy_403_without_webhook_secret_production` asume que la app arranca y retorna `403`. Sin embargo, con el nuevo `validate_production_config()`, la app lanza `RuntimeError` en arranque si faltan secretos.
-  - *Solución*: Modificar la aserción de la prueba para interceptar explícitamente y validar la ocurrencia del `RuntimeError`.
+## Fase 1: Arquitectura y Solución
+- [x] **1. Analizar el comportamiento de gspread 6.0+:**
+  - *Problema:* `get_all_records` ahora lanza error por defecto si existen columnas vacías o duplicadas en la cabecera.
+  - *Solución:* Pasar explícitamente el parámetro `expected_headers=[]` a las llamadas de `get_all_records()` para hacer bypass estricto de la validación y recuperar el comportamiento legacy (necesario por la estructura actual de Google Sheets que usa el usuario).
 
-## Fase 2: Correcciones en Mocks de Integración y Servicios
-- [x] **2. `test_integration_local.py`**:
-  - *Problema*: Tras sustituir la inserción de datos por la directiva `append_row()`, el mock `FakeWorksheet` crashea al recibir el kwarg `value_input_option` propio de la API real de gspread.
-  - *Solución*: Extender la firma de `FakeWorksheet.append_row(self, row: list, **kwargs)` para absorber el parámetro en el entorno local de test.
-- [x] **3. `test_services.py`**:
-  - *Problema*: Las pruebas asumen que los métodos de `CalendarService` y `DriveService` devuelven identificadores dummy (`"mock_event_id_Test"`, etc.). Ahora devuelven estáticamente `""` o `False` para no enviar mensajes engañosos al logger.
-  - *Solución*: Actualizar las aserciones de `test_calendar_create_event`, `test_calendar_mark_completed` y `test_drive_upload_backup` a sus valores reales `""` y `False`.
+## Fase 2: Implementación
+- [x] **2. Modificar el repositorio (sheets_repository.py):**
+  - Reemplazar todas las invocaciones `ws.get_all_records()` por `ws.get_all_records(expected_headers=[])` (11 reemplazos).
+- [x] **3. Actualizar Mocks en tests (test_integration_local.py):**
+  - Actualizar `FakeWorksheet.get_all_records(self)` a `def get_all_records(self, **kwargs)` para poder recibir el nuevo parámetro en las pruebas.
 
-## Fase 3: Correcciones en Lógica de Repositorio
-- [x] **4. `test_sheets_repository.py`**:
-  - *Problema*: La prueba `test_get_movimientos_mes` provee un diccionario falso con `"Fecha": "2023-05-15"`, pero la implementación productiva espera formato con barras `15/05/2023` o el campo de 16-cols `"Mes": "05/2023"`.
-  - *Solución*: Actualizar el mock del test a `[{"Fecha": "15/05/2023", "Mes": "05/2023"}]` para que retorne concordancia válida.
+## Fase 3: Validación y QA
+- [x] **4. QA Local:**
+  - Ejecutar `pytest tests/ -q` y certificar el estado (102 tests exitosos).
 
-## Fase 4: Validación y Cierre
-- [x] **5. QA Final**:
-  - Ejecutar `pytest tests/ -q` y confirmar 101 tests pasados (100%).
-  - Actualizar el `HANDOFF.md` reflejando el éxito de esta estabilización.
+## Fase 4: Despliegue
+- [ ] **5. Aprobación y Despliegue:**
+  - Presentar *Pipeline Completion Report* al usuario para autorizar explícitamente el despliegue al servidor.

@@ -47,7 +47,7 @@ class FakeWorksheet:
     def get_all_values(self) -> list[list[str]]:
         return deepcopy(self._data)
 
-    def get_all_records(self) -> list[dict]:
+    def get_all_records(self, **kwargs) -> list[dict]:
         if len(self._data) < 2:
             return []
         headers = self._data[0]

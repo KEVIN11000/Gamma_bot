@@ -81,7 +81,7 @@ class SheetsRepository:
 
     def update_obligacion_estado(self, id_obligacion: str, estado: str) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         for idx, r in enumerate(records, start=2): # +1 for header, +1 for 0-index
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 keys_lower = [k.lower() for k in r.keys()]
@@ -92,7 +92,7 @@ class SheetsRepository:
 
     def get_obligacion_by_id(self, id_obligacion: str) -> dict:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         for r in records:
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 return r
@@ -100,12 +100,12 @@ class SheetsRepository:
         
     def get_obligaciones_activas(self) -> list[dict]:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         return [r for r in records if str(r.get("Estado", "")).lower() == "activo"]
 
     def update_obligacion_saldo(self, id_obligacion: str, nuevo_saldo: int, cuotas_restantes: int = None, nuevo_estado: str = None) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         for idx, r in enumerate(records, start=2):
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 keys_lower = [k.lower() for k in r.keys()]
@@ -124,7 +124,7 @@ class SheetsRepository:
 
     def update_obligacion_prioridad(self, id_obligacion: str, orden_prioridad: int) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         for idx, r in enumerate(records, start=2):
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 keys_lower = [k.lower() for k in r.keys()]
@@ -135,7 +135,7 @@ class SheetsRepository:
 
     def get_todas_obligaciones(self) -> list[dict]:
         ws = self._get_sheet("Obligaciones_Maestro")
-        return ws.get_all_records()
+        return ws.get_all_records(expected_headers=[])
 
     # --- Libro_Diario ---
     def insert_movimiento_diario(self, movimiento_dict: dict) -> None:
@@ -146,7 +146,7 @@ class SheetsRepository:
 
     def get_movimientos_mes(self, month: str, year: str) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         target_mes = f"{str(month).zfill(2)}/{year}"
         result = []
         for r in records:
@@ -161,12 +161,12 @@ class SheetsRepository:
 
     def get_all_movimientos(self) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
-        return ws.get_all_records()
+        return ws.get_all_records(expected_headers=[])
 
     # --- Cierres_Historicos ---
     def get_last_cierre_mensual(self) -> dict:
         ws = self._get_sheet("Cierres_Historicos")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         if records:
             return records[-1]
         return {}
@@ -180,7 +180,7 @@ class SheetsRepository:
     # --- Presupuesto_Base ---
     def get_presupuesto_base(self) -> dict:
         ws = self._get_sheet("Presupuesto_Base")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         if records:
             return records[0]
         return {}
@@ -188,7 +188,7 @@ class SheetsRepository:
     def obtener_presupuesto_base_completo(self) -> tuple[int, int]:
         from logic.logic import safe_int
         ws = self._get_sheet("Presupuesto_Base")
-        records = ws.get_all_records()
+        records = ws.get_all_records(expected_headers=[])
         total_ingreso = 0
         total_costos = 0
         for r in records:
