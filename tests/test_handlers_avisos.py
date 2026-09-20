@@ -124,21 +124,21 @@ def test_callback_aviso_confirmar_expired(mock_estado, mock_bot, mock_gamma_app,
     mock_bot.edit_message_text.assert_called_once()
     assert "Expiró" in mock_bot.edit_message_text.call_args[0][0]
 
+@patch('com.handlers.avisos.enqueue')
 @patch('com.handlers.avisos.EstadoGestor')
-def test_callback_aviso_confirmar_success(mock_estado, mock_bot, mock_gamma_app, mock_call):
+def test_callback_aviso_confirmar_success(mock_estado, mock_enqueue, mock_bot, mock_gamma_app, mock_call):
     handlers = get_callback_handlers(mock_bot, mock_gamma_app)
     aviso_handler = next(f for func, f in handlers if func(MagicMock(data="aviso_test")))
     
     mock_call.data = "aviso_confirmar"
     mock_estado.get.return_value = {"titulo": "Test", "fecha": "2023-10-10"}
-    mock_gamma_app.agente_excel.guardar_aviso_calendar.return_value = "Guardado OK"
     
     aviso_handler(mock_call)
     
-    mock_gamma_app.agente_excel.guardar_aviso_calendar.assert_called_once_with({"titulo": "Test", "fecha": "2023-10-10"})
+    mock_enqueue.assert_called_once_with(12345, 'crear_aviso_calendar', {"titulo": "Test", "fecha": "2023-10-10"})
     mock_estado.pop.assert_called_once_with(12345)
-    assert mock_bot.edit_message_text.call_count == 2
-    assert "Guardado OK" in mock_bot.edit_message_text.call_args[0][0]
+    assert mock_bot.edit_message_text.call_count == 1
+    assert "Registrando aviso" in mock_bot.edit_message_text.call_args[0][0]
 
 @patch('com.handlers.avisos.EstadoGestor')
 def test_callback_aviso_exception(mock_estado, mock_bot, mock_gamma_app, mock_call):

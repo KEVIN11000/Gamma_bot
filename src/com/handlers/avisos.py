@@ -12,6 +12,7 @@ from com.core.security import auth_required, verificar_usuario_manual
 from logger_config import setup_logger
 from logic.ai_service import AIService
 from logic.logic import EstadoGestor
+from app_queue.worker import enqueue
 
 logger = setup_logger("avisos_handler")
 
@@ -62,20 +63,12 @@ def register_avisos_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 return
 
             bot.edit_message_text(
-                "💾 Escribiendo en la base de datos de Google Sheets...",
+                "⏳ Registrando aviso... te confirmo en instantes.",
                 chat_id,
                 call.message.message_id,
             )
-            resultado_escritura = gamma_app.agente_excel.guardar_aviso_calendar(
-                datos_evento
-            )
+            enqueue(chat_id, 'crear_aviso_calendar', datos_evento)
             EstadoGestor.pop(chat_id)
-            bot.edit_message_text(
-                resultado_escritura,
-                chat_id,
-                call.message.message_id,
-                parse_mode="Markdown",
-            )
 
         except Exception as e:
             bot.send_message(

@@ -8,6 +8,10 @@ from com.core.utils import reply_with_expiration
 
 from com.core.errors import safe_handler
 from com.core.security import auth_required
+from com.core.states import set_state, get_state, clear_state
+from app_queue.worker import enqueue
+import datetime
+
 from logger_config import setup_logger
 from logic.ai_service import AIService
 from logic.logic import EstadoGestor
@@ -26,12 +30,120 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
 
         partes = message.text.split(maxsplit=1)
         if len(partes) < 2:
-            bot.reply_to(
-                message,
-                f"❌ Falta descripción. Ejemplo:\n`/{comando} 50000 Hamburguesa`",
-                parse_mode="Markdown",
-            )
+            user_id = message.from_user.id
+            set_state(user_id, f"{comando}_paso1", {'tipo_movimiento': tipo_mov})
+            if tipo_mov == "Gasto":
+                bot.reply_to(message, "💸 ¿Cuánto fue el gasto? (Ingresa el monto en Gs.)")
+            else:
+                bot.reply_to(message, "💰 ¿Cuánto fue el ingreso? (Ingresa el monto en Gs.)")
             return
+
+    @bot.message_handler(func=lambda m: get_state(m.from_user.id) and get_state(m.from_user.id).get('estado') in ['gasto_paso1', 'ingreso_paso1'])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_paso1(message):
+        if message.text.strip().lower() == '/cancelar':
+            clear_state(message.from_user.id)
+            bot.reply_to(message, "❌ Operación cancelada.")
+            return
+
+        user_id = message.from_user.id
+        state = get_state(user_id)
+        datos = state['datos']
+        tipo = datos['tipo_movimiento']
+        
+        try:
+            monto_str = message.text.replace('.', '').replace(',', '').strip()
+            monto = int(monto_str)
+        except ValueError:
+            bot.reply_to(message, "❌ Por favor, ingresa un monto válido (sólo números).")
+            return
+            
+        datos['total'] = monto
+        datos['neto'] = monto
+        datos['iva'] = 0
+        
+        markup = InlineKeyboardMarkup()
+        if tipo == 'Gasto':
+            set_state(user_id, 'gasto_paso2', datos)
+            markup.row(InlineKeyboardButton("🛒 Alimentación", callback_data="cat_gasto_Alimentación"), InlineKeyboardButton("🚌 Transporte", callback_data="cat_gasto_Transporte"))
+            markup.row(InlineKeyboardButton("🏠 Hogar", callback_data="cat_gasto_Hogar"), InlineKeyboardButton("💊 Salud", callback_data="cat_gasto_Salud"))
+            markup.row(InlineKeyboardButton("📚 Educación", callback_data="cat_gasto_Educación"), InlineKeyboardButton("🔧 Otros", callback_data="cat_gasto_Otros"))
+            bot.reply_to(message, "📋 ¿A qué categoría pertenece?", reply_markup=markup)
+        else:
+            set_state(user_id, 'ingreso_paso2', datos)
+            markup.row(InlineKeyboardButton("💼 Salario", callback_data="cat_ingreso_Salario"), InlineKeyboardButton("🤝 Cliente", callback_data="cat_ingreso_Cliente"))
+            markup.row(InlineKeyboardButton("📈 Inversión", callback_data="cat_ingreso_Inversión"), InlineKeyboardButton("🔧 Otros", callback_data="cat_ingreso_Otros"))
+            bot.reply_to(message, "📋 ¿Categoría?", reply_markup=markup)
+
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("cat_gasto_") or call.data.startswith("cat_ingreso_"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_categoria(call):
+        user_id = call.from_user.id
+        state = get_state(user_id)
+        if not state or state['estado'] not in ['gasto_paso2', 'ingreso_paso2']:
+            bot.answer_callback_query(call.id, "Operación expirada o inválida.", show_alert=True)
+            return
+            
+        bot.answer_callback_query(call.id)
+        datos = state['datos']
+        cat = call.data.split("_", 2)[2]
+        datos['categoria'] = cat
+        tipo = datos['tipo_movimiento']
+        
+        if tipo == 'Gasto':
+            set_state(user_id, 'gasto_paso3', datos)
+            bot.edit_message_text("🧾 ¿Tiene número de factura? Escríbelo o escribe S/N", call.message.chat.id, call.message.message_id)
+        else:
+            set_state(user_id, 'ingreso_paso3', datos)
+            bot.edit_message_text("🧾 ¿Número de recibo? (o S/N)", call.message.chat.id, call.message.message_id)
+
+
+    @bot.message_handler(func=lambda m: get_state(m.from_user.id) and get_state(m.from_user.id).get('estado') in ['gasto_paso3', 'ingreso_paso3'])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_paso3(message):
+        if message.text.strip().lower() == '/cancelar':
+            clear_state(message.from_user.id)
+            bot.reply_to(message, "❌ Operación cancelada.")
+            return
+
+        user_id = message.from_user.id
+        chat_id = message.chat.id
+        state = get_state(user_id)
+        datos = state['datos']
+        tipo = datos['tipo_movimiento']
+        
+        factura_str = message.text.strip()
+        if factura_str.lower() in ['s/n', 'sn', 'no']:
+            factura_str = "S/N"
+            
+        now = datetime.datetime.now()
+        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        
+        payload = {
+            'tipo_movimiento': tipo,
+            'total': datos['total'],
+            'neto': datos['neto'],
+            'iva': datos['iva'],
+            'categoria': datos['categoria'],
+            'nro_factura': factura_str,
+            'fecha': now.strftime("%d/%m/%Y"),
+            'mes': meses[now.month - 1],
+            'proveedor_cliente': '',
+            'comprobante': 'Factura' if tipo == 'Gasto' else 'Recibo',
+            'file_id': ''
+        }
+        
+        enqueue(chat_id, 'registrar_movimiento', payload)
+        clear_state(user_id)
+        
+        if tipo == 'Gasto':
+            bot.reply_to(message, "⏳ Guardando tu gasto... te avisaré cuando esté listo.")
+        else:
+            bot.reply_to(message, "⏳ Guardando tu ingreso... te avisaré cuando esté listo.")
 
         texto_usuario = partes[1]
         msg_carga = bot.reply_to(message, f"⏳ Procesando {tipo_mov.lower()} con IA...")

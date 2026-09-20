@@ -293,3 +293,13 @@ def cron_asesor_ia() -> Any:
         if exito
         else ("❌ Error en Asesor IA.", 500)
     )
+
+
+@app.route("/cron/procesar-cola", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
+def cron_procesar_cola() -> Any:
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
+    from app_queue.worker import procesar_trabajos_pendientes
+    procesados = procesar_trabajos_pendientes(bot_instance.bot)
+    return f"✅ {procesados} trabajos procesados.", 200

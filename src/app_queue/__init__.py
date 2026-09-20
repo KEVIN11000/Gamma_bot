@@ -1,0 +1,3 @@
+"""
+Queue package initialization.
+"""

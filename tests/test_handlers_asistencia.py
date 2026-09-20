@@ -139,9 +139,9 @@ def test_comando_cierre(registered_handlers, mock_bot):
 
 
 @patch("time.time", return_value=1000000000)
-@patch("com.handlers.asistencia.generar_y_enviar_reporte")
+@patch("com.handlers.asistencia.enqueue")
 @patch("com.handlers.asistencia.EstadoGestor")
-def test_callback_cierre(mock_estado, mock_generar_reporte, mock_time, registered_handlers, mock_bot, mock_gamma_app):
+def test_callback_cierre(mock_estado, mock_enqueue, mock_time, registered_handlers, mock_bot, mock_gamma_app):
     handler = get_callback_handler(registered_handlers, "cierre_confirmar")
     
     # expired
@@ -174,7 +174,11 @@ def test_callback_cierre(mock_estado, mock_generar_reporte, mock_time, registere
     mock_bot.reset_mock()
     mock_estado.pop.return_value = True
     handler(call)
-    mock_generar_reporte.assert_called_with(mock_bot, mock_gamma_app, call.message, descuento=0, incluir_iva=True)
+    mock_enqueue.assert_called_with(call.message.chat.id, 'generar_reporte', {
+        'tipo': 'cierre',
+        'descuento': 0,
+        'incluir_iva': True
+    })
 
     call.data = "cierre_descuento_si"
     mock_bot.reset_mock()
@@ -183,8 +187,8 @@ def test_callback_cierre(mock_estado, mock_generar_reporte, mock_time, registere
 
 
 @patch("com.handlers.asistencia.iniciar_flujo_reporte_horas")
-@patch("com.handlers.asistencia.generar_y_enviar_reporte_financiero")
-def test_comando_reporte(mock_financiero, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
+@patch("com.handlers.asistencia.enqueue")
+def test_comando_reporte(mock_enqueue, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
     handler = registered_handlers["cmd_reporte"]
     
     msg = create_message("reporte horas")
@@ -193,18 +197,18 @@ def test_comando_reporte(mock_financiero, mock_horas, registered_handlers, mock_
     
     msg = create_message("reporte finanzas")
     handler(msg)
-    mock_financiero.assert_called_once_with(mock_bot, mock_gamma_app, msg)
+    mock_enqueue.assert_called_once_with(msg.chat.id, 'generar_reporte', {'tipo': 'financiero'})
     
+    mock_bot.reset_mock()
     msg = create_message("/reporte")
     handler(msg)
     mock_bot.send_message.assert_called_once()
 
 
 @patch("com.handlers.asistencia.iniciar_flujo_reporte_horas")
-@patch("com.handlers.asistencia.generar_y_enviar_reporte_financiero")
-@patch("com.handlers.asistencia.generar_y_enviar_reporte_por_hoja")
+@patch("com.handlers.asistencia.enqueue")
 @patch("com.handlers.asistencia.EstadoGestor")
-def test_callback_reporte(mock_estado, mock_por_hoja, mock_financiero, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
+def test_callback_reporte(mock_estado, mock_enqueue, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
     handler = get_callback_handler(registered_handlers, "reporte_cancelar")
     
     call = create_callback("reporte_cancelar")
@@ -217,7 +221,7 @@ def test_callback_reporte(mock_estado, mock_por_hoja, mock_financiero, mock_hora
     
     call.data = "reporte_tipo_finanzas"
     handler(call)
-    mock_financiero.assert_called_once_with(mock_bot, mock_gamma_app, call.message, is_callback=True)
+    mock_enqueue.assert_called_once_with(call.message.chat.id, 'generar_reporte', {'tipo': 'financiero'})
     
     # seleccionar hoja → debe preguntar IVA ahora
     call.data = "reporte_hoja_TestHoja"
@@ -237,8 +241,14 @@ def test_callback_reporte(mock_estado, mock_por_hoja, mock_financiero, mock_hora
     # descuento_no → generar reporte
     call.data = "reporte_desc_no"
     mock_estado.pop.side_effect = ["TestHoja", False]
+    mock_enqueue.reset_mock()
     handler(call)
-    mock_por_hoja.assert_called_once_with(mock_bot, mock_gamma_app, call.message, "TestHoja", descuento=0, incluir_iva=False)
+    mock_enqueue.assert_called_once_with(call.message.chat.id, 'generar_reporte', {
+        'tipo': 'hoja',
+        'nombre_hoja': "TestHoja",
+        'descuento': 0,
+        'incluir_iva': False
+    })
     
     # Test session expired
     call.data = "reporte_desc_no"

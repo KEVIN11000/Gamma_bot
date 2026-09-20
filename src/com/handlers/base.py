@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from telebot import TeleBot
-from telebot.types import BotCommand
+from telebot.types import BotCommand, InlineKeyboardMarkup, InlineKeyboardButton
 
 from com.core.errors import safe_handler
 from com.core.security import auth_required
@@ -16,6 +16,8 @@ logger = setup_logger("base_handler")
 
 def _registrar_comandos_menu(bot: TeleBot) -> Any:
     comandos = [
+        BotCommand("start", "Mostrar menú principal"),
+        BotCommand("comandos", "Ver lista de todos los comandos disponibles."),
         BotCommand("gasto", "Registrar un nuevo gasto (ej. '/gasto 15000 taxi')."),
         BotCommand("ingreso", "Registrar un nuevo ingreso."),
         BotCommand("balance", "Ver el balance financiero mensual."),
@@ -30,7 +32,6 @@ def _registrar_comandos_menu(bot: TeleBot) -> Any:
         BotCommand("aviso", "Agendar un hito o recordatorio con IA."),
         BotCommand("avisos", "Ver lista de avisos activos."),
         BotCommand("cierre", "Ejecutar cierre de período de marcaciones."),
-        BotCommand("start", "Actualizar menú de comandos"),
     ]
 
     if os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true":
@@ -96,12 +97,69 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 parse_mode="Markdown",
             )
 
+    def get_menu_raiz():
+        kb = InlineKeyboardMarkup()
+        kb.row(
+            InlineKeyboardButton("💰 Finanzas", callback_data="menu:finanzas"),
+            InlineKeyboardButton("🕐 Asistencia", callback_data="menu:asistencia"),
+            InlineKeyboardButton("⚙️ Administración", callback_data="menu:admin")
+        )
+        return kb
+
+    def get_menu_finanzas():
+        kb = InlineKeyboardMarkup()
+        kb.row(InlineKeyboardButton("Ver Balance", callback_data="accion:balance"))
+        kb.row(InlineKeyboardButton("Registrar Movimiento", callback_data="menu:reg_mov"))
+        kb.row(InlineKeyboardButton("Cola de Deudas", callback_data="menu:cola_deudas"))
+        kb.row(InlineKeyboardButton("Simular Proyecto", callback_data="accion:simular"))
+        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:raiz"))
+        return kb
+
+    def get_menu_asistencia():
+        kb = InlineKeyboardMarkup()
+        kb.row(InlineKeyboardButton("Marcar Entrada/Salida", callback_data="accion:marcar"))
+        kb.row(InlineKeyboardButton("Generar Reporte PDF", callback_data="accion:reporte"))
+        kb.row(InlineKeyboardButton("Avisos", callback_data="accion:avisos"))
+        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:raiz"))
+        return kb
+
+    def get_menu_admin():
+        kb = InlineKeyboardMarkup()
+        kb.row(InlineKeyboardButton("Ejecutar Cierre Mensual", callback_data="accion:cierre_mensual"))
+        kb.row(InlineKeyboardButton("Ver Logs", callback_data="accion:debug"))
+        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:raiz"))
+        return kb
+
+    def get_menu_reg_mov():
+        kb = InlineKeyboardMarkup()
+        kb.row(
+            InlineKeyboardButton("💸 Gasto", callback_data="accion:gasto"),
+            InlineKeyboardButton("💰 Ingreso", callback_data="accion:ingreso")
+        )
+        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:finanzas"))
+        return kb
+
+    def get_menu_cola_deudas():
+        kb = InlineKeyboardMarkup()
+        kb.row(InlineKeyboardButton("Ver Deudas", callback_data="accion:deudas"))
+        kb.row(InlineKeyboardButton("Nueva Deuda", callback_data="accion:nueva_deuda"))
+        kb.row(InlineKeyboardButton("Abonar", callback_data="accion:abonar"))
+        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:finanzas"))
+        return kb
+
     @bot.message_handler(commands=["start"])
     @auth_required(bot)
     @safe_handler(bot, logger)
     def comando_start(message):
         _registrar_comandos_menu(bot)
+        
+        texto = "🤖 *Menú Principal GAMMA*\nSelecciona una opción:"
+        bot.reply_to(message, texto, parse_mode="Markdown", reply_markup=get_menu_raiz())
 
+    @bot.message_handler(commands=["comandos"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_comandos(message):
         modo_dev = os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true"
         texto_debug = "🛠️ /debug   — Ver logs de errores internos\n" if modo_dev else ""
 
@@ -137,3 +195,39 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             f"{texto_debug}"
         )
         bot.reply_to(message, texto, parse_mode="Markdown")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("menu:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_menu(call):
+        bot.answer_callback_query(call.id)
+        menu_type = call.data.split(":")[1]
+        
+        menus = {
+            "raiz": get_menu_raiz(),
+            "finanzas": get_menu_finanzas(),
+            "asistencia": get_menu_asistencia(),
+            "admin": get_menu_admin(),
+            "reg_mov": get_menu_reg_mov(),
+            "cola_deudas": get_menu_cola_deudas()
+        }
+        
+        if menu_type in menus:
+            bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=menus[menu_type]
+            )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("accion:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_accion(call):
+        bot.answer_callback_query(call.id)
+        accion = call.data.split(":")[1]
+        
+        fake_msg = call.message
+        fake_msg.text = f"/{accion}"
+        fake_msg.from_user = call.from_user
+        
+        bot.process_new_messages([fake_msg])

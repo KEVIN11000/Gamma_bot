@@ -7,13 +7,13 @@ patch('com.core.security.auth_required', lambda bot: lambda f: f).start()
 patch('com.core.errors.safe_handler', lambda bot, logger: lambda f: f).start()
 
 from com.handlers.deudas import register_deudas_handlers
+import com.core.states as states
 
 class TestDeudasHandlers(unittest.TestCase):
     def setUp(self):
         self.bot_mock = MagicMock()
         self.gamma_app_mock = MagicMock()
         
-        # We will collect the handlers registered by register_deudas_handlers
         self.handlers = {}
         
         def mock_message_handler(**kwargs):
@@ -27,14 +27,15 @@ class TestDeudasHandlers(unittest.TestCase):
         self.bot_mock.message_handler = mock_message_handler
         
         register_deudas_handlers(self.bot_mock, self.gamma_app_mock)
+        
+        states._states.clear()
 
-    @patch('com.handlers.deudas.create_debt')
-    def test_handle_nueva_deuda(self, mock_create_debt):
-        mock_create_debt.return_value = "id_123"
+    def test_handle_nueva_deuda(self):
         msg = MagicMock()
-        msg.text = "/nueva_deuda Banco Auto 10000 12 2026-10-01"
+        msg.text = "/nueva_deuda"
+        msg.from_user.id = 12345
         self.handlers["nueva_deuda"](msg)
-        mock_create_debt.assert_called_once_with("Banco", "Auto", 10000, 12, "2026-10-01", dia_vencimiento=0)
+        self.assertEqual(states.get_state(12345)['estado'], "NUEVA_DEUDA_P1")
         self.bot_mock.reply_to.assert_called_once()
 
     @patch('com.handlers.deudas.get_active_debts')
@@ -46,12 +47,13 @@ class TestDeudasHandlers(unittest.TestCase):
         mock_get_active.assert_called_once_with(None)
         self.bot_mock.reply_to.assert_called_once()
         
-    @patch('com.handlers.deudas.register_payment')
-    def test_handle_abonar(self, mock_register):
+    @patch('com.handlers.deudas.get_active_debts')
+    def test_handle_abonar(self, mock_get_active):
+        mock_get_active.return_value = [{"ID_Obligacion": "123", "Nombre": "Deuda 1"}]
         msg = MagicMock()
-        msg.text = "/abonar 123 500 2026-09-04"
+        msg.text = "/abonar"
+        msg.from_user.id = 12345
         self.handlers["abonar"](msg)
-        mock_register.assert_called_once_with("123", 500, "2026-09-04")
         self.bot_mock.reply_to.assert_called_once()
 
     @patch('com.handlers.deudas.execute_monthly_closing')

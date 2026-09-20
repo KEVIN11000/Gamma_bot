@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from telebot import TeleBot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import shlex
 
 from com.core.errors import safe_handler
@@ -18,29 +19,132 @@ from logic.financiero import (
     simular_impacto_abono,
     obtener_cronograma_vencimientos
 )
+from com.core.states import set_state, get_state, clear_state
+from app_queue.worker import enqueue
+from logic.logic import get_now_py
 
 logger = setup_logger("deudas_handler")
 
 def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     
+    @bot.message_handler(commands=["cancelar"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_cancelar(message):
+        clear_state(message.from_user.id)
+        bot.reply_to(message, "Operación cancelada. Estado limpiado.")
+
     @bot.message_handler(commands=["nueva_deuda"])
     @auth_required(bot)
     @safe_handler(bot, logger)
     def handle_nueva_deuda(message):
-        parts = shlex.split(message.text)
-        if len(parts) < 6:
-            bot.reply_to(message, "Uso: /nueva_deuda \"Entidad\" \"Concepto\" <Monto> <Cuotas> <Primer_Venc> [Dia_Vencimiento]")
+        set_state(message.from_user.id, "NUEVA_DEUDA_P1", {})
+        bot.reply_to(message, "🏦 ¿Cómo se llama la entidad o acreedor?")
+
+    @bot.message_handler(func=lambda msg: get_state(msg.from_user.id) and get_state(msg.from_user.id)['estado'] == "NUEVA_DEUDA_P1")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_nueva_deuda_p1(message):
+        datos = get_state(message.from_user.id)['datos']
+        datos['entidad'] = message.text.strip()
+        set_state(message.from_user.id, "NUEVA_DEUDA_P2", datos)
+        bot.reply_to(message, "📝 ¿Cuál es el concepto o nombre de la deuda?")
+
+    @bot.message_handler(func=lambda msg: get_state(msg.from_user.id) and get_state(msg.from_user.id)['estado'] == "NUEVA_DEUDA_P2")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_nueva_deuda_p2(message):
+        datos = get_state(message.from_user.id)['datos']
+        datos['concepto'] = message.text.strip()
+        set_state(message.from_user.id, "NUEVA_DEUDA_P3", datos)
+        bot.reply_to(message, "💵 ¿Monto total de la deuda en Gs.?")
+
+    @bot.message_handler(func=lambda msg: get_state(msg.from_user.id) and get_state(msg.from_user.id)['estado'] == "NUEVA_DEUDA_P3")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_nueva_deuda_p3(message):
+        try:
+            monto = int(message.text.strip().replace(".", "").replace(",", ""))
+        except ValueError:
+            bot.reply_to(message, "Por favor ingresa un monto numérico válido.")
             return
-        entity = parts[1]
-        concept = parts[2]
-        amount = int(parts[3])
-        quotas = int(parts[4])
-        first_due = parts[5]
+        datos = get_state(message.from_user.id)['datos']
+        datos['monto'] = monto
+        set_state(message.from_user.id, "NUEVA_DEUDA_P4", datos)
+        bot.reply_to(message, "📅 ¿A cuántas cuotas?")
+
+    @bot.message_handler(func=lambda msg: get_state(msg.from_user.id) and get_state(msg.from_user.id)['estado'] == "NUEVA_DEUDA_P4")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_nueva_deuda_p4(message):
+        try:
+            cuotas = int(message.text.strip())
+        except ValueError:
+            bot.reply_to(message, "Por favor ingresa un número de cuotas válido.")
+            return
+        datos = get_state(message.from_user.id)['datos']
+        datos['cuotas'] = cuotas
+        set_state(message.from_user.id, "NUEVA_DEUDA_P5", datos)
+        bot.reply_to(message, "📆 ¿Fecha del primer vencimiento? (DD/MM/YYYY)")
+
+    @bot.message_handler(func=lambda msg: get_state(msg.from_user.id) and get_state(msg.from_user.id)['estado'] == "NUEVA_DEUDA_P5")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_nueva_deuda_p5(message):
+        datos = get_state(message.from_user.id)['datos']
+        datos['fecha'] = message.text.strip()
         
-        dia_venc = int(parts[6]) if len(parts) > 6 else 0
+        set_state(message.from_user.id, "NUEVA_DEUDA_CONFIRMAR", datos)
         
-        debt_id = create_debt(entity, concept, amount, quotas, first_due, dia_vencimiento=dia_venc)
-        bot.reply_to(message, f"Deuda creada con ID: `{debt_id}`", parse_mode="Markdown")
+        resumen = (
+            f"📋 *Resumen de la deuda:*\n"
+            f"🏦 Entidad: {datos['entidad']}\n"
+            f"📝 Concepto: {datos['concepto']}\n"
+            f"💵 Monto: Gs. {datos['monto']:,}\n"
+            f"📅 Cuotas: {datos['cuotas']}\n"
+            f"📆 Primer vencimiento: {datos['fecha']}\n\n"
+            f"¿Confirmar?"
+        ).replace(",", ".")
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton("✅ Confirmar", callback_data="confirmar_deuda:si"),
+            InlineKeyboardButton("❌ Cancelar", callback_data="confirmar_deuda:no")
+        )
+        
+        bot.reply_to(message, resumen, parse_mode="Markdown", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("confirmar_deuda:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_confirmar_deuda(call):
+        state = get_state(call.from_user.id)
+        if not state or state.get('estado') != "NUEVA_DEUDA_CONFIRMAR":
+            bot.answer_callback_query(call.id, "Estado no válido o expirado.")
+            return
+            
+        action = call.data.split(":")[1]
+        if action == "si":
+            datos = state['datos']
+            enqueue(call.message.chat.id, 'create_debt', {
+                "entidad": datos['entidad'],
+                "concepto": datos['concepto'],
+                "monto": datos['monto'],
+                "cuotas": datos['cuotas'],
+                "fecha": datos['fecha']
+            })
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text="⏳ Registrando deuda... te avisaré cuando esté listo."
+            )
+        else:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text="❌ Registro de deuda cancelado."
+            )
+        clear_state(call.from_user.id)
 
     @bot.message_handler(commands=["estrategia", "cola_deudas"])
     @auth_required(bot)
@@ -168,16 +272,81 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     @auth_required(bot)
     @safe_handler(bot, logger)
     def handle_abonar(message):
-        parts = shlex.split(message.text)
-        if len(parts) < 4:
-            bot.reply_to(message, "Uso: /abonar <ID_Deuda> <Monto> <Fecha>")
+        debts = get_active_debts()
+        if not debts:
+            bot.reply_to(message, "No hay deudas activas para abonar.")
             return
-        debt_id = parts[1]
-        amount = int(parts[2])
-        date = parts[3]
+            
+        markup = InlineKeyboardMarkup()
+        for d in debts:
+            debt_id = d.get('ID_Obligacion')
+            nombre = d.get('Nombre', 'N/A')
+            markup.add(InlineKeyboardButton(nombre, callback_data=f"abonar_deuda:{debt_id}"))
+            
+        bot.reply_to(message, "Selecciona la deuda a abonar:", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("abonar_deuda:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_abonar_deuda(call):
+        debt_id = call.data.split(":")[1]
+        set_state(call.from_user.id, "ABONAR_P2", {"debt_id": debt_id})
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="💵 ¿Cuánto abonas (Gs.)?"
+        )
+
+    @bot.message_handler(func=lambda msg: get_state(msg.from_user.id) and get_state(msg.from_user.id)['estado'] == "ABONAR_P2")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_abonar_p2(message):
+        try:
+            monto = int(message.text.strip().replace(".", "").replace(",", ""))
+        except ValueError:
+            bot.reply_to(message, "Por favor ingresa un monto numérico válido.")
+            return
+            
+        datos = get_state(message.from_user.id)['datos']
+        datos['amount'] = monto
+        set_state(message.from_user.id, "ABONAR_P3", datos)
         
-        register_payment(debt_id, amount, date)
-        bot.reply_to(message, f"Abono registrado para la deuda {debt_id}")
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton("10%", callback_data="abonar_iva:10%"),
+            InlineKeyboardButton("5%", callback_data="abonar_iva:5%"),
+            InlineKeyboardButton("Exento", callback_data="abonar_iva:Exento")
+        )
+        
+        bot.reply_to(message, "📅 Tasa de IVA", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("abonar_iva:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_abonar_iva(call):
+        state = get_state(call.from_user.id)
+        if not state or state.get('estado') != "ABONAR_P3":
+            bot.answer_callback_query(call.id, "Estado no válido o expirado.")
+            return
+            
+        tasa_iva = call.data.split(":")[1]
+        datos = state['datos']
+        
+        date_today = get_now_py().strftime("%d/%m/%Y")
+        
+        enqueue(call.message.chat.id, 'register_payment', {
+            "debt_id": datos['debt_id'],
+            "amount": datos['amount'],
+            "date": date_today,
+            "tasa_iva": tasa_iva
+        })
+        
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="⏳ Registrando pago... te avisaré cuando esté listo."
+        )
+        clear_state(call.from_user.id)
             
     @bot.message_handler(commands=["cierre_mensual"])
     @auth_required(bot)
@@ -205,13 +374,10 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         meses = int(parts[2])
         concept = " ".join(parts[3:]) if len(parts) > 3 else "N/A"
         
-        # Estado de carga inmediato
         msg_carga = bot.reply_to(message, "⏳ *Consultando presupuesto y calculando viabilidad...*", parse_mode="Markdown")
         
-        # Procesamiento (llamadas a la API de Sheets)
         response_text = simulate_project(monto, meses, concept)
         
-        # Reemplazamos el mensaje de carga con el resultado final
         bot.edit_message_text(
             chat_id=message.chat.id, 
             message_id=msg_carga.message_id, 

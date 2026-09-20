@@ -33,7 +33,7 @@ def test_registrar_comandos_menu_prod(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 15
+    assert len(commands_called) == 16
     command_names = [c.command for c in commands_called]
     assert "debug" not in command_names
 
@@ -42,7 +42,7 @@ def test_registrar_comandos_menu_dev(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 16
+    assert len(commands_called) == 17
     command_names = [c.command for c in commands_called]
     assert "debug" in command_names
 
@@ -139,45 +139,54 @@ def test_comando_debug_dev_app_exists_content(mock_exists, mock_safe, mock_auth,
 @patch("com.handlers.base.auth_required")
 @patch("com.handlers.base.safe_handler")
 @patch("com.handlers.base._registrar_comandos_menu")
+def test_comando_start(mock_registrar, mock_safe, mock_auth, bot_mock, mock_message):
+    mock_auth.return_value = lambda f: f
+    mock_safe.return_value = lambda f: f
+    
+    register_base_handlers(bot_mock, None)
+    handler = bot_mock.registered_handlers["start"]
+    mock_message.text = "/start"
+    
+    with patch.dict(os.environ, {"MODO_DESARROLLADOR": "False"}):
+        handler(mock_message)
+        mock_registrar.assert_called_once_with(bot_mock)
+        bot_mock.reply_to.assert_called_once()
+        assert "Menú Principal" in bot_mock.reply_to.call_args[0][1]
+
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
 @patch("com.handlers.base.Path.exists")
-def test_comando_start(mock_exists, mock_registrar, mock_safe, mock_auth, bot_mock, mock_message):
+def test_comando_comandos_prod(mock_exists, mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f
     mock_exists.return_value = True
     
     register_base_handlers(bot_mock, None)
-    handler = bot_mock.registered_handlers["start"]
-    
-    mock_message.text = "/start"
+    handler = bot_mock.registered_handlers["comandos"]
+    mock_message.text = "/comandos"
     
     m_open = mock_open(read_data="1.0.0")
     with patch.dict(os.environ, {"MODO_DESARROLLADOR": "False"}), \
          patch("builtins.open", m_open):
         handler(mock_message)
-        
-        mock_registrar.assert_called_once_with(bot_mock)
         bot_mock.reply_to.assert_called_once()
         assert "1.0.0" in bot_mock.reply_to.call_args[0][1]
         assert "/debug" not in bot_mock.reply_to.call_args[0][1]
 
 @patch("com.handlers.base.auth_required")
 @patch("com.handlers.base.safe_handler")
-@patch("com.handlers.base._registrar_comandos_menu")
 @patch("com.handlers.base.Path.exists")
-def test_comando_start_dev(mock_exists, mock_registrar, mock_safe, mock_auth, bot_mock, mock_message):
+def test_comando_comandos_dev(mock_exists, mock_safe, mock_auth, bot_mock, mock_message):
     mock_auth.return_value = lambda f: f
     mock_safe.return_value = lambda f: f
     mock_exists.return_value = False
     
     register_base_handlers(bot_mock, None)
-    handler = bot_mock.registered_handlers["start"]
-    
-    mock_message.text = "/start"
+    handler = bot_mock.registered_handlers["comandos"]
+    mock_message.text = "/comandos"
     
     with patch.dict(os.environ, {"MODO_DESARROLLADOR": "True"}):
         handler(mock_message)
-        
-        mock_registrar.assert_called_once_with(bot_mock)
         bot_mock.reply_to.assert_called_once()
         assert "1.x" in bot_mock.reply_to.call_args[0][1]
         assert "/debug" in bot_mock.reply_to.call_args[0][1]
