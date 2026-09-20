@@ -1,8 +1,27 @@
 # HANDOFF — Gamma_bot
 
-**Fase cerrada:** v1.13.0 (Correcciones y Auditoría)
-**Fecha de cierre:** 2026-09-18
-**Estado del build/tests:** ✅ pasando — 101 tests pasando al 100% (se estabilizó la suite tras solucionar las regresiones en los tests de seguridad y contabilidad).
+> [!CAUTION]
+> ## 🔒 PROTOCOLO DE GOBERNANZA — LECTURA OBLIGATORIA PARA TODO AGENTE
+>
+> Todo agente (orquestador o subagente) que trabaje en este repositorio **DEBE** respetar las siguientes reglas sin excepción:
+>
+> 1. **NUNCA** ejecutes `git push`, `git commit` de cambios funcionales, ni comandos de despliegue sin haber recibido una confirmación **explícita** del usuario ("Aprobado", "Desplegar", "Procede", etc.).
+> 2. **La aprobación del plan de implementación NO es aprobación de despliegue.** Son dos gates separados e independientes.
+> 3. El flujo correcto es siempre:
+>    ```
+>    QA verde → Pipeline Completion Report → PAUSA → [Usuario: "Aprobado"] → Push
+>    ```
+> 4. Los subagentes de desarrollo (`agency-frontend-developer`, `agency-backend-architect`, etc.) **NUNCA** hacen push directamente. Solo el orquestador puede hacerlo, y únicamente tras autorización humana.
+> 5. Violar este protocolo es una infracción de gobernanza que debe reportarse al usuario de forma transparente e inmediata.
+>
+> *Violación registrada el 2026-09-20: el orquestador ejecutó push tras QA sin esperar autorización de despliegue explícita del usuario. Este bloque existe para prevenir recurrencias.*
+
+---
+
+**Fase activa:** v1.14.0 (Refactor UX/UI + Cola Asíncrona)
+**Fase anterior cerrada:** v1.13.0 (Correcciones y Auditoría)
+**Fecha de actualización:** 2026-09-20
+**Estado del build/tests:** ✅ 102 tests pasando al 100%.
 
 ---
 
