@@ -64,8 +64,6 @@ def reportar_incidente_vigia(
     Retorna True si el issue fue creado exitosamente en GitHub, False de lo contrario.
     Nunca propaga excepciones.
     """
-    global _COOLDOWN_REGISTRY
-
     # 1. Deduplicación por cooldown (anti-spam)
     firma = f"{origen}:{titulo}"
     firma_hash = hashlib.sha256(firma.encode("utf-8")).hexdigest()

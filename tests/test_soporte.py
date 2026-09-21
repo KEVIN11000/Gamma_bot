@@ -1,15 +1,12 @@
 """Tests unitarios para el comando /soporte y flujo interactivo en Telegram."""
 
-import json
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from telebot.types import CallbackQuery, Message, User, Chat
+from telebot.types import Message
 
 from com.core.states import clear_state, get_state, set_state
 from com.handlers.soporte import (
-    _guardar_ticket_fallback,
     _inferir_tipo_y_descripcion,
     _procesar_y_confirmar_soporte,
     register_soporte_handlers,

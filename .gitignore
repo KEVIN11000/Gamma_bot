@@ -21,7 +21,6 @@ agency-agents/
 coverage.xml
 htmlcov/
 scratch_*.py
-mypy.ini
 cola.db
 cola.db-*
 

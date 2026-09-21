@@ -56,5 +56,26 @@
 - [x] **4.1. Auditoría de Seguridad y No Regresión:**
   - [x] Verificación de 0 regresiones en suites existentes (141 tests en verde).
   - [x] Linters y tipado 100% limpios (64 archivos auditados sin advertencias).
-- [ ] **4.2. Pipeline Completion Report y Gate Humano:**
-  - [ ] Presentar reporte final y solicitar autorización explícita para merge a `Main-stable`.
+- [x] **4.2. Pipeline Completion Report y Gate Humano:**
+  - [x] Despliegue v1.15.0 completado y auditado.
+
+---
+
+## Hotfix v1.15.1: Resolución Incidente Vigía GHI-1 / CI-35630665973
+- [x] **HF-1. Diagnóstico de Causa Raíz:**
+  - [x] Identificado fallo `F824` en `src/com/core/telemetry.py` (`global _COOLDOWN_REGISTRY` innecesario).
+  - [x] Identificado bloqueo en `mypy` remoto por exclusión accidental de `mypy.ini` en `.gitignore`.
+- [x] **HF-2. Corrección de Código y Configuración:**
+  - [x] Remover `global _COOLDOWN_REGISTRY` en `src/com/core/telemetry.py`.
+  - [x] Limpiar imports no utilizados en `tests/test_soporte.py`.
+  - [x] Des-ignorar `mypy.ini` de `.gitignore` para su seguimiento en git.
+  - [x] Bumping de versión a `1.15.1` en `VERSION`.
+- [x] **HF-3. Certificación Local Dev ↔ QA:**
+  - [x] `black --check .`: 100% aprobado.
+  - [x] `flake8 .`: 0 advertencias / 0 errores.
+  - [x] `mypy .`: 64 archivos verificados sin errores.
+  - [x] `pytest tests/`: 141 tests pasados exitosamente.
+- [ ] **HF-4. Gate Humano y Despliegue:**
+  - [ ] Solicitar aprobación humana para commit y push a `Main-stable`.
+  - [ ] Resolver ticket en Vigía (`python scripts/vigia.py resolve GHI-1`).
+
