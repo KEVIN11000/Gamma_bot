@@ -57,20 +57,37 @@ class SheetsRepository:
                 ws.append_row(headers_map[sheet_name])
 
     def _get_sheet(self, sheet_name: str):
-        if not hasattr(self, '_wb'):
+        if not hasattr(self, "_wb"):
             from logic.logic import ConexionSheets
             import os
+
             cliente = ConexionSheets.obtener_cliente()
+            if cliente is None:
+                raise RuntimeError("No se pudo obtener cliente de Google Sheets")
             spreadsheet_id = os.getenv("LIBRO_CONTABLE_ID", os.getenv("SPREADSHEET_ID"))
+            if not spreadsheet_id:
+                raise RuntimeError("SPREADSHEET_ID no configurado")
             self._wb = cliente.open_by_key(spreadsheet_id)
-        
+
         try:
             ws = self._wb.worksheet(sheet_name)
         except Exception:
             ws = self._wb.add_worksheet(title=sheet_name, rows=100, cols=20)
-            
+
         self._ensure_headers(ws, sheet_name)
         return ws
+
+    def _get_records(self, ws: Any, expected_headers: list[str]) -> list[dict]:
+        """Safely retrieves all records from worksheet.
+
+        Tries strict validation against expected_headers first.
+        If the remote sheet lacks some columns, falls back to dynamic parsing
+        with expected_headers=[] to avoid breaking execution.
+        """
+        try:
+            return ws.get_all_records(expected_headers=expected_headers)
+        except Exception:
+            return ws.get_all_records(expected_headers=[])
 
     # --- Obligaciones_Maestro ---
     def insert_obligacion(self, obligacion_dict: dict) -> None:
@@ -81,50 +98,60 @@ class SheetsRepository:
 
     def update_obligacion_estado(self, id_obligacion: str, estado: str) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records(expected_headers=[])
-        for idx, r in enumerate(records, start=2): # +1 for header, +1 for 0-index
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        for idx, r in enumerate(records, start=2):  # +1 for header, +1 for 0-index
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 keys_lower = [k.lower() for k in r.keys()]
-                estado_idx = keys_lower.index("estado") + 1 if "estado" in keys_lower else -1
+                estado_idx = (
+                    keys_lower.index("estado") + 1 if "estado" in keys_lower else -1
+                )
                 if estado_idx > 0:
                     ws.update_cell(idx, estado_idx, estado)
                 break
 
     def get_obligacion_by_id(self, id_obligacion: str) -> dict:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
         for r in records:
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 return r
         return {}
-        
+
     def get_obligaciones_activas(self) -> list[dict]:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
         return [r for r in records if str(r.get("Estado", "")).lower() == "activo"]
 
-    def update_obligacion_saldo(self, id_obligacion: str, nuevo_saldo: int, cuotas_restantes: int = None, nuevo_estado: str = None) -> None:
+    def update_obligacion_saldo(
+        self,
+        id_obligacion: str,
+        nuevo_saldo: int,
+        cuotas_restantes: int | None = None,
+        nuevo_estado: str | None = None,
+    ) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
         for idx, r in enumerate(records, start=2):
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 keys_lower = [k.lower() for k in r.keys()]
                 if "saldo_actual" in keys_lower:
                     saldo_idx = keys_lower.index("saldo_actual") + 1
                     ws.update_cell(idx, saldo_idx, nuevo_saldo)
-                
+
                 if cuotas_restantes is not None and "cuotas_restantes" in keys_lower:
                     cuotas_idx = keys_lower.index("cuotas_restantes") + 1
                     ws.update_cell(idx, cuotas_idx, cuotas_restantes)
-                
+
                 if nuevo_estado is not None and "estado" in keys_lower:
                     estado_idx = keys_lower.index("estado") + 1
                     ws.update_cell(idx, estado_idx, nuevo_estado)
                 break
 
-    def update_obligacion_prioridad(self, id_obligacion: str, orden_prioridad: int) -> None:
+    def update_obligacion_prioridad(
+        self, id_obligacion: str, orden_prioridad: int
+    ) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
         for idx, r in enumerate(records, start=2):
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 keys_lower = [k.lower() for k in r.keys()]
@@ -135,7 +162,7 @@ class SheetsRepository:
 
     def get_todas_obligaciones(self) -> list[dict]:
         ws = self._get_sheet("Obligaciones_Maestro")
-        return ws.get_all_records(expected_headers=[])
+        return self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
 
     # --- Libro_Diario ---
     def insert_movimiento_diario(self, movimiento_dict: dict) -> None:
@@ -146,7 +173,7 @@ class SheetsRepository:
 
     def get_movimientos_mes(self, month: str, year: str) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_LIBRO_DIARIO)
         target_mes = f"{str(month).zfill(2)}/{year}"
         result = []
         for r in records:
@@ -161,12 +188,12 @@ class SheetsRepository:
 
     def get_all_movimientos(self) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
-        return ws.get_all_records(expected_headers=[])
+        return self._get_records(ws, ENCABEZADOS_LIBRO_DIARIO)
 
     # --- Cierres_Historicos ---
     def get_last_cierre_mensual(self) -> dict:
         ws = self._get_sheet("Cierres_Historicos")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_CIERRES_HISTORICOS)
         if records:
             return records[-1]
         return {}
@@ -180,19 +207,24 @@ class SheetsRepository:
     # --- Presupuesto_Base ---
     def get_presupuesto_base(self) -> dict:
         ws = self._get_sheet("Presupuesto_Base")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_PRESUPUESTO_BASE)
         if records:
             return records[0]
         return {}
 
     def obtener_presupuesto_base_completo(self) -> tuple[int, int]:
         from logic.logic import safe_int
+
         ws = self._get_sheet("Presupuesto_Base")
-        records = ws.get_all_records(expected_headers=[])
+        records = self._get_records(ws, ENCABEZADOS_PRESUPUESTO_BASE)
         total_ingreso = 0
         total_costos = 0
         for r in records:
-            tipo_flujo = str(r.get("Tipo_Flujo", r.get("Tipo_Ingreso_Gasto", ""))).lower().strip()
+            tipo_flujo = (
+                str(r.get("Tipo_Flujo", r.get("Tipo_Ingreso_Gasto", "")))
+                .lower()
+                .strip()
+            )
             monto = safe_int(r.get("Monto_Mensual_Gs", 0))
             if "ingreso" in tipo_flujo:
                 total_ingreso += monto

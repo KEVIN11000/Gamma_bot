@@ -1,6 +1,12 @@
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+
+if TYPE_CHECKING:
+    from com.bot import GAMMA as GammaApp
+else:
+    GammaApp = Any
 
 from com.core.security import verificar_usuario_manual
 from logic.logic import EstadoGestor
@@ -134,7 +140,9 @@ def capturar_monto_descuento(
         texto_ingresado = message.text.strip().replace(".", "").replace(",", "")
         monto_descuento = float(texto_ingresado)
         incluir_iva = EstadoGestor.pop(f"iva_{message.chat.id}", False)
-        generar_y_enviar_reporte(bot, gamma_app, message, descuento=monto_descuento, incluir_iva=incluir_iva)
+        generar_y_enviar_reporte(
+            bot, gamma_app, message, descuento=monto_descuento, incluir_iva=incluir_iva
+        )
     except ValueError:
         bot.reply_to(
             message,
@@ -145,7 +153,11 @@ def capturar_monto_descuento(
 
 
 def generar_y_enviar_reporte(
-    bot: TeleBot, gamma_app: "GammaApp", message_obj: Message, descuento: float, incluir_iva: bool = False
+    bot: TeleBot,
+    gamma_app: "GammaApp",
+    message_obj: Message,
+    descuento: float,
+    incluir_iva: bool = False,
 ) -> None:
     """
     generar_y_enviar_reporte method/function.
@@ -167,7 +179,9 @@ def generar_y_enviar_reporte(
         message_obj.chat.id, "📄 Procesando datos y armando PDF de horas..."
     )
 
-    datos, error = gamma_app.agente_excel.preparar_datos_reporte(descuento=descuento, incluir_iva=incluir_iva)
+    datos, error = gamma_app.agente_excel.preparar_datos_reporte(
+        descuento=descuento, incluir_iva=incluir_iva
+    )
     if error:
         bot.send_message(message_obj.chat.id, error)
         return
@@ -220,7 +234,12 @@ def capturar_descuento_reporte(
             return
         monto = float(message.text.strip().replace(".", "").replace(",", ""))
         generar_y_enviar_reporte_por_hoja(
-            bot, gamma_app, message, nombre_hoja, descuento=monto, incluir_iva=incluir_iva
+            bot,
+            gamma_app,
+            message,
+            nombre_hoja,
+            descuento=monto,
+            incluir_iva=incluir_iva,
         )
     except ValueError:
         bot.reply_to(

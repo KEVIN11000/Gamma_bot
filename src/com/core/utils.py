@@ -5,8 +5,10 @@ import time
 from typing import Any
 
 from pathlib import Path as _Path
+
 _UTILS_BASE = _Path(__file__).resolve().parents[2]  # resolves to src/
 PENDING_FILE = str(_UTILS_BASE / "data" / "pending_deletions.json")
+
 
 def _load_pending() -> dict:
     if not os.path.exists(PENDING_FILE):
@@ -17,10 +19,12 @@ def _load_pending() -> dict:
     except Exception:
         return {}
 
+
 def _save_pending(data: dict):
     os.makedirs(os.path.dirname(PENDING_FILE), exist_ok=True)
     with open(PENDING_FILE, "w") as f:
         json.dump(data, f)
+
 
 def limpiar_menus_expirados(bot: Any):
     data = _load_pending()
@@ -29,7 +33,7 @@ def limpiar_menus_expirados(bot: Any):
     for msg_key, expire_time in data.items():
         if now > expire_time:
             to_delete.append(msg_key)
-    
+
     for msg_key in to_delete:
         try:
             chat_id, message_id = msg_key.split("_")
@@ -37,37 +41,43 @@ def limpiar_menus_expirados(bot: Any):
         except Exception:
             pass
         del data[msg_key]
-        
+
     if to_delete:
         _save_pending(data)
+
 
 import logging
 
 logger = logging.getLogger("utils")
 
+
 class MockChat:
     def __init__(self, chat_id):
         self.id = chat_id
+
 
 class MockMessage:
     def __init__(self, chat_id, message_id):
         self.chat = MockChat(chat_id)
         self.message_id = message_id
 
-def reply_with_expiration(bot: Any, chat_id: Any, text: str, timeout: int = 30, **kwargs):
+
+def reply_with_expiration(
+    bot: Any, chat_id: Any, text: str, timeout: int = 30, **kwargs
+):
     try:
         msg = bot.send_message(chat_id, text, **kwargs)
     except Exception as e:
         logger.error(f"Error sending message to {chat_id}: {e}")
         # Return a mock message so the caller doesn't break
         return MockMessage(chat_id, -1)
-    
+
     # Save to file queue
     data = _load_pending()
     msg_key = f"{msg.chat.id}_{msg.message_id}"
     data[msg_key] = time.time() + timeout
     _save_pending(data)
-    
+
     # Try with thread
     def delete_task():
         try:
@@ -78,6 +88,6 @@ def reply_with_expiration(bot: Any, chat_id: Any, text: str, timeout: int = 30, 
         if msg_key in d:
             del d[msg_key]
             _save_pending(d)
-            
+
     threading.Timer(timeout, delete_task).start()
     return msg

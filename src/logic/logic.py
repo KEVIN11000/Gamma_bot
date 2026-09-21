@@ -34,30 +34,36 @@ load_dotenv(BASE_DIR / ".env")
 # Zona horaria oficial para operaciones de Gamma Bot
 TZ_PARAGUAY = timezone(timedelta(hours=-3))
 
+
 def get_now_py() -> datetime:
     return datetime.now(TZ_PARAGUAY)
+
 
 def get_today_py_date() -> datetime:
     now = get_now_py()
     return datetime(now.year, now.month, now.day, tzinfo=TZ_PARAGUAY)
 
-def format_timestamp_py(dt: datetime = None, formato: str = "%d/%m/%Y %H:%M") -> str:
+
+def format_timestamp_py(
+    dt: datetime | None = None, formato: str = "%d/%m/%Y %H:%M"
+) -> str:
     if dt is None:
         dt = get_now_py()
     return dt.strftime(formato)
+
 
 def safe_int(value, default=0):
     if value is None or value == "":
         return default
     if isinstance(value, str):
-        value = value.replace(",", "").replace('"', '').replace("'", "").strip()
+        value = value.replace(",", "").replace('"', "").replace("'", "").strip()
     try:
         return int(float(value))
     except (ValueError, TypeError):
         return default
 
-logger = setup_logger("logic")
 
+logger = setup_logger("logic")
 
 
 # Helper to escape potential formula injection in Google Sheets
@@ -113,7 +119,9 @@ class ConexionSheets:
                     "🔌 Nueva conexión a Google Sheets establecida exitosamente (Singleton)."
                 )
             except RefreshError as e:
-                logger.error(f"❌ Error de autenticación en Google Sheets: credenciales inválidas ({e}).")
+                logger.error(
+                    f"❌ Error de autenticación en Google Sheets: credenciales inválidas ({e})."
+                )
                 return None
             except Exception as e:
                 logger.error(f"❌ Error al autorizar Google Sheets: {e}")
@@ -214,6 +222,7 @@ class AgenteAutonomoHoras:
         """
         if self._ws is None:
             import gspread
+
             base_path = BASE_DIR
             path_txt = base_path / "periodo_actual.txt"
             # Ensure the directory exists
@@ -222,15 +231,19 @@ class AgenteAutonomoHoras:
                 nombre_inicial = self.mes if self.mes else "Mayo 2026"
                 path_txt.write_text(nombre_inicial, encoding="utf-8")
             nombre_hoja = path_txt.read_text(encoding="utf-8").strip()
-            
+
             try:
                 self._ws = self.wb.worksheet(nombre_hoja)
             except gspread.exceptions.WorksheetNotFound:
-                logger.warning(f"⚠️ La hoja '{nombre_hoja}' no existe. Creándola automáticamente.")
-                self._ws = self.wb.add_worksheet(title=nombre_hoja, rows="60", cols="10")
+                logger.warning(
+                    f"⚠️ La hoja '{nombre_hoja}' no existe. Creándola automáticamente."
+                )
+                self._ws = self.wb.add_worksheet(
+                    title=nombre_hoja, rows="60", cols="10"
+                )
                 encabezados = ENCABEZADOS_HORAS
                 self._ws.update("A1:G1", [encabezados])
-                
+
         return self._ws
 
     def fin_de(self):
@@ -642,12 +655,15 @@ class AgenteAutonomoHoras:
             dt_inicio = dt_inicio.replace(tzinfo=TZ_PARAGUAY)
             dt_fin = dt_inicio + timedelta(hours=1)
 
-            reminders_overrides = datos_evento.get("reminders", [
-                {"method": "popup", "minutes": 24 * 60},
-                {"method": "popup", "minutes": 2 * 60},
-                {"method": "popup", "minutes": 60},
-                {"method": "popup", "minutes": 15},
-            ])
+            reminders_overrides = datos_evento.get(
+                "reminders",
+                [
+                    {"method": "popup", "minutes": 24 * 60},
+                    {"method": "popup", "minutes": 2 * 60},
+                    {"method": "popup", "minutes": 60},
+                    {"method": "popup", "minutes": 15},
+                ],
+            )
 
             evento = {
                 "summary": datos_evento["titulo"],

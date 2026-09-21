@@ -67,7 +67,7 @@ def register_avisos_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 chat_id,
                 call.message.message_id,
             )
-            enqueue(chat_id, 'crear_aviso_calendar', datos_evento)
+            enqueue(chat_id, "crear_aviso_calendar", datos_evento)
             EstadoGestor.pop(chat_id)
 
         except Exception as e:
@@ -110,7 +110,14 @@ def register_avisos_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 teclado.row(*botones_fila)
 
             texto += "━━━━━━━━━━━━━━━━━━━━━\n_¿Querés eliminar alguno? Tocá el botón correspondiente._"
-            reply_with_expiration(bot, message.chat.id, texto, parse_mode="Markdown", reply_markup=teclado, reply_to_message_id=message.message_id)
+            reply_with_expiration(
+                bot,
+                message.chat.id,
+                texto,
+                parse_mode="Markdown",
+                reply_markup=teclado,
+                reply_to_message_id=message.message_id,
+            )
 
         except telebot.apihelper.ApiTelegramException as tel_e:
             logger.error(f"⚠️ Error de red/API en Telegram: {str(tel_e)}")

@@ -15,9 +15,11 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 import config
+
 config.validate_production_config()
 from com.bot import GAMMA
 from logger_config import setup_logger
@@ -26,7 +28,11 @@ from com.core.utils import limpiar_menus_expirados
 
 logger = setup_logger("flask")
 app = Flask(__name__)
-limiter = Limiter(key_func=get_remote_address, default_limits=["10 per minute"], storage_uri="memory://")
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["10 per minute"],
+    storage_uri="memory://",
+)
 limiter.init_app(app)
 bot_instance = GAMMA()
 base_path = Path(__file__).resolve().parent.parent
@@ -35,7 +41,6 @@ base_path = Path(__file__).resolve().parent.parent
 @app.route(f"/{config.TOKEN}", methods=["POST"])
 @limiter.limit("10 per minute")
 def webhook() -> Any:
-    from com.core.utils import limpiar_menus_expirados
     try:
         limpiar_menus_expirados(bot_instance.bot)
     except Exception:
@@ -213,6 +218,8 @@ def _validar_cron_secret() -> bool:
         return False
     token_enviado = request.headers.get("X-Cron-Secret", "")
     return hmac.compare_digest(token_enviado, secret)
+
+
 @app.route("/cron/resumen-semanal", methods=["GET", "POST"])
 @limiter.limit("10 per minute")
 def cron_resumen_semanal() -> Any:
@@ -301,5 +308,6 @@ def cron_procesar_cola() -> Any:
     if not _validar_cron_secret():
         abort(403, "Token inválido")
     from app_queue.worker import procesar_trabajos_pendientes
+
     procesados = procesar_trabajos_pendientes(bot_instance.bot)
     return f"✅ {procesados} trabajos procesados.", 200

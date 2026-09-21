@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from com.bot import GAMMA as GammaApp
+else:
+    GammaApp = Any
 
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -24,16 +30,6 @@ logger = setup_logger("asistencia_handler")
 
 
 def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
-
-    @bot.message_handler(commands=["cancelar"])
-    @auth_required(bot)
-    @safe_handler(bot, logger)
-    def comando_cancelar(message):
-        if has_state(message.chat.id):
-            clear_state(message.chat.id)
-            bot.reply_to(message, "✅ Operación cancelada. El estado ha sido limpiado.")
-        else:
-            bot.reply_to(message, "No hay ninguna operación en curso para cancelar.")
 
     @bot.message_handler(commands=["marcar"])
     @auth_required(bot)
@@ -159,9 +155,9 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             return
 
         if call.data in ("cierre_iva_si", "cierre_iva_no"):
-            incluir_iva = (call.data == "cierre_iva_si")
+            incluir_iva = call.data == "cierre_iva_si"
             EstadoGestor.set(f"iva_{chat_id}", incluir_iva)
-            
+
             teclado = InlineKeyboardMarkup()
             teclado.row(
                 InlineKeyboardButton(
@@ -186,11 +182,11 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                 "⏳ Generando tu reporte... te lo envío en instantes.", chat_id, msg_id
             )
             incluir_iva = EstadoGestor.pop(f"iva_{chat_id}", False)
-            enqueue(chat_id, 'generar_reporte', {
-                'tipo': 'cierre',
-                'descuento': 0,
-                'incluir_iva': incluir_iva
-            })
+            enqueue(
+                chat_id,
+                "generar_reporte",
+                {"tipo": "cierre", "descuento": 0, "incluir_iva": incluir_iva},
+            )
             return
 
         if call.data == "cierre_descuento_si":
@@ -201,6 +197,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                 msg_id,
                 parse_mode="Markdown",
             )
+
             def _capturar_desc_cierre(m):
                 if not m.text:
                     bot.reply_to(m, "❌ Por favor, enviá un texto con el número.")
@@ -208,10 +205,25 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                 try:
                     monto = float(m.text.strip().replace(".", "").replace(",", ""))
                     incluir_iva = EstadoGestor.pop(f"iva_{m.chat.id}", False)
-                    bot.send_message(m.chat.id, "⏳ Generando tu reporte... te lo envío en instantes.")
-                    enqueue(m.chat.id, 'generar_reporte', {'tipo': 'cierre', 'descuento': monto, 'incluir_iva': incluir_iva})
+                    bot.send_message(
+                        m.chat.id,
+                        "⏳ Generando tu reporte... te lo envío en instantes.",
+                    )
+                    enqueue(
+                        m.chat.id,
+                        "generar_reporte",
+                        {
+                            "tipo": "cierre",
+                            "descuento": monto,
+                            "incluir_iva": incluir_iva,
+                        },
+                    )
                 except ValueError:
-                    bot.reply_to(m, "❌ *Error:* El monto debe ser numérico.", parse_mode="Markdown")
+                    bot.reply_to(
+                        m,
+                        "❌ *Error:* El monto debe ser numérico.",
+                        parse_mode="Markdown",
+                    )
 
             bot.register_next_step_handler(msg, _capturar_desc_cierre)
             return
@@ -224,8 +236,10 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
         if "horas" in texto:
             iniciar_flujo_reporte_horas(message, bot, gamma_app)
         elif "finanzas" in texto or "diario" in texto:
-            bot.send_message(message.chat.id, "⏳ Generando tu reporte... te lo envío en instantes.")
-            enqueue(message.chat.id, 'generar_reporte', {'tipo': 'financiero'})
+            bot.send_message(
+                message.chat.id, "⏳ Generando tu reporte... te lo envío en instantes."
+            )
+            enqueue(message.chat.id, "generar_reporte", {"tipo": "financiero"})
         else:
             teclado = InlineKeyboardMarkup()
             teclado.row(
@@ -261,8 +275,10 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             return
 
         if data == "reporte_tipo_finanzas":
-            bot.edit_message_text("⏳ Generando tu reporte... te lo envío en instantes.", chat_id, msg_id)
-            enqueue(chat_id, 'generar_reporte', {'tipo': 'financiero'})
+            bot.edit_message_text(
+                "⏳ Generando tu reporte... te lo envío en instantes.", chat_id, msg_id
+            )
+            enqueue(chat_id, "generar_reporte", {"tipo": "financiero"})
             return
 
         if data.startswith("reporte_hoja_"):
@@ -291,11 +307,11 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             return
 
         if data in ("reporte_iva_si", "reporte_iva_no"):
-            incluir_iva = (data == "reporte_iva_si")
+            incluir_iva = data == "reporte_iva_si"
             EstadoGestor.set(f"iva_{chat_id}", incluir_iva)
-            
+
             nombre_hoja = EstadoGestor.get(f"reporte_{chat_id}", "Seleccionado")
-            
+
             teclado = InlineKeyboardMarkup()
             teclado.row(
                 InlineKeyboardButton(
@@ -326,12 +342,16 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             bot.edit_message_text(
                 "⏳ Generando tu reporte... te lo envío en instantes.", chat_id, msg_id
             )
-            enqueue(chat_id, 'generar_reporte', {
-                'tipo': 'hoja',
-                'nombre_hoja': nombre_hoja,
-                'descuento': 0,
-                'incluir_iva': incluir_iva
-            })
+            enqueue(
+                chat_id,
+                "generar_reporte",
+                {
+                    "tipo": "hoja",
+                    "nombre_hoja": nombre_hoja,
+                    "descuento": 0,
+                    "incluir_iva": incluir_iva,
+                },
+            )
             return
 
         if data == "reporte_desc_si":
@@ -342,6 +362,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                 msg_id,
                 parse_mode="Markdown",
             )
+
             def _capturar_desc_reporte(m):
                 if not m.text:
                     bot.reply_to(m, "❌ Por favor, enviá un texto con el número.")
@@ -350,13 +371,30 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                     nombre_hoja = EstadoGestor.pop(f"reporte_{m.chat.id}")
                     incluir_iva = EstadoGestor.pop(f"iva_{m.chat.id}", False)
                     if not nombre_hoja:
-                        bot.reply_to(m, "❌ Sesión expirada. Ejecutá /reporte de nuevo.")
+                        bot.reply_to(
+                            m, "❌ Sesión expirada. Ejecutá /reporte de nuevo."
+                        )
                         return
                     monto = float(m.text.strip().replace(".", "").replace(",", ""))
-                    bot.send_message(m.chat.id, "⏳ Generando tu reporte... te lo envío en instantes.")
-                    enqueue(m.chat.id, 'generar_reporte', {'tipo': 'hoja', 'nombre_hoja': nombre_hoja, 'descuento': monto, 'incluir_iva': incluir_iva})
+                    bot.send_message(
+                        m.chat.id,
+                        "⏳ Generando tu reporte... te lo envío en instantes.",
+                    )
+                    enqueue(
+                        m.chat.id,
+                        "generar_reporte",
+                        {
+                            "tipo": "hoja",
+                            "nombre_hoja": nombre_hoja,
+                            "descuento": monto,
+                            "incluir_iva": incluir_iva,
+                        },
+                    )
                 except ValueError:
-                    bot.reply_to(m, "❌ El monto debe ser numérico. Operación cancelada.\nEjecutá /reporte para intentar de nuevo.")
+                    bot.reply_to(
+                        m,
+                        "❌ El monto debe ser numérico. Operación cancelada.\nEjecutá /reporte para intentar de nuevo.",
+                    )
 
             bot.register_next_step_handler(msg, _capturar_desc_reporte)
             return

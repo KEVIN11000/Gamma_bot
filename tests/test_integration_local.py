@@ -13,6 +13,7 @@ Flujos cubiertos:
 
 Usa un FakeWorksheet en memoria para simular Google Sheets sin conexión real.
 """
+
 import os
 import sys
 import unittest
@@ -70,6 +71,7 @@ class FakeWorksheet:
     def update(self, range_str: str, values: list[list], **kwargs):
         """Simplified update: parses A1 notation and writes values."""
         import re
+
         m = re.match(r"([A-Z]+)(\d+)", range_str)
         if not m:
             return
@@ -123,28 +125,68 @@ class FakeWorkbook:
 
 # ── Encabezados reales del entorno de producción ─────────────────────────────
 HEADERS_OBLIGACIONES = [
-    "ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual",
-    "Estado", "Cuota_Referencia_Gs", "Fecha_Inicio", "Observaciones",
-    "Cuotas", "Event_ID"
+    "ID_Obligacion",
+    "Tipo",
+    "Nombre",
+    "Monto_Inicial",
+    "Saldo_Actual",
+    "Estado",
+    "Cuota_Referencia_Gs",
+    "Fecha_Inicio",
+    "Observaciones",
+    "Cuotas",
+    "Event_ID",
 ]
 HEADERS_LIBRO_DIARIO = [
-    "Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura", "Neto",
-    "IVA", "Total", "Categoría", "Comprobante", "Rastro/Foto", "Mes",
-    "ID_Obligacion", "Tasa_IVA", "Monto_Gravado", "Monto_IVA", "Clasificacion_IVA"
+    "Fecha",
+    "Movimiento",
+    "Proveedor/Cliente",
+    "Nro Factura",
+    "Neto",
+    "IVA",
+    "Total",
+    "Categoría",
+    "Comprobante",
+    "Rastro/Foto",
+    "Mes",
+    "ID_Obligacion",
+    "Tasa_IVA",
+    "Monto_Gravado",
+    "Monto_IVA",
+    "Clasificacion_IVA",
 ]
 HEADERS_CIERRES = [
-    "ID_Cierre", "Mes", "Anio", "Total_Ingresos", "Total_Gastos",
-    "Total_Deudas_Pagadas", "Debito_Fiscal", "Credito_Fiscal",
-    "Liquidacion_IVA", "Estado_IVA", "Margen_Libre_Disponible",
-    "Saldo_Acumulado", "Fecha_Cierre", "Archivo_Backup_Drive"
+    "ID_Cierre",
+    "Mes",
+    "Anio",
+    "Total_Ingresos",
+    "Total_Gastos",
+    "Total_Deudas_Pagadas",
+    "Debito_Fiscal",
+    "Credito_Fiscal",
+    "Liquidacion_IVA",
+    "Estado_IVA",
+    "Margen_Libre_Disponible",
+    "Saldo_Acumulado",
+    "Fecha_Cierre",
+    "Archivo_Backup_Drive",
 ]
 HEADERS_PRESUPUESTO = [
-    "Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs",
-    "Tipo_Ingreso_Gasto", "Observaciones"
+    "Tipo_Flujo",
+    "Categoria",
+    "Concepto",
+    "Monto_Mensual_Gs",
+    "Tipo_Ingreso_Gasto",
+    "Observaciones",
 ]
 HEADERS_HORAS = [
-    "Dia", "Fecha", "Hora entrada", "Salgo almuerzo",
-    "Vuelta almuerzo", "Hora salida", "Horas"
+    "Dia",
+    "Fecha",
+    "Hora entrada",
+    "Salgo almuerzo",
+    "Vuelta almuerzo",
+    "Hora salida",
+    "Horas",
 ]
 
 
@@ -164,7 +206,7 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
         # Patch SheetsRepository._get_sheet to return our fake worksheets
         self._patcher = patch(
             "repositories.sheets_repository.SheetsRepository._get_sheet",
-            side_effect=lambda name: self.wb.worksheet(name)
+            side_effect=lambda name: self.wb.worksheet(name),
         )
         self._patcher.start()
 
@@ -177,7 +219,10 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
         MockCalendar.create_event.return_value = "evt_001"
 
         from logic.financiero import create_debt
-        debt_id = create_debt("Banco Atlas", "Préstamo personal", 12000000, 12, "01/10/2026")
+
+        debt_id = create_debt(
+            "Banco Atlas", "Préstamo personal", 12000000, 12, "01/10/2026"
+        )
 
         ws = self.wb.worksheet("Obligaciones_Maestro")
         records = ws.get_all_records()
@@ -200,10 +245,14 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
 
         # ¡Ninguna celda vacía donde debe haber datos!
         for key in HEADERS_OBLIGACIONES:
-            self.assertNotEqual(row[key], "", f"Columna '{key}' está vacía — ¡bug de mapeo!")
+            self.assertNotEqual(
+                row[key], "", f"Columna '{key}' está vacía — ¡bug de mapeo!"
+            )
 
         print(f"  ✅ Deuda creada: {debt_id}")
-        print(f"     Nombre={row['Nombre']}, Cuota_Ref={row['Cuota_Referencia_Gs']}, Fecha={row['Fecha_Inicio']}")
+        print(
+            f"     Nombre={row['Nombre']}, Cuota_Ref={row['Cuota_Referencia_Gs']}, Fecha={row['Fecha_Inicio']}"
+        )
 
     # ── 2. Consultar deudas activas con claves reales ────────────────────────
     @patch("logic.financiero.CalendarService")
@@ -288,8 +337,19 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
         self.assertNotEqual(proyecto["Cuota_Referencia_Gs"], "")
 
         # Ninguna columna vacía excepto Fecha_Inicio (proyectos no la tienen)
-        for key in ["ID_Obligacion", "Tipo", "Nombre", "Monto_Inicial", "Saldo_Actual", "Estado", "Cuota_Referencia_Gs", "Cuotas"]:
-            self.assertNotEqual(proyecto[key], "", f"Columna '{key}' vacía en simulación")
+        for key in [
+            "ID_Obligacion",
+            "Tipo",
+            "Nombre",
+            "Monto_Inicial",
+            "Saldo_Actual",
+            "Estado",
+            "Cuota_Referencia_Gs",
+            "Cuotas",
+        ]:
+            self.assertNotEqual(
+                proyecto[key], "", f"Columna '{key}' vacía en simulación"
+            )
 
         print(f"  ✅ Proyecto simulado: {proyecto['ID_Obligacion']}")
         print(f"     Cuota Ref: {proyecto['Cuota_Referencia_Gs']}")
@@ -305,6 +365,7 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
         from logic.financiero import simulate_project, approve_project
 
         result = simulate_project(1000000, 3, "Curso online")
+        self.assertIn("Curso online", result)
 
         ws = self.wb.worksheet("Obligaciones_Maestro")
         records = ws.get_all_records()
@@ -330,26 +391,28 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
 
         # Simular la lógica del handler exactamente como está en el código
         for d in debts:
-            nombre = d.get('Nombre', 'N/A')
-            monto = d.get('Monto_Inicial', 0)
-            cuota = d.get('Cuota_Referencia_Gs', 'N/A')
-            saldo = d.get('Saldo_Actual', 0)
+            nombre = d.get("Nombre", "N/A")
+            monto = d.get("Monto_Inicial", 0)
+            cuota = d.get("Cuota_Referencia_Gs", "N/A")
+            saldo = d.get("Saldo_Actual", 0)
 
-            self.assertNotEqual(nombre, 'N/A', "Handler mostraría 'N/A' como nombre")
-            self.assertNotEqual(str(monto), '0', "Handler mostraría monto 0")
-            self.assertNotEqual(str(cuota), 'N/A', "Handler mostraría cuota 'N/A'")
+            self.assertNotEqual(nombre, "N/A", "Handler mostraría 'N/A' como nombre")
+            self.assertNotEqual(str(monto), "0", "Handler mostraría monto 0")
+            self.assertNotEqual(str(cuota), "N/A", "Handler mostraría cuota 'N/A'")
 
             # Formatear como lo hace el handler
             response = (
                 f"🆔 `{d.get('ID_Obligacion', 'N/A')}`\n"
                 f"📝 {nombre}\n"
-                f"💰 Monto: Gs. {int(monto):,}\n".replace(",", ".") +
-                f"📊 Cuota Ref: Gs. {int(cuota):,}\n".replace(",", ".") +
-                f"💳 Saldo: Gs. {int(saldo):,}\n".replace(",", ".")
+                f"💰 Monto: Gs. {int(monto):,}\n".replace(",", ".")
+                + f"📊 Cuota Ref: Gs. {int(cuota):,}\n".replace(",", ".")
+                + f"💳 Saldo: Gs. {int(saldo):,}\n".replace(",", ".")
             )
             self.assertNotIn("N/A", response.split("📝")[1].split("\n")[0])
 
-        print(f"  ✅ Handler /deudas genera respuesta correcta con {len(debts)} deuda(s)")
+        print(
+            f"  ✅ Handler /deudas genera respuesta correcta con {len(debts)} deuda(s)"
+        )
 
     # ── 7. Calcular IVA correctamente ────────────────────────────────────────
     def test_07_calcular_iva(self):
@@ -439,11 +502,22 @@ class TestIntegrationAgenteFinanciero(unittest.TestCase):
 
     def setUp(self):
         self.wb = FakeWorkbook()
-        self.ws_libro = self.wb.add_sheet("Libro_Diario_Test", [
-            "Fecha", "Movimiento", "Proveedor/Cliente", "Nro Factura",
-            "Neto", "IVA", "Total", "Categoría", "Comprobante",
-            "Rastro/Foto", "Mes"
-        ])
+        self.ws_libro = self.wb.add_sheet(
+            "Libro_Diario_Test",
+            [
+                "Fecha",
+                "Movimiento",
+                "Proveedor/Cliente",
+                "Nro Factura",
+                "Neto",
+                "IVA",
+                "Total",
+                "Categoría",
+                "Comprobante",
+                "Rastro/Foto",
+                "Mes",
+            ],
+        )
 
     def test_registrar_movimiento_y_balance(self):
         """Simula registrar gastos e ingresos y calcular balance."""
@@ -457,36 +531,40 @@ class TestIntegrationAgenteFinanciero(unittest.TestCase):
         agente._ws = self.ws_libro
 
         # Registrar un gasto
-        result1 = agente.registrar_movimiento({
-            "fecha": "08/09/2026",
-            "tipo_movimiento": "Gasto",
-            "proveedor_cliente": "Supermercado ABC",
-            "nro_factura": "001-001-0001234",
-            "neto": 450000,
-            "iva": 45000,
-            "total": 495000,
-            "categoria": "Alimentación",
-            "comprobante": "Factura",
-            "file_id": "",
-            "mes": "Septiembre"
-        })
+        result1 = agente.registrar_movimiento(
+            {
+                "fecha": "08/09/2026",
+                "tipo_movimiento": "Gasto",
+                "proveedor_cliente": "Supermercado ABC",
+                "nro_factura": "001-001-0001234",
+                "neto": 450000,
+                "iva": 45000,
+                "total": 495000,
+                "categoria": "Alimentación",
+                "comprobante": "Factura",
+                "file_id": "",
+                "mes": "Septiembre",
+            }
+        )
         self.assertIn("✅", result1)
         self.assertIn("Gasto", result1)
 
         # Registrar un ingreso
-        result2 = agente.registrar_movimiento({
-            "fecha": "08/09/2026",
-            "tipo_movimiento": "Ingreso",
-            "proveedor_cliente": "Empleador SRL",
-            "nro_factura": "S/N",
-            "neto": 3500000,
-            "iva": 0,
-            "total": 3500000,
-            "categoria": "Salario",
-            "comprobante": "Recibo",
-            "file_id": "",
-            "mes": "Septiembre"
-        })
+        result2 = agente.registrar_movimiento(
+            {
+                "fecha": "08/09/2026",
+                "tipo_movimiento": "Ingreso",
+                "proveedor_cliente": "Empleador SRL",
+                "nro_factura": "S/N",
+                "neto": 3500000,
+                "iva": 0,
+                "total": 3500000,
+                "categoria": "Salario",
+                "comprobante": "Recibo",
+                "file_id": "",
+                "mes": "Septiembre",
+            }
+        )
         self.assertIn("✅", result2)
         self.assertIn("Ingreso", result2)
 
@@ -498,17 +576,21 @@ class TestIntegrationAgenteFinanciero(unittest.TestCase):
         self.assertEqual(balance["flujo_neto"], 3005000)
 
         # Verificar detección de factura duplicada
-        result_dup = agente.registrar_movimiento({
-            "fecha": "08/09/2026",
-            "tipo_movimiento": "Gasto",
-            "proveedor_cliente": "Supermercado ABC",
-            "nro_factura": "001-001-0001234",
-            "total": 495000,
-        })
+        result_dup = agente.registrar_movimiento(
+            {
+                "fecha": "08/09/2026",
+                "tipo_movimiento": "Gasto",
+                "proveedor_cliente": "Supermercado ABC",
+                "nro_factura": "001-001-0001234",
+                "total": 495000,
+            }
+        )
         self.assertIn("Duplicada", result_dup)
 
-        print(f"  ✅ Balance: Ingresos={balance['ingresos']:,} | Gastos={balance['gastos']:,} | Neto={balance['flujo_neto']:,}")
-        print(f"  ✅ Factura duplicada detectada correctamente")
+        print(
+            f"  ✅ Balance: Ingresos={balance['ingresos']:,} | Gastos={balance['gastos']:,} | Neto={balance['flujo_neto']:,}"
+        )
+        print("  ✅ Factura duplicada detectada correctamente")
 
     def test_registrar_movimiento_datos_invalidos(self):
         """Verifica que datos inválidos retornan error limpio."""
@@ -554,6 +636,7 @@ class TestIntegrationLimpiarMonto(unittest.TestCase):
 
     def test_limpiar_monto_formatos(self):
         from logic.financiero import AgenteFinanciero
+
         af = AgenteFinanciero.__new__(AgenteFinanciero)
 
         self.assertEqual(af.limpiar_monto("Gs. 1.500.000"), 1500000)

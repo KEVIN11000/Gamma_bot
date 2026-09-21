@@ -8,7 +8,7 @@ from typing import Any
 import requests
 
 from logger_config import setup_logger
-from logic.logic import AgenteAutonomoHoras, get_now_py
+from logic.logic import get_now_py
 from logic.constants import TIMEZONE
 
 logger = setup_logger("cron_jobs")
@@ -333,6 +333,7 @@ def alerta_asesor_financiero(gamma_app: Any, chat_id: Any) -> Any:
         logger.error(f"alerta_asesor_financiero: {e}")
         return False
 
+
 def sincronizar_avisos_vencimientos() -> dict:
     """
     Sincroniza los vencimientos de deudas activas con Google Calendar.
@@ -340,31 +341,33 @@ def sincronizar_avisos_vencimientos() -> dict:
     Reglas de antelación temporal de avisos: 7, 5, 3 y 1 días antes.
     """
     from repositories.sheets_repository import SheetsRepository
-    from logic.logic import get_now_py, AgenteAutonomoHoras, safe_int
+    from logic.logic import AgenteAutonomoHoras, safe_int
     import os
     import calendar
-    
+
     repo = SheetsRepository()
     obligaciones = repo.get_todas_obligaciones()
     hoy = get_now_py()
-    
+
     agente = AgenteAutonomoHoras(spreadsheet_id=os.getenv("SPREADSHEET_ID") or "")
-    
+
     count_ok = 0
     count_err = 0
-    
+
     for d in obligaciones:
         if str(d.get("Estado", "")).lower() == "activo":
             dia = safe_int(d.get("Dia_Vencimiento", 0))
             if dia > 0:
                 ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
                 dia_evento = dia if dia <= ultimo_dia else ultimo_dia
-                
+
                 fecha_evento = hoy.replace(day=dia_evento)
-                
-                titulo = f"Vencimiento: {d.get('Nombre', 'Deuda')} (Gs. {safe_int(d.get('Cuota_Referencia_Gs', 0)):,})".replace(",", ".")
+
+                titulo = f"Vencimiento: {d.get('Nombre', 'Deuda')} (Gs. {safe_int(d.get('Cuota_Referencia_Gs', 0)):,})".replace(
+                    ",", "."
+                )
                 fecha_str = fecha_evento.strftime("%d/%m/%Y")
-                
+
                 # Reglas de antelación en minutos: 7, 5, 3 y 1 días
                 reminders = [
                     {"method": "popup", "minutes": 7 * 24 * 60},
@@ -372,20 +375,22 @@ def sincronizar_avisos_vencimientos() -> dict:
                     {"method": "popup", "minutes": 3 * 24 * 60},
                     {"method": "popup", "minutes": 1 * 24 * 60},
                 ]
-                
+
                 datos_evento = {
                     "titulo": titulo,
                     "fecha": fecha_str,
                     "hora": "08:00",
-                    "reminders": reminders
+                    "reminders": reminders,
                 }
-                
+
                 res = agente.guardar_aviso_calendar(datos_evento)
                 if "Error" in res or "❌" in res:
                     logger.error(f"Error sincronizando {titulo}: {res}")
                     count_err += 1
                 else:
                     count_ok += 1
-                    
-    logger.info(f"Sincronización de avisos completada: {count_ok} OK, {count_err} Errores.")
+
+    logger.info(
+        f"Sincronización de avisos completada: {count_ok} OK, {count_err} Errores."
+    )
     return {"status": "ok", "synced": count_ok, "errors": count_err}

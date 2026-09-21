@@ -26,13 +26,14 @@ def mock_gamma_app():
 @pytest.fixture
 def registered_handlers(mock_bot, mock_gamma_app):
     handlers = {}
-    
+
     def mock_message_handler(**kwargs):
         def decorator(func):
             commands = kwargs.get("commands", [])
             for cmd in commands:
                 handlers[f"cmd_{cmd}"] = func
             return func
+
         return decorator
 
     def mock_callback_query_handler(func=None, **kwargs):
@@ -42,11 +43,12 @@ def registered_handlers(mock_bot, mock_gamma_app):
             condition = func if func is not None else kwargs.get("func")
             handlers["callbacks"].append((condition, f))
             return f
+
         return decorator
 
     mock_bot.message_handler = mock_message_handler
     mock_bot.callback_query_handler = mock_callback_query_handler
-    
+
     register_asistencia_handlers(mock_bot, mock_gamma_app)
     return handlers
 
@@ -88,33 +90,47 @@ def test_comando_marcar(registered_handlers, mock_bot):
     msg = create_message("/marcar")
     handler(msg)
     mock_bot.send_message.assert_called_once()
-    assert "¿Qué tipo de registro querés hacer hoy?" in mock_bot.send_message.call_args[0][1]
+    assert (
+        "¿Qué tipo de registro querés hacer hoy?"
+        in mock_bot.send_message.call_args[0][1]
+    )
 
 
 @patch("time.time", return_value=1000000000)
 def test_callback_marcado(mock_time, registered_handlers, mock_bot, mock_gamma_app):
     handler = get_callback_handler(registered_handlers, "marcar_normal")
-    
+
     # expired
     call = create_callback("marcar_normal")
     call.message.date = 0
     handler(call)
-    mock_bot.answer_callback_query.assert_called_with(call.id, "❌ Este botón ha expirado.", show_alert=True)
-    
+    mock_bot.answer_callback_query.assert_called_with(
+        call.id, "❌ Este botón ha expirado.", show_alert=True
+    )
+
     # valid - normal
     call.message.date = 1000000000
     mock_bot.reset_mock()
     mock_gamma_app.agente_excel.ejecutar_marcado_para_bot.return_value = "Marcado listo"
     handler(call)
-    mock_gamma_app.agente_excel.ejecutar_marcado_para_bot.assert_called_with(modo="normal")
-    mock_bot.edit_message_text.assert_called_with("Marcado listo", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    mock_gamma_app.agente_excel.ejecutar_marcado_para_bot.assert_called_with(
+        modo="normal"
+    )
+    mock_bot.edit_message_text.assert_called_with(
+        "Marcado listo",
+        call.message.chat.id,
+        call.message.message_id,
+        parse_mode="Markdown",
+    )
 
     # valid - directo
     call = create_callback("marcar_directo")
     call.message.date = 1000000000
     mock_bot.reset_mock()
     handler(call)
-    mock_gamma_app.agente_excel.ejecutar_marcado_para_bot.assert_called_with(modo="directo")
+    mock_gamma_app.agente_excel.ejecutar_marcado_para_bot.assert_called_with(
+        modo="directo"
+    )
 
 
 def test_comando_marcar_materia(registered_handlers, mock_bot, mock_gamma_app):
@@ -123,11 +139,15 @@ def test_comando_marcar_materia(registered_handlers, mock_bot, mock_gamma_app):
     reply_msg = MagicMock()
     reply_msg.message_id = 999
     mock_bot.reply_to.return_value = reply_msg
-    mock_gamma_app.agente_materias.marcar_asistencia.return_value = "Asistencia en materia"
-    
+    mock_gamma_app.agente_materias.marcar_asistencia.return_value = (
+        "Asistencia en materia"
+    )
+
     handler(msg)
     mock_bot.reply_to.assert_called_once()
-    mock_bot.edit_message_text.assert_called_with("Asistencia en materia", msg.chat.id, 999, parse_mode="Markdown")
+    mock_bot.edit_message_text.assert_called_with(
+        "Asistencia en materia", msg.chat.id, 999, parse_mode="Markdown"
+    )
 
 
 def test_comando_cierre(registered_handlers, mock_bot):
@@ -141,44 +161,54 @@ def test_comando_cierre(registered_handlers, mock_bot):
 @patch("time.time", return_value=1000000000)
 @patch("com.handlers.asistencia.enqueue")
 @patch("com.handlers.asistencia.EstadoGestor")
-def test_callback_cierre(mock_estado, mock_enqueue, mock_time, registered_handlers, mock_bot, mock_gamma_app):
+def test_callback_cierre(
+    mock_estado, mock_enqueue, mock_time, registered_handlers, mock_bot, mock_gamma_app
+):
     handler = get_callback_handler(registered_handlers, "cierre_confirmar")
-    
+
     # expired
     call = create_callback("cierre_cancelar")
     call.message.date = 0
     handler(call)
-    mock_bot.answer_callback_query.assert_called_with(call.id, "❌ Este botón ha expirado.", show_alert=True)
-    
+    mock_bot.answer_callback_query.assert_called_with(
+        call.id, "❌ Este botón ha expirado.", show_alert=True
+    )
+
     # valid cancelar
     call.message.date = 1000000000
     mock_bot.reset_mock()
     handler(call)
-    mock_bot.edit_message_text.assert_called_with("❌ Cierre cancelado.", call.message.chat.id, call.message.message_id)
-    
+    mock_bot.edit_message_text.assert_called_with(
+        "❌ Cierre cancelado.", call.message.chat.id, call.message.message_id
+    )
+
     # valid confirmar → should ask IVA question
     call.data = "cierre_confirmar"
     mock_bot.reset_mock()
-    mock_gamma_app.agente_excel.ejecutar_cierre_periodo_manual.return_value = "Cierre OK"
+    mock_gamma_app.agente_excel.ejecutar_cierre_periodo_manual.return_value = (
+        "Cierre OK"
+    )
     handler(call)
-    mock_bot.send_message.assert_any_call(call.message.chat.id, "Cierre OK", parse_mode="Markdown")
-    
+    mock_bot.send_message.assert_any_call(
+        call.message.chat.id, "Cierre OK", parse_mode="Markdown"
+    )
+
     # respond IVA → triggers discount question
     call.data = "cierre_iva_si"
     mock_bot.reset_mock()
     handler(call)
     mock_estado.set.assert_called_with(f"iva_{call.message.chat.id}", True)
-    
+
     # descuento_no → generate report without discount, using IVA from state
     call.data = "cierre_descuento_no"
     mock_bot.reset_mock()
     mock_estado.pop.return_value = True
     handler(call)
-    mock_enqueue.assert_called_with(call.message.chat.id, 'generar_reporte', {
-        'tipo': 'cierre',
-        'descuento': 0,
-        'incluir_iva': True
-    })
+    mock_enqueue.assert_called_with(
+        call.message.chat.id,
+        "generar_reporte",
+        {"tipo": "cierre", "descuento": 0, "incluir_iva": True},
+    )
 
     call.data = "cierre_descuento_si"
     mock_bot.reset_mock()
@@ -188,17 +218,21 @@ def test_callback_cierre(mock_estado, mock_enqueue, mock_time, registered_handle
 
 @patch("com.handlers.asistencia.iniciar_flujo_reporte_horas")
 @patch("com.handlers.asistencia.enqueue")
-def test_comando_reporte(mock_enqueue, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
+def test_comando_reporte(
+    mock_enqueue, mock_horas, registered_handlers, mock_bot, mock_gamma_app
+):
     handler = registered_handlers["cmd_reporte"]
-    
+
     msg = create_message("reporte horas")
     handler(msg)
     mock_horas.assert_called_once_with(msg, mock_bot, mock_gamma_app)
-    
+
     msg = create_message("reporte finanzas")
     handler(msg)
-    mock_enqueue.assert_called_once_with(msg.chat.id, 'generar_reporte', {'tipo': 'financiero'})
-    
+    mock_enqueue.assert_called_once_with(
+        msg.chat.id, "generar_reporte", {"tipo": "financiero"}
+    )
+
     mock_bot.reset_mock()
     msg = create_message("/reporte")
     handler(msg)
@@ -208,21 +242,29 @@ def test_comando_reporte(mock_enqueue, mock_horas, registered_handlers, mock_bot
 @patch("com.handlers.asistencia.iniciar_flujo_reporte_horas")
 @patch("com.handlers.asistencia.enqueue")
 @patch("com.handlers.asistencia.EstadoGestor")
-def test_callback_reporte(mock_estado, mock_enqueue, mock_horas, registered_handlers, mock_bot, mock_gamma_app):
+def test_callback_reporte(
+    mock_estado, mock_enqueue, mock_horas, registered_handlers, mock_bot, mock_gamma_app
+):
     handler = get_callback_handler(registered_handlers, "reporte_cancelar")
-    
+
     call = create_callback("reporte_cancelar")
     handler(call)
-    mock_bot.edit_message_text.assert_called_with("❌ Operación cancelada.", call.message.chat.id, call.message.message_id)
-    
+    mock_bot.edit_message_text.assert_called_with(
+        "❌ Operación cancelada.", call.message.chat.id, call.message.message_id
+    )
+
     call.data = "reporte_tipo_horas"
     handler(call)
-    mock_horas.assert_called_once_with(call.message, mock_bot, mock_gamma_app, is_callback=True)
-    
+    mock_horas.assert_called_once_with(
+        call.message, mock_bot, mock_gamma_app, is_callback=True
+    )
+
     call.data = "reporte_tipo_finanzas"
     handler(call)
-    mock_enqueue.assert_called_once_with(call.message.chat.id, 'generar_reporte', {'tipo': 'financiero'})
-    
+    mock_enqueue.assert_called_once_with(
+        call.message.chat.id, "generar_reporte", {"tipo": "financiero"}
+    )
+
     # seleccionar hoja → debe preguntar IVA ahora
     call.data = "reporte_hoja_TestHoja"
     mock_bot.reset_mock()
@@ -243,19 +285,27 @@ def test_callback_reporte(mock_estado, mock_enqueue, mock_horas, registered_hand
     mock_estado.pop.side_effect = ["TestHoja", False]
     mock_enqueue.reset_mock()
     handler(call)
-    mock_enqueue.assert_called_once_with(call.message.chat.id, 'generar_reporte', {
-        'tipo': 'hoja',
-        'nombre_hoja': "TestHoja",
-        'descuento': 0,
-        'incluir_iva': False
-    })
-    
+    mock_enqueue.assert_called_once_with(
+        call.message.chat.id,
+        "generar_reporte",
+        {
+            "tipo": "hoja",
+            "nombre_hoja": "TestHoja",
+            "descuento": 0,
+            "incluir_iva": False,
+        },
+    )
+
     # Test session expired
     call.data = "reporte_desc_no"
     mock_estado.pop.side_effect = [None, False]
     mock_bot.reset_mock()
     handler(call)
-    mock_bot.edit_message_text.assert_called_with("❌ Sesión expirada. Ejecutá /reporte de nuevo.", call.message.chat.id, call.message.message_id)
+    mock_bot.edit_message_text.assert_called_with(
+        "❌ Sesión expirada. Ejecutá /reporte de nuevo.",
+        call.message.chat.id,
+        call.message.message_id,
+    )
 
     call.data = "reporte_desc_si"
     mock_bot.reset_mock()
