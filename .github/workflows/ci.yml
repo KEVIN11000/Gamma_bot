@@ -66,3 +66,40 @@ jobs:
         continue-on-error: true
       - name: Run bandit
         run: bandit -r . -x tests,test_qa_suite.py -ll
+
+  notify-failure:
+    needs: [lint, test, security]
+    if: failure() && github.ref == 'refs/heads/Main-stable'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create issue on CI failure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `[Vigía CI] Fallo en CI/CD: Run #${context.runId}`;
+            const body = `### 🚨 Fallo de CI/CD detectado por Vigía\n\n` +
+              `- **Rama:** \`${context.ref}\`\n` +
+              `- **Commit:** [${context.sha.substring(0, 7)}](${context.payload.repository?.html_url || ''}/commit/${context.sha})\n` +
+              `- **Workflow Run:** https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n` +
+              `- **Actor:** @${context.actor}\n\n` +
+              `Revisa los logs del pipeline para resolver el problema.`;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ci-failure'
+            });
+            const exists = issues.data.some(i => i.title.includes(`${context.runId}`));
+            if (!exists) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['vigia', 'ci-failure', 'bug']
+              });
+            }
+

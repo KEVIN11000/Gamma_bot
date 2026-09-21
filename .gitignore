@@ -24,3 +24,13 @@ scratch_*.py
 mypy.ini
 cola.db
 cola.db-*
+
+# Handoff de contexto (local-only, no publicar en el servidor)
+HANDOFF.md
+docs/history/
+
+# Bandeja de incidentes y herramientas Vigía (local-only, no publicar en el servidor)
+tickets/
+scripts/vigia.py
+src/vigia_engine.py
+tests/test_vigia.py

@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -311,3 +312,86 @@ def cron_procesar_cola() -> Any:
 
     procesados = procesar_trabajos_pendientes(bot_instance.bot)
     return f"✅ {procesados} trabajos procesados.", 200
+
+
+@app.route("/admin/logs", methods=["GET"])
+@limiter.limit("20 per minute")
+def admin_logs() -> Any:
+    """Devuelve las últimas líneas de gen_log.txt e incidentes registrados.
+    Protegido con el header X-Cron-Secret.
+    """
+    if not _validar_cron_secret():
+        abort(403, "Token inválido")
+
+    try:
+        lines_count = int(request.args.get("lines", 100))
+    except ValueError:
+        lines_count = 100
+
+    src_dir = Path(__file__).resolve().parent
+    log_candidates = [src_dir / "gen_log.txt", base_path / "gen_log.txt"]
+    log_path = next((p for p in log_candidates if p.exists()), src_dir / "gen_log.txt")
+
+    lines = []
+    total = 0
+    if log_path.exists():
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                all_lines = f.readlines()
+                total = len(all_lines)
+                lines = [line.rstrip("\r\n") for line in all_lines[-lines_count:]]
+        except Exception as e:
+            logger.error(f"Error leyendo gen_log.txt: {e}")
+
+    fallback_candidates = [
+        src_dir / "incidentes_telegram.json",
+        base_path / "incidentes_telegram.json",
+    ]
+    fallback_path = next(
+        (p for p in fallback_candidates if p.exists()),
+        src_dir / "incidentes_telegram.json",
+    )
+    fallback_tickets = []
+    if fallback_path.exists():
+        try:
+            with open(fallback_path, "r", encoding="utf-8") as f:
+                fallback_tickets = json.load(f)
+        except Exception:
+            pass
+
+    from datetime import datetime, timezone
+
+    return {
+        "status": "ok",
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "total_lines": total,
+        "returned_lines": len(lines),
+        "lines": lines,
+        "fallback_tickets": fallback_tickets,
+    }, 200
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e: Any) -> Any:
+    """Manejador global de excepciones para registrar y reportar fallos a Vigía."""
+    from werkzeug.exceptions import HTTPException
+
+    if isinstance(e, HTTPException):
+        return e
+
+    logger.error(f"Error no capturado en servidor: {e}\n{traceback.format_exc()}")
+    try:
+        from com.core.telemetry import reportar_incidente_vigia
+
+        tb = traceback.format_exc()
+        endpoint = request.path if request else "desconocido"
+        reportar_incidente_vigia(
+            titulo=f"Error {type(e).__name__} en {endpoint}",
+            detalle=f"Excepción no capturada en {endpoint}: {e}",
+            origen="servidor",
+            traceback_str=tb,
+        )
+    except Exception as tel_err:
+        logger.error(f"Error al emitir telemetría Vigía: {tel_err}")
+
+    return "❌ Error interno del servidor.", 500

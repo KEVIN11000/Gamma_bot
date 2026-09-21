@@ -32,6 +32,7 @@ def _registrar_comandos_menu(bot: TeleBot) -> Any:
         BotCommand("aviso", "Agendar un hito o recordatorio con IA."),
         BotCommand("avisos", "Ver lista de avisos activos."),
         BotCommand("cierre", "Ejecutar cierre de período de marcaciones."),
+        BotCommand("soporte", "Reportar un bug, error o sugerencia."),
     ]
 
     if os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true":
