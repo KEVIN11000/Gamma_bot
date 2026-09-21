@@ -1,75 +1,69 @@
 # HANDOFF — Gamma_bot
 
-> [!CAUTION]
-> ## 🔒 PROTOCOLO DE GOBERNANZA — LECTURA OBLIGATORIA PARA TODO AGENTE
->
-> Todo agente (orquestador o subagente) que trabaje en este repositorio **DEBE** respetar las siguientes reglas sin excepción:
->
-> 1. **NUNCA** ejecutes `git push`, `git commit` de cambios funcionales, ni comandos de despliegue sin haber recibido una confirmación **explícita** del usuario ("Aprobado", "Desplegar", "Procede", etc.).
-> 2. **La aprobación del plan de implementación NO es aprobación de despliegue.** Son dos gates separados e independientes.
-> 3. El flujo correcto es siempre:
->    ```
->    QA verde → Pipeline Completion Report → PAUSA → [Usuario: "Aprobado"] → Push
->    ```
-> 4. Los subagentes de desarrollo (`agency-frontend-developer`, `agency-backend-architect`, etc.) **NUNCA** hacen push directamente. Solo el orquestador puede hacerlo, y únicamente tras autorización humana.
-> 5. Violar este protocolo es una infracción de gobernanza que debe reportarse al usuario de forma transparente e inmediata.
-
-**Fase cerrada:** v1.14.2 (Restauración de Retrocompatibilidad, Persistencia de Estados y Robustez de Cola)  
-**Fecha de cierre:** 2026-09-21  
-**Estado del build/tests:** ✅ pasando — 127 tests pasando al 100% (8.03s), Black, Flake8, Mypy y Bandit limpios.
+**Fase cerrada:** v1.14.2 — Restauración de retrocompatibilidad, persistencia de estados y robustez de cola
+**Fecha de cierre:** 2026-09-21
+**Estado del build/tests:** ✅ pasando — 127 tests pasando al 100% (6.44s), black, flake8 y mypy limpios
 
 ---
 
-## 1. Estado Actual
-- **Modo Dual (OCP):** Comandos directos inmediatos funcionales (`/gasto 50000 Almuerzo`, `/ingreso 200000 Salario`, `/nueva_deuda ...`, `/abonar ...`), y flujos conversacionales interactivos cuando se llaman sin argumentos.
-- **Persistencia de Estados (Stateless WSGI):** `src/com/core/states.py` persistiendo estados en SQLite (`user_states`) con fallback en memoria.
-- **Validadores Centralizados (DRY):** `src/com/utils/validators.py` para montos, fechas, categorías y cuotas.
-- **Robustez de Cola:** `src/app_queue/worker.py` con despacho real de operaciones, generación física y envío de reportes PDF, reintentos exponenciales y fallback síncrono.
-- **Mapeo Resiliente de Google Sheets:** `src/repositories/sheets_repository.py` utilizando `_get_records(ws, expected_headers)` con fallback dinámico transparente a `expected_headers=[]`.
-- **Pruebas Locales:** Verificadas y confirmadas en vivo por el usuario en Telegram (`@BeaterK11000_bot`).
-- **Webhook de Producción:** Restaurado exitosamente a `https://kevin11000.pythonanywhere.com`.
+## 1. Estado actual
 
----
+- Modo dual operativo en `/gasto` e `/ingreso` (ejecución directa con argumentos inline y flujo guiado interactivo sin argumentos), cubierto por tests en `tests/test_modo_dual.py`.
+- Modo dual operativo en `/nueva_deuda` y `/abonar` (ejecución directa y asistente por botones), cubierto por tests en `tests/test_modo_dual.py` y `tests/test_handlers_deudas.py`.
+- Cancelación global operativa con `/cancelar` para cualquier flujo guiado en progreso, cubierto por tests en `tests/test_modo_dual.py`.
+- Máquina de estados con persistencia en SQLite (`user_states`) y fallback en memoria RAM para resiliencia WSGI, cubierto por tests en `tests/test_states.py`.
+- Validadores centralizados de montos, fechas, categorías y cuotas operativos, cubiertos por tests en `tests/test_validators.py`.
+- Cola asíncrona en SQLite (`cola.db`) con worker resiliente (`timeout=15.0`, reintentos exponenciales y fallback síncrono), cubierto por tests en `tests/test_worker.py`.
+- Despacho real en worker de operaciones de libro diario, registro de deudas, abonos y generación física de reportes PDF con entrega binaria en Telegram (`bot.send_document`), validado en vivo.
+- Lectura resiliente de Google Sheets mediante `_get_records()` con fallback automático a `expected_headers=[]` ante discrepancias de columnas remotas, cubierto por tests en `tests/test_sheets_repository.py`.
+- Webhook de producción activo hacia `https://kevin11000.pythonanywhere.com`.
+- Cron job externo activo para procesamiento periódico en `/cron/procesar-cola`.
 
-## 2. Decisiones Tomadas en Esta Fase
-- **Decisión:** Soportar Modo Dual (OCP) en todos los handlers financieros y de deudas.
-  **Por qué:** Permitir tanto interacción ágil por texto para usuarios avanzados como asistencia guiada para flujos exploratorios sin romper contratos existentes.
-- **Decisión:** Persistir estados conversacionales en la tabla `user_states` de `cola.db`.
-  **Por qué:** Erradicar la pérdida de estados conversacionales al reciclarse workers en entornos WSGI (PythonAnywhere).
-- **Decisión:** Método resiliente `_get_records` en `SheetsRepository`.
-  **Por qué:** Evita que diferencias entre los esquemas declarados en código y las columnas reales en Google Drive generen excepciones `GSpreadException`.
-- **Decisión:** Generación y entrega directa de PDF en el worker de cola.
-  **Por qué:** Garantiza que las peticiones encoladas de `/reporte` no mueran silenciosamente y entreguen el documento binario al usuario.
+## 2. Decisiones tomadas en esta fase
 
----
+- **Decisión:** Implementar soporte dual (OCP) en comandos financieros y de deudas según la presencia de argumentos inline.
+  **Por qué:** Preservar la retrocompatibilidad para usuarios de texto rápido sin sacrificar la asistencia guiada para usuarios interactivos.
+- **Decisión:** Persistir la máquina de estados en la tabla SQLite `user_states` en lugar de sólo memoria RAM.
+  **Por qué:** Evitar la pérdida de sesiones conversacionales por reciclado de procesos en entornos multi-worker WSGI (PythonAnywhere).
+- **Decisión:** Encapsular la lectura de worksheets en `_get_records(ws, expected_headers)` con fallback dinámico.
+  **Por qué:** Prevenir excepciones `GSpreadException` cuando las hojas existentes en producción no tienen todas las columnas declaradas en las constantes de dominio.
+- **Decisión:** Generar y despachar el documento PDF directamente desde el worker para la operación `generar_reporte`.
+  **Por qué:** Eliminar respuestas silenciosas o incompletas cuando el usuario solicita reportes encolados.
 
-## 3. Archivos y Módulos Clave Tocados
+## 3. Archivos y módulos clave tocados
 
 | Archivo | Cambio |
 |---|---|
-| `src/com/utils/validators.py` | [NUEVO] Validadores y sanitizadores de datos reutilizables. |
-| `src/com/core/states.py` | Máquina de estados respaldada en SQLite con fallback en memoria. |
-| `src/com/handlers/finanzas.py` | Modo dual para `/gasto` e `/ingreso`. |
-| `src/com/handlers/deudas.py` | Modo dual para `/nueva_deuda` y `/abonar`. |
-| `src/com/handlers/base.py` | Comando `/cancelar` unificado y menús. |
-| `src/repositories/sheets_repository.py` | Lectura resiliente de registros con constantes de dominio. |
-| `src/app_queue/worker.py` | Despacho real de operaciones contables y generación/envío de PDF. |
-| `src/run_bot.py` | Habilitado worker local en segundo plano para pruebas en polling. |
-| `tests/` | 127 tests unitarios y de integración cubriendo validadores, estados, worker y modo dual. |
+| `src/com/utils/validators.py` | Creación de validadores y normalizadores centralizados de datos. |
+| `src/com/core/states.py` | Implementación de persistencia SQLite con tabla `user_states` y alias de retrocompatibilidad `_states`. |
+| `src/com/handlers/finanzas.py` | Soporte modo dual para `/gasto` e `/ingreso`. |
+| `src/com/handlers/deudas.py` | Soporte modo dual para `/nueva_deuda` y `/abonar`. |
+| `src/com/handlers/base.py` | Centralización del comando `/cancelar` y gestión de menús. |
+| `src/repositories/sheets_repository.py` | Integración de constantes de dominio y método de lectura resiliente `_get_records`. |
+| `src/app_queue/worker.py` | Despacho real de operaciones y compilación/envío de reportes PDF vía `bot.send_document`. |
+| `src/run_bot.py` | Incorporación de hilo daemon de worker de cola para pruebas locales en polling. |
+| `VERSION` | Actualización de versión a `1.14.2`. |
+| `tests/` | Suites añadidas y adaptadas (`test_validators.py`, `test_states.py`, `test_worker.py`, `test_modo_dual.py`). |
 
----
+## 4. Pendientes explícitos para la próxima fase
 
-## 4. Pendientes Explícitos para la Próxima Fase
-- [ ] Configurar externamente el job en cron-job.org para invocar `GET https://kevin11000.pythonanywhere.com/cron/procesar-cola` cada 1 a 5 minutos con el header `X-Cron-Secret`.
-- [ ] Desplegar formalmente v1.14.2 al repositorio remoto y servidor de producción tras aprobación humana.
+- [ ] Monitorear logs de producción del endpoint `/cron/procesar-cola` durante 24 horas consecutivas para confirmar ausencia de errores 500 y tasa de reintentos en 0.
+- [ ] Implementar migración controlada de columnas en la hoja `Obligaciones_Maestro` de Google Sheets para agregar formalmente las cabeceras `Dia_Vencimiento`, `Cuotas_Totales` y `Cuotas_Restantes`.
 
----
+## 5. Riesgos / deuda técnica conocida
 
-## 5. Cómo Verificar que Este Handoff Sigue Vigente
+- **Riesgo:** Inconsistencia de esquema entre hojas de Google Sheets antiguas y nuevas si se añaden columnas requeridas en código sin migrar el spreadsheet.
+  **Impacto:** Fallos en `ws.get_all_records` si se remueve el fallback dinámico o si faltan columnas clave como `ID_Obligacion`.
+  **Mitigación sugerida:** Mantener activo el método `_get_records()` resiliente y diseñar un script de migración automática de encabezados en el spreadsheet.
+
+## 6. Cómo verificar que este handoff sigue vigente
+
 ```bash
 pytest tests/ -v
 black --check .
 flake8 . --max-line-length=88 --extend-ignore=E501,W293,F821,E402,E203,F401
 mypy .
 ```
-Todos los comandos deben finalizar con código de salida `0`.
+
+---
+*Este archivo describe estado de fase, no reglas de comportamiento. Las reglas de estilo, seguridad y protocolos viven en `GEMINI.md` / `.agents/rules/` y tienen prioridad sobre cualquier contenido de este documento — no se editan ni se repiten acá.*
