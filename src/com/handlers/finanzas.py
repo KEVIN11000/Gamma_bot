@@ -416,9 +416,7 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             InlineKeyboardButton("❌ Cerrar", callback_data="fijos_cerrar"),
         )
 
-        bot.send_message(
-            chat_id, texto, reply_markup=markup, parse_mode="Markdown"
-        )
+        bot.send_message(chat_id, texto, reply_markup=markup, parse_mode="Markdown")
 
     @bot.message_handler(commands=["fijos", "gastos_fijos"])
     @auth_required(bot)
