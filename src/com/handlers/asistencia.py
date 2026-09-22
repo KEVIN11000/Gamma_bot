@@ -23,6 +23,7 @@ from services.asistencia_service import (
     capturar_descuento_reporte,
     generar_y_enviar_reporte_por_hoja,
 )
+
 from app_queue.worker import enqueue
 from com.core.states import clear_state, has_state
 
@@ -35,10 +36,27 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
     @auth_required(bot)
     @safe_handler(bot, logger)
     def comando_marcar(message):
+        partes = message.text.split()
+        if len(partes) > 1:
+            # Fast-track support
+            tipo = partes[1].strip().lower()
+            if tipo in ["normal", "directo"]:
+                fake_msg = message
+                fake_msg.text = f"/marcar_{tipo}"  # just internal routing if possible, but actually let's just trigger the callback logic
+                # It's easier to call gamma_app directly like in callback_marcado
+                estado = "normal" if tipo == "normal" else "directo"
+                bot.reply_to(message, "⏳ Registrando marcación...")
+                try:
+                    gamma_app.marcar_asistencia(estado)
+                    bot.reply_to(message, "✅ Marcación exitosa.")
+                except Exception as e:
+                    bot.reply_to(message, f"❌ Error: {str(e)}")
+                return
+
         teclado = InlineKeyboardMarkup()
         teclado.row(
-            InlineKeyboardButton("▶️ Marcar", callback_data="marcar_normal"),
-            InlineKeyboardButton("🚪 Salida directa", callback_data="marcar_directo"),
+            InlineKeyboardButton("🚶‍♂️ Marcar", callback_data="marcar_normal"),
+            InlineKeyboardButton("🚀 Salida directa", callback_data="marcar_directo"),
         )
         reply_with_expiration(
             bot,
@@ -92,6 +110,35 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
     @auth_required(bot)
     @safe_handler(bot, logger)
     def comando_cierre(message):
+        partes = message.text.lower().split()
+        if len(partes) > 1:
+            iva_str = next(
+                (p.split("=")[1] for p in partes if p.startswith("iva=")), "no"
+            )
+            desc_str = next(
+                (p.split("=")[1] for p in partes if p.startswith("desc=")), "0"
+            )
+
+            incluir_iva = iva_str == "si"
+            try:
+                descuento = int(desc_str)
+            except ValueError:
+                descuento = 0
+
+            bot.reply_to(message, "🛠️ Ejecutando cierre de período (Fast-Track)...")
+            respuesta = gamma_app.agente_excel.ejecutar_cierre_periodo_manual()
+            bot.reply_to(message, respuesta, parse_mode="Markdown")
+
+            bot.reply_to(message, "⏳ Generando tu reporte...")
+            from com.core.dispatcher import enqueue
+
+            enqueue(
+                message.chat.id,
+                "generar_reporte",
+                {"tipo": "cierre", "descuento": descuento, "incluir_iva": incluir_iva},
+            )
+            return
+
         teclado = InlineKeyboardMarkup()
         teclado.row(
             InlineKeyboardButton("✅ Confirmar", callback_data="cierre_confirmar"),
@@ -100,7 +147,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
         reply_with_expiration(
             bot,
             message.chat.id,
-            "⚠️ *¿Ejecutar el cierre de período?*\n\n_Esta acción no se puede deshacer._",
+            "⚙️ *¿Ejecutar el cierre de período?*\n\n_Esta acción no se puede deshacer._",
             parse_mode="Markdown",
             reply_markup=teclado,
         )
@@ -233,29 +280,66 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
     @safe_handler(bot, logger)
     def comando_reporte(message):
         texto = message.text.lower()
-        if "horas" in texto:
-            iniciar_flujo_reporte_horas(message, bot, gamma_app)
-        elif "finanzas" in texto or "diario" in texto:
-            bot.send_message(
-                message.chat.id, "⏳ Generando tu reporte... te lo envío en instantes."
-            )
-            enqueue(message.chat.id, "generar_reporte", {"tipo": "financiero"})
-        else:
-            teclado = InlineKeyboardMarkup()
-            teclado.row(
-                InlineKeyboardButton("⏱️ Horas", callback_data="reporte_tipo_horas"),
-                InlineKeyboardButton(
-                    "💰 Libro Diario", callback_data="reporte_tipo_finanzas"
-                ),
-            )
-            reply_with_expiration(
-                bot,
-                message.chat.id,
-                "📊 *¿Qué reporte deseas generar hoy?*",
-                parse_mode="Markdown",
-                reply_markup=teclado,
-                reply_to_message_id=message.message_id,
-            )
+        partes = texto.split()
+        if len(partes) > 1:
+            if "horas" in partes:
+                hoja = next(
+                    (p.split("=")[1] for p in partes if p.startswith("hoja=")), None
+                )
+                if hoja:
+                    iva_str = next(
+                        (p.split("=")[1] for p in partes if p.startswith("iva=")), "no"
+                    )
+                    desc_str = next(
+                        (p.split("=")[1] for p in partes if p.startswith("desc=")), "0"
+                    )
+                    incluir_iva = iva_str == "si"
+                    try:
+                        descuento = int(desc_str)
+                    except ValueError:
+                        descuento = 0
+
+                    bot.send_message(
+                        message.chat.id, "⏳ Generando reporte de horas..."
+                    )
+
+                    enqueue(
+                        message.chat.id,
+                        "generar_reporte",
+                        {
+                            "tipo": "horas",
+                            "hoja": hoja,
+                            "descuento": descuento,
+                            "incluir_iva": incluir_iva,
+                        },
+                    )
+                    return
+                iniciar_flujo_reporte_horas(message, bot, gamma_app)
+                return
+            elif "finanzas" in partes or "diario" in partes:
+                bot.send_message(
+                    message.chat.id,
+                    "⏳ Generando tu reporte... te lo envío en instantes.",
+                )
+
+                enqueue(message.chat.id, "generar_reporte", {"tipo": "financiero"})
+                return
+
+        teclado = InlineKeyboardMarkup()
+        teclado.row(
+            InlineKeyboardButton("⏱️ Horas", callback_data="reporte_tipo_horas"),
+            InlineKeyboardButton(
+                "💰 Libro Diario", callback_data="reporte_tipo_finanzas"
+            ),
+        )
+        reply_with_expiration(
+            bot,
+            message.chat.id,
+            "📑 *¿Qué reporte deseas generar hoy?*",
+            parse_mode="Markdown",
+            reply_markup=teclado,
+            reply_to_message_id=message.message_id,
+        )
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("reporte_"))
     @auth_required(bot)

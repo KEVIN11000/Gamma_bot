@@ -271,11 +271,75 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     @safe_handler(bot, logger)
     def handle_evaluar_abono(message):
         parts = shlex.split(message.text)
-        if len(parts) < 3:
-            bot.reply_to(message, "Uso: /evaluar_abono <Monto_Extra> <ID_Deuda>")
+        if len(parts) >= 3:
+            monto = int(parts[1])
+            debt_id = parts[2]
+
+            res = simular_impacto_abono(monto, debt_id)
+            if "error" in res:
+                bot.reply_to(message, f"Error: {res['error']}")
+                return
+
+            response = (
+                f"💡 *Simulación de Abono Extra*\n"
+                f"Monto Extra: Gs. {monto:,}\n".replace(",", ".")
+                + f"Saldo Anterior: Gs. {res['saldo_anterior']:,}\n".replace(",", ".")
+                + f"Saldo Nuevo: Gs. {res['saldo_nuevo']:,}\n".replace(",", ".")
+                + f"Meses Ahorrados: {res['meses_ahorrados']}\n"
+                f"Meses Restantes (Nueva Proyección): {res['meses_restantes']}"
+            )
+            bot.reply_to(message, response, parse_mode="Markdown")
             return
-        monto = int(parts[1])
-        debt_id = parts[2]
+
+        debts = get_active_debts()
+        if not debts:
+            bot.reply_to(message, "No hay deudas activas para evaluar.")
+            return
+
+        markup = InlineKeyboardMarkup()
+        for d in debts:
+            debt_id = d.get("ID_Obligacion")
+            nombre = d.get("Nombre", "N/A")
+            markup.add(
+                InlineKeyboardButton(
+                    nombre, callback_data=f"eval_abono_deuda:{debt_id}"
+                )
+            )
+
+        bot.reply_to(message, "Selecciona la deuda a simular:", reply_markup=markup)
+
+    @bot.callback_query_handler(
+        func=lambda call: call.data.startswith("eval_abono_deuda:")
+    )
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_evaluar_abono_deuda(call):
+        debt_id = call.data.split(":")[1]
+        set_state(call.from_user.id, "EVALUAR_ABONO_MONTO", {"debt_id": debt_id})
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="💰 ¿Qué monto extra deseas simular (Gs.)?",
+        )
+
+    @bot.message_handler(
+        func=lambda msg: bool(get_state(msg.from_user.id))
+        and (get_state(msg.from_user.id) or {}).get("estado") == "EVALUAR_ABONO_MONTO"
+    )
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_evaluar_abono_monto(message):
+        try:
+            monto = parse_monto(message.text)
+        except ValueError:
+            bot.reply_to(message, "Por favor ingresa un monto numérico válido.")
+            return
+
+        state = get_state(message.from_user.id)
+        if not state:
+            return
+        debt_id = state["datos"]["debt_id"]
+        clear_state(message.from_user.id)
 
         res = simular_impacto_abono(monto, debt_id)
         if "error" in res:
@@ -283,7 +347,7 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             return
 
         response = (
-            f"📊 *Simulación de Abono Extra*\n"
+            f"💡 *Simulación de Abono Extra*\n"
             f"Monto Extra: Gs. {monto:,}\n".replace(",", ".")
             + f"Saldo Anterior: Gs. {res['saldo_anterior']:,}\n".replace(",", ".")
             + f"Saldo Nuevo: Gs. {res['saldo_nuevo']:,}\n".replace(",", ".")
@@ -472,26 +536,211 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     @safe_handler(bot, logger)
     def handle_cierre_mensual(message):
         parts = shlex.split(message.text)
-        if len(parts) < 3:
-            bot.reply_to(message, "Uso: /cierre_mensual <Mes> <Año>")
-            return
-        month = int(parts[1])
-        year = int(parts[2])
+        if len(parts) >= 3:
+            month = int(parts[1])
+            year = int(parts[2])
 
-        drive_id = execute_monthly_closing(month, year)
-        bot.reply_to(message, f"Cierre mensual ejecutado. Backup ID: {drive_id}")
+            drive_id = execute_monthly_closing(month, year)
+            bot.reply_to(message, f"✅ Cierre mensual ejecutado. Backup ID: {drive_id}")
+            return
+
+        markup = InlineKeyboardMarkup()
+        markup.row(
+            InlineKeyboardButton(
+                "📅 Cerrar Mes Actual", callback_data="cierre_mensual_actual"
+            )
+        )
+        markup.row(
+            InlineKeyboardButton(
+                "✏️ Elegir mes manualmente", callback_data="cierre_mensual_manual"
+            )
+        )
+
+        bot.reply_to(message, "⚙️ Opciones de Cierre Mensual:", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "cierre_mensual_actual")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_cierre_mensual_actual(call):
+        bot.answer_callback_query(call.id)
+        from datetime import datetime
+
+        now = datetime.now()
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"⏳ Ejecutando cierre mensual para {now.month}/{now.year}, por favor espera...",
+        )
+        try:
+            drive_id = execute_monthly_closing(now.month, now.year)
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"✅ Cierre mensual ejecutado para {now.month}/{now.year}.\nBackup ID: `{drive_id}`",
+                parse_mode="Markdown",
+            )
+        except Exception as e:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"❌ Error al ejecutar el cierre: {e}",
+            )
+
+    @bot.callback_query_handler(func=lambda call: call.data == "cierre_mensual_manual")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_cierre_mensual_manual(call):
+        bot.answer_callback_query(call.id)
+        markup = InlineKeyboardMarkup(row_width=3)
+        botones = [
+            InlineKeyboardButton(str(i), callback_data=f"cierre_mes:{i}")
+            for i in range(1, 13)
+        ]
+        markup.add(*botones)
+
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="📅 Selecciona el MES para el cierre mensual:",
+            reply_markup=markup,
+        )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("cierre_mes:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_cierre_mes(call):
+        mes = int(call.data.split(":")[1])
+        set_state(call.from_user.id, "CIERRE_ANIO", {"mes": mes})
+
+        from datetime import datetime
+
+        current_year = datetime.now().year
+
+        markup = InlineKeyboardMarkup()
+        markup.row(
+            InlineKeyboardButton(
+                str(current_year - 1), callback_data=f"cierre_anio:{current_year - 1}"
+            ),
+            InlineKeyboardButton(
+                str(current_year), callback_data=f"cierre_anio:{current_year}"
+            ),
+            InlineKeyboardButton(
+                str(current_year + 1), callback_data=f"cierre_anio:{current_year + 1}"
+            ),
+        )
+
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"📅 Mes seleccionado: {mes}\n\nSelecciona el AÑO:",
+            reply_markup=markup,
+        )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("cierre_anio:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_cierre_anio(call):
+        state = get_state(call.from_user.id)
+        if not state or state.get("estado") != "CIERRE_ANIO":
+            bot.answer_callback_query(call.id, "Estado expirado.")
+            return
+
+        mes = state["datos"]["mes"]
+        anio = int(call.data.split(":")[1])
+        clear_state(
+            call.fromuser.id if hasattr(call, "fromuser") else call.from_user.id
+        )
+
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="⏳ Ejecutando cierre mensual, por favor espera...",
+        )
+
+        try:
+            drive_id = execute_monthly_closing(mes, anio)
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"✅ Cierre mensual ejecutado para {mes}/{anio}.\nBackup ID: `{drive_id}`",
+                parse_mode="Markdown",
+            )
+        except Exception as e:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"❌ Error al ejecutar el cierre: {e}",
+            )
 
     @bot.message_handler(commands=["simular"])
     @auth_required(bot)
     @safe_handler(bot, logger)
     def handle_simular(message):
         parts = shlex.split(message.text)
-        if len(parts) < 3:
-            bot.reply_to(message, "Uso: /simular <Monto_Proyecto> <Meses> [Concepto]")
+        if len(parts) >= 3:
+            monto = int(parts[1])
+            meses = int(parts[2])
+            concept = " ".join(parts[3:]) if len(parts) > 3 else "N/A"
+
+            msg_carga = bot.reply_to(
+                message,
+                "⏳ *Consultando presupuesto y calculando viabilidad...*",
+                parse_mode="Markdown",
+            )
+
+            response_text = simulate_project(monto, meses, concept)
+            bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=msg_carga.message_id,
+                text=response_text,
+                parse_mode="Markdown",
+            )
             return
-        monto = int(parts[1])
-        meses = int(parts[2])
-        concept = " ".join(parts[3:]) if len(parts) > 3 else "N/A"
+
+        set_state(message.from_user.id, "SIMULAR_MONTO", {})
+        bot.reply_to(
+            message, "💰 ¿Cuál es el monto total del proyecto a simular (Gs.)?"
+        )
+
+    @bot.message_handler(
+        func=lambda msg: bool(get_state(msg.from_user.id))
+        and (get_state(msg.from_user.id) or {}).get("estado") == "SIMULAR_MONTO"
+    )
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_simular_monto(message):
+        try:
+            monto = parse_monto(message.text)
+        except ValueError:
+            bot.reply_to(message, "Por favor ingresa un monto numérico válido.")
+            return
+
+        set_state(message.from_user.id, "SIMULAR_MESES", {"monto": monto})
+        bot.reply_to(
+            message, "📅 ¿En cuántos meses planeas pagar o recuperar este proyecto?"
+        )
+
+    @bot.message_handler(
+        func=lambda msg: bool(get_state(msg.from_user.id))
+        and (get_state(msg.from_user.id) or {}).get("estado") == "SIMULAR_MESES"
+    )
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_simular_meses(message):
+        try:
+            meses = int(message.text.strip())
+        except ValueError:
+            bot.reply_to(
+                message,
+                "Por favor ingresa una cantidad de meses válida (número entero).",
+            )
+            return
+
+        state = get_state(message.from_user.id)
+        if not state:
+            return
+        monto = state["datos"]["monto"]
+        clear_state(message.from_user.id)
 
         msg_carga = bot.reply_to(
             message,
@@ -499,8 +748,7 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             parse_mode="Markdown",
         )
 
-        response_text = simulate_project(monto, meses, concept)
-
+        response_text = simulate_project(monto, meses, "N/A")
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=msg_carga.message_id,

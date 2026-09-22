@@ -74,12 +74,30 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         if not modo_dev:
             bot.reply_to(
                 message,
-                "🔒 El comando de depuración está desactivado en este entorno de producción.",
+                "🚫 El comando de depuración está desactivado en este entorno de producción.",
             )
             return
 
         partes = message.text.split(" ", 1)
-        tipo_log = partes[1].strip().lower() if len(partes) > 1 else "app"
+
+        if len(partes) == 1:
+            markup = InlineKeyboardMarkup()
+            markup.row(
+                InlineKeyboardButton("App (gen_log)", callback_data="debug_log:app"),
+                InlineKeyboardButton("Error (PA)", callback_data="debug_log:error"),
+            )
+            markup.row(
+                InlineKeyboardButton("Server (PA)", callback_data="debug_log:server"),
+                InlineKeyboardButton("Access (PA)", callback_data="debug_log:access"),
+            )
+            bot.reply_to(
+                message,
+                "🛠️ Selecciona el archivo de log a inspeccionar:",
+                reply_markup=markup,
+            )
+            return
+
+        tipo_log = partes[1].strip().lower()
 
         archivos = {
             "app": "gen_log.txt",
@@ -109,22 +127,54 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 ultimas = "[El archivo existe pero está vacío]"
             bot.reply_to(
                 message,
-                f"🛠️ *ÚLTIMOS LOGS ({tipo_log.upper()}):*\n```text\n{ultimas[-3000:]}\n```",
+                f"🔎 *ÚLTIMOS LOGS ({tipo_log.upper()}):*\n```text\n{ultimas[-3000:]}\n```",
                 parse_mode="Markdown",
             )
         else:
             bot.reply_to(
                 message,
-                f"📭 El archivo `{ruta_archivo}` no existe.\n_(Normal si estás corriendo el bot en Windows localmente)_",
+                f"❌ El archivo `{ruta_archivo}` no existe.\n_(Normal si estás corriendo el bot en Windows localmente)_",
                 parse_mode="Markdown",
             )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("debug_log:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_debug_log(call):
+        tipo_log = call.data.split(":")[1]
+
+        # Simulamos que el usuario mandó el comando directo para reusar lógica
+        fake_msg = call.message
+        fake_msg.text = f"/debug {tipo_log}"
+        fake_msg.from_user = call.from_user
+
+        bot.answer_callback_query(call.id)
+        # Editamos el mensaje actual para quitar los botones
+        bot.edit_message_text(
+            f"Solicitando logs de: {tipo_log}...",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+        )
+
+        # Procesar comando
+        bot.process_new_messages([fake_msg])
 
     def get_menu_raiz():
         kb = InlineKeyboardMarkup()
         kb.row(
-            InlineKeyboardButton("💰 Finanzas", callback_data="menu:finanzas"),
-            InlineKeyboardButton("🕐 Asistencia", callback_data="menu:asistencia"),
-            InlineKeyboardButton("⚙️ Administración", callback_data="menu:admin"),
+            InlineKeyboardButton(
+                "💰 Finanzas & Presup.", callback_data="menu:finanzas"
+            ),
+            InlineKeyboardButton("💳 Deudas & Proyecc.", callback_data="menu:deudas"),
+        )
+        kb.row(
+            InlineKeyboardButton(
+                "🕐 Asistencia & RRHH", callback_data="menu:asistencia"
+            ),
+            InlineKeyboardButton("📅 Avisos & Agenda", callback_data="menu:avisos"),
+        )
+        kb.row(
+            InlineKeyboardButton("⚙️ Sistema & Soporte", callback_data="menu:sistema")
         )
         return kb
 
@@ -132,51 +182,68 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         kb = InlineKeyboardMarkup()
         kb.row(InlineKeyboardButton("Ver Balance", callback_data="accion:balance"))
         kb.row(
-            InlineKeyboardButton("Registrar Movimiento", callback_data="menu:reg_mov")
+            InlineKeyboardButton("Registrar Gasto", callback_data="accion:gasto"),
+            InlineKeyboardButton("Registrar Ingreso", callback_data="accion:ingreso"),
         )
-        kb.row(InlineKeyboardButton("Cola de Deudas", callback_data="menu:cola_deudas"))
-        kb.row(InlineKeyboardButton("Simular Proyecto", callback_data="accion:simular"))
-        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:raiz"))
+        kb.row(InlineKeyboardButton("Presupuesto Fijo", callback_data="accion:fijos"))
+        kb.row(InlineKeyboardButton("🔙 Volver", callback_data="menu:raiz"))
+        return kb
+
+    def get_menu_deudas():
+        kb = InlineKeyboardMarkup()
+        kb.row(InlineKeyboardButton("Ver Deudas", callback_data="accion:deudas"))
+        kb.row(
+            InlineKeyboardButton("Nueva Deuda", callback_data="accion:nueva_deuda"),
+            InlineKeyboardButton("Abonar", callback_data="accion:abonar"),
+        )
+        kb.row(
+            InlineKeyboardButton("Estrategia", callback_data="accion:estrategia"),
+            InlineKeyboardButton("Simular Abono", callback_data="accion:evaluar_abono"),
+        )
+        kb.row(
+            InlineKeyboardButton("Próximo Foco", callback_data="accion:foco"),
+            InlineKeyboardButton("Vencimientos", callback_data="accion:vencimientos"),
+        )
+        kb.row(InlineKeyboardButton("🔙 Volver", callback_data="menu:raiz"))
         return kb
 
     def get_menu_asistencia():
         kb = InlineKeyboardMarkup()
         kb.row(
-            InlineKeyboardButton("Marcar Entrada/Salida", callback_data="accion:marcar")
+            InlineKeyboardButton("Marcar Trabajo", callback_data="accion:marcar"),
+            InlineKeyboardButton(
+                "Marcar Materia", callback_data="accion:marcar_materia"
+            ),
         )
+        kb.row(InlineKeyboardButton("Cierre Periodo", callback_data="accion:cierre"))
         kb.row(
             InlineKeyboardButton("Generar Reporte PDF", callback_data="accion:reporte")
         )
-        kb.row(InlineKeyboardButton("Avisos", callback_data="accion:avisos"))
-        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:raiz"))
+        kb.row(InlineKeyboardButton("🔙 Volver", callback_data="menu:raiz"))
         return kb
 
-    def get_menu_admin():
+    def get_menu_avisos():
+        kb = InlineKeyboardMarkup()
+        kb.row(InlineKeyboardButton("Nuevo Aviso", callback_data="accion:aviso"))
+        kb.row(InlineKeyboardButton("Gestionar Avisos", callback_data="accion:avisos"))
+        kb.row(InlineKeyboardButton("🔙 Volver", callback_data="menu:raiz"))
+        return kb
+
+    def get_menu_sistema():
         kb = InlineKeyboardMarkup()
         kb.row(
             InlineKeyboardButton(
-                "Ejecutar Cierre Mensual", callback_data="accion:cierre_mensual"
+                "Cierre Mensual Estadístico", callback_data="accion:cierre_mensual"
             )
         )
-        kb.row(InlineKeyboardButton("Ver Logs", callback_data="accion:debug"))
-        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:raiz"))
-        return kb
-
-    def get_menu_reg_mov():
-        kb = InlineKeyboardMarkup()
+        kb.row(InlineKeyboardButton("Simular Proyecto", callback_data="accion:simular"))
+        kb.row(InlineKeyboardButton("Ver Logs Internos", callback_data="accion:debug"))
         kb.row(
-            InlineKeyboardButton("💸 Gasto", callback_data="accion:gasto"),
-            InlineKeyboardButton("💰 Ingreso", callback_data="accion:ingreso"),
+            InlineKeyboardButton(
+                "Abrir Ticket de Soporte", callback_data="accion:soporte"
+            )
         )
-        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:finanzas"))
-        return kb
-
-    def get_menu_cola_deudas():
-        kb = InlineKeyboardMarkup()
-        kb.row(InlineKeyboardButton("Ver Deudas", callback_data="accion:deudas"))
-        kb.row(InlineKeyboardButton("Nueva Deuda", callback_data="accion:nueva_deuda"))
-        kb.row(InlineKeyboardButton("Abonar", callback_data="accion:abonar"))
-        kb.row(InlineKeyboardButton("⬅ Volver", callback_data="menu:finanzas"))
+        kb.row(InlineKeyboardButton("🔙 Volver", callback_data="menu:raiz"))
         return kb
 
     @bot.message_handler(commands=["start"])
@@ -240,10 +307,10 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         menus = {
             "raiz": get_menu_raiz(),
             "finanzas": get_menu_finanzas(),
+            "deudas": get_menu_deudas(),
             "asistencia": get_menu_asistencia(),
-            "admin": get_menu_admin(),
-            "reg_mov": get_menu_reg_mov(),
-            "cola_deudas": get_menu_cola_deudas(),
+            "avisos": get_menu_avisos(),
+            "sistema": get_menu_sistema(),
         }
 
         if menu_type in menus:

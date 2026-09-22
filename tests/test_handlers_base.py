@@ -70,7 +70,7 @@ def test_comando_debug_prod(mock_safe, mock_auth, bot_mock, mock_message):
         handler(mock_message)
         bot_mock.reply_to.assert_called_with(
             mock_message,
-            "🔒 El comando de depuración está desactivado en este entorno de producción.",
+            "🚫 El comando de depuración está desactivado en este entorno de producción.",
         )
 
 
