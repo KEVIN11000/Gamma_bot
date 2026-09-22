@@ -52,13 +52,25 @@ def format_timestamp_py(
     return dt.strftime(formato)
 
 
+import re
+
+
 def safe_int(value, default=0):
     if value is None or value == "":
         return default
+    if isinstance(value, (int, float)):
+        return int(value)
     if isinstance(value, str):
-        value = value.replace(",", "").replace('"', "").replace("'", "").strip()
+        # Si tiene un punto y lo que sigue NO son 3 dígitos, se asume decimal y se trunca.
+        if "." in value and len(value.split(".")[-1]) != 3:
+            value = value.split(".")[0]
+        # Limpiar todo lo que no sea dígito o guión negativo
+        value_clean = re.sub(r"[^\d-]", "", value).strip()
+        if not value_clean:
+            return default
+        value = value_clean
     try:
-        return int(float(value))
+        return int(value)
     except (ValueError, TypeError):
         return default
 

@@ -1,81 +1,50 @@
-# Tasklist: [FEAT] v1.15.0 - Comando /soporte en Telegram, Endpoint /admin/logs y Buzón Vigía
+# Tasklist: [FEAT] Gestión Guiada de Gastos Fijos (UI/UX) - TICKET-FEAT-09
 
-**Versión objetivo:** `v1.15.0` (Nueva funcionalidad / Feature release)  
-**Rama:** `feat/sistema-vigia`  
-**Metodología:** Agency Agents (Pipeline de 4 Fases)  
+**Ticket:** `TICKET-FEAT-09`
+**Versión objetivo:** (A definir, sugerido `v1.16.0` o `v1.15.2`)
+**Rama:** `feat/gestion-gastos-fijos-ux-guiada`
+**Metodología:** Agency Agents (Pipeline de 4 Fases)
 
 ---
 
 ## Fase 1: Planificación (agency-project-manager-senior)
-- [x] **1.1. Especificación y Requisitos Aprobados:**
-  - [x] Plan de soporte dual para `/soporte` aprobado.
-  - [x] Cero spam en Telegram ratificado.
-  - [x] Consulta de logs de servidor bajo demanda (patrón buzón).
-- [x] **1.2. Desglose de Tareas Atómicas:**
-  - [x] Generar este `tasklist.md` con criterios de aceptación verificables.
+- [x] **1.1. Diagnóstico del Ticket:** Leer ticket `ticket_gestion_gastos_fijos.md` y asimilar los requerimientos.
+- [x] **1.2. Desglose de Tareas Atómicas:** Redactar este documento (`tasklist.md`) con las tareas verificables.
+- [x] **1.3. Aprobación de Plan:** Confirmado con el usuario. Nota: La deuda técnica del linter ya fue resuelta en CI previo.
 
 ---
 
-## Fase 2: Arquitectura (agency-software-architect, agency-backend-architect, agency-ux-architect)
-- [x] **2.1. Contrato de Comando `/soporte` (SOLID & OCP):**
-  - [x] Modo Directo: `/soporte [tipo] <descripción>` con inferencia automática de tipo (bug / sugerencia / soporte).
-  - [x] Modo Interactivo: `/soporte` sin argumentos despliega InlineKeyboardMarkup (🐛 Bug, 💡 Sugerencia, ❓ Consulta, ❌ Cancelar).
-  - [x] Máquina de estados: `SOPORTE_ESPERANDO_TEXTO` en SQLite `user_states` con TTL y soporte para `/cancelar`.
-- [x] **2.2. Contrato de Endpoint `/admin/logs`:**
-  - [x] `GET /admin/logs?lines=N` autenticado con header `X-Cron-Secret` o parámetro.
-  - [x] Devuelve JSON seguro con array de líneas y timestamp.
-- [x] **2.3. Contrato de Vigía Local (`server-logs`):**
-  - [x] Comando `python scripts/vigia.py server-logs` que consume `/admin/logs` y muestra las últimas líneas o las guarda en disco local.
+## Fase 2: Arquitectura y Diseño (agency-software-architect, agency-ux-architect)
+- [x] **2.1. Diseño de Firmas en Lógica:** Diseñar y estructurar los métodos en `src/logic/logic.py` o módulo equivalente (`safe_int`, `obtener_gastos_fijos`, `actualizar_monto_gasto_fijo`, `agregar_gasto_fijo`).
+- [x] **2.2. Diseño de Estados Conversacionales:** Determinar cómo se integrará el asistente interactivo (wizard) con `user_states` o `register_next_step_handler` de telebot.
+- [x] **2.3. Definición de Menús y Callbacks:** Trazar el mapeo de callbacks (`fijos_ver`, `fijos_editar`, `fijos_nuevo`) y los botones exactos que se presentarán.
 
 ---
 
-## Fase 3: Ciclo Dev ↔ QA (agency-backend-architect, agency-evidence-qa)
-- [x] **3.1. Tarea B1 - Handler `/soporte` en Telegram (`src/com/handlers/soporte.py`):**
-  - [x] Implementar soporte dual (inline directo vs botones interactivos).
-  - [x] Integración con máquina de estados persistente (`states.py`).
-  - [x] Emisión fail-safe del ticket a GitHub / almacén sin spam en Telegram.
-  - [x] Registro en `src/services/telegram_service.py` y comando en `src/com/handlers/base.py`.
-- [x] **3.2. Tarea B2 - Endpoint `/admin/logs` en Flask (`src/flask_app.py`):**
-  - [x] Implementar endpoint con validación estricta de `CRON_SECRET`.
-  - [x] Lectura segura de últimas líneas de `gen_log.txt` e incidentes locales.
-- [x] **3.3. Tarea B3 - Integración en Vigía Engine y CLI (`src/vigia_engine.py`, `scripts/vigia.py`):**
-  - [x] Añadir método `fetch_server_logs()` en `VigiaEngine`.
-  - [x] Añadir subcomando `server-logs` en `scripts/vigia.py`.
-  - [x] Enriquecer `sync` para etiquetar tickets provenientes de `/soporte`.
-- [x] **3.4. Tarea B4 - Suite de Pruebas Automatizadas:**
-  - [x] `tests/test_soporte.py`: Modo directo, modo interactivo, cancelación `/cancelar`.
-  - [x] `tests/test_admin_logs.py`: Auth 403, 200 con logs, parámetro lines.
-  - [x] `tests/test_handlers_base.py`: Actualización del registro de comandos.
-  - [x] Verificación de 100% tests pasando (141 tests) y linters limpios (`black`, `flake8`, `mypy`).
-- [x] **3.5. Tarea B5 - Actualización de Versión:**
-  - [x] Actualizar `VERSION` a `1.15.0`.
+## Fase 3: Implementación Dev ↔ QA (agency-frontend-developer, agency-backend-architect, agency-evidence-qa)
+- [x] **3.1. Lógica y Persistencia - Funciones Base:**
+  - [x] Implementar `safe_int` con expresión regular robusta para limpiar caracteres y devolver enteros.
+  - [x] Implementar `obtener_gastos_fijos` filtrando por "Gasto Fijo" y "Fijo" en la base (Google Sheets).
+- [x] **3.2. Lógica y Persistencia - Modificación:**
+  - [x] Implementar `actualizar_monto_gasto_fijo` y `agregar_gasto_fijo` con validaciones sanitizadas.
+- [x] **3.3. Presentación - Menú Principal:**
+  - [x] Crear handler para comandos sin argumentos (`/fijos`, `/gastos_fijos`) que despliegue la tarjeta resumen y el `InlineKeyboardMarkup` con 3 opciones.
+- [x] **3.4. Presentación - Modo Directo (Dual Support):**
+  - [x] Crear handlers para invocación con parámetros atómicos: `/fijo_set` y `/fijo_nuevo` para retrocompatibilidad/scripts.
+- [x] **3.5. Callbacks - 🔘 1. Ver Desglose:**
+  - [x] Manejador para `fijos_ver` que devuelva un listado detallado agrupado por subcategorías.
+- [x] **3.6. Callbacks - 🔘 2. Modificar Monto:**
+  - [x] Flujo interactivo paso a paso para `fijos_editar` que solicite selección del concepto y luego pida el monto nuevo, integrando `/cancelar`.
+- [x] **3.7. Callbacks - 🔘 3. Registrar Nuevo:**
+  - [x] Flujo tipo Wizard interactivo para `fijos_nuevo` pidiendo categoría, concepto y monto.
+- [x] **3.8. QA y Pruebas Unitarias:**
+  - [x] Desarrollar/actualizar suite en `tests/` para la nueva lógica y los handlers.
+  - [x] Ejecutar `pytest tests/ -v`.
+  - [x] Resolver conflictos detectados por el linter `flake8` (en particular errores E701 y len > 120), `black` y `mypy`.
 
 ---
 
 ## Fase 4: Certificación de Integración (agency-reality-checker)
-- [x] **4.1. Auditoría de Seguridad y No Regresión:**
-  - [x] Verificación de 0 regresiones en suites existentes (141 tests en verde).
-  - [x] Linters y tipado 100% limpios (64 archivos auditados sin advertencias).
-- [x] **4.2. Pipeline Completion Report y Gate Humano:**
-  - [x] Despliegue v1.15.0 completado y auditado.
-
----
-
-## Hotfix v1.15.1: Resolución Incidente Vigía GHI-1 / CI-35630665973
-- [x] **HF-1. Diagnóstico de Causa Raíz:**
-  - [x] Identificado fallo `F824` en `src/com/core/telemetry.py` (`global _COOLDOWN_REGISTRY` innecesario).
-  - [x] Identificado bloqueo en `mypy` remoto por exclusión accidental de `mypy.ini` en `.gitignore`.
-- [x] **HF-2. Corrección de Código y Configuración:**
-  - [x] Remover `global _COOLDOWN_REGISTRY` en `src/com/core/telemetry.py`.
-  - [x] Limpiar imports no utilizados en `tests/test_soporte.py`.
-  - [x] Des-ignorar `mypy.ini` de `.gitignore` para su seguimiento en git.
-  - [x] Bumping de versión a `1.15.1` en `VERSION`.
-- [x] **HF-3. Certificación Local Dev ↔ QA:**
-  - [x] `black --check .`: 100% aprobado.
-  - [x] `flake8 .`: 0 advertencias / 0 errores.
-  - [x] `mypy .`: 64 archivos verificados sin errores.
-  - [x] `pytest tests/`: 141 tests pasados exitosamente.
-- [ ] **HF-4. Gate Humano y Despliegue:**
-  - [ ] Solicitar aprobación humana para commit y push a `Main-stable`.
-  - [ ] Resolver ticket en Vigía (`python scripts/vigia.py resolve GHI-1`).
-
+- [x] **4.1. Verificación Cruzada:** Comprobar que el modo guiado y el modo directo operan sin colisionar ni quebrar retrocompatibilidad.
+- [x] **4.2. Auditoría Linter & Seguridad:** Asegurar que 100% del código cumpla con las políticas de formato (PEP8/flake8, black).
+- [x] **4.3. Pipeline Completion Report:** Documentar cambios, estado de testeo y requerir permiso humano para cierre de fase o merge a `Main-stable`.

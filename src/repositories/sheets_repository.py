@@ -231,3 +231,60 @@ class SheetsRepository:
             elif "egreso" in tipo_flujo or "gasto" in tipo_flujo:
                 total_costos += monto
         return total_ingreso, total_costos
+
+    def obtener_gastos_fijos(self) -> dict:
+        from logic.logic import safe_int
+
+        ws = self._get_sheet("Presupuesto_Base")
+        records = self._get_records(ws, ENCABEZADOS_PRESUPUESTO_BASE)
+
+        gastos: dict[str, list[dict[str, Any]]] = {}
+        total = 0
+
+        for idx, r in enumerate(records, start=2):
+            tipo_flujo = str(r.get("Tipo_Flujo", "")).strip()
+            tipo_ingreso_gasto = str(r.get("Tipo_Ingreso_Gasto", "")).strip()
+            # The ticket states filtering by Tipo_Flujo == 'Gasto Fijo' or Tipo_Ingreso_Gasto == 'Fijo'
+            if "gasto" in tipo_flujo.lower() or "fijo" in tipo_ingreso_gasto.lower():
+                categoria = str(r.get("Categoria", "Sin Categoria")).strip()
+                concepto = str(r.get("Concepto", "")).strip()
+                monto = safe_int(r.get("Monto_Mensual_Gs", 0))
+
+                if not concepto:
+                    continue
+
+                if categoria not in gastos:
+                    gastos[categoria] = []
+
+                gastos[categoria].append(
+                    {"fila": idx, "concepto": concepto, "monto": monto}
+                )
+                total += monto
+
+        return {"gastos": gastos, "total": total}
+
+    def actualizar_monto_gasto_fijo(self, concepto_id: str, nuevo_monto: int) -> bool:
+        ws = self._get_sheet("Presupuesto_Base")
+        records = self._get_records(ws, ENCABEZADOS_PRESUPUESTO_BASE)
+
+        for idx, r in enumerate(records, start=2):
+            concepto = str(r.get("Concepto", "")).strip()
+            if concepto.lower() == concepto_id.lower():
+                # Encontrar la columna de Monto_Mensual_Gs (columna 4 base 1)
+                keys = list(r.keys())
+                try:
+                    col_idx = keys.index("Monto_Mensual_Gs") + 1
+                except ValueError:
+                    col_idx = 4
+                ws.update_cell(idx, col_idx, nuevo_monto)
+                return True
+        return False
+
+    def agregar_gasto_fijo(
+        self, categoria: str, concepto: str, monto: int, obs: str = ""
+    ) -> bool:
+        ws = self._get_sheet("Presupuesto_Base")
+        # "Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs", "Tipo_Ingreso_Gasto", "Observaciones"
+        row = ["Gasto Fijo", categoria, concepto, monto, "Fijo", obs]
+        ws.append_row(row)
+        return True

@@ -377,3 +377,295 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         except Exception as e:
             logger.error(f"❌ Error en callback OCR: {e}")
             bot.send_message(call.message.chat.id, f"❌ Error interno OCR: {str(e)}")
+
+    # --- GASTOS FIJOS (SOPORTE DUAL) ---
+    def _enviar_menu_fijos(bot, chat_id):
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        datos = repo.obtener_gastos_fijos()
+        gastos = datos["gastos"]
+        total = datos["total"]
+
+        texto = "📊 *GASTOS FIJOS MENSUALES (Presupuesto Base)*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        idx = 1
+        for cat, items in gastos.items():
+            for item in items:
+                monto_str = (
+                    f"₲ {item['monto']:,}".replace(",", ".")
+                    if item["monto"]
+                    else "[Sin asignar]"
+                )
+                texto += f"{idx}. {item['concepto']}: {monto_str}\n"
+                idx += 1
+
+        texto += (
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n💰 *Total Comprometido:* ₲ {total:,}".replace(
+                ",", "."
+            )
+            + " / mes"
+        )
+
+        markup = InlineKeyboardMarkup()
+        markup.row(
+            InlineKeyboardButton("📊 1. Ver Desglose", callback_data="fijos_ver"),
+            InlineKeyboardButton("✏️ 2. Modificar Monto", callback_data="fijos_editar"),
+        )
+        markup.row(
+            InlineKeyboardButton("➕ 3. Registrar Nuevo", callback_data="fijos_nuevo"),
+            InlineKeyboardButton("❌ Cerrar", callback_data="fijos_cerrar"),
+        )
+
+        bot.send_message(
+            chat_id, texto, reply_markup=markup, parse_mode="Markdown"
+        )
+
+    @bot.message_handler(commands=["fijos", "gastos_fijos"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_fijos_menu(message):
+        _enviar_menu_fijos(bot, message.chat.id)
+
+    @bot.message_handler(commands=["fijo_set"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_fijo_set(message):
+        partes = message.text.split(maxsplit=2)
+        if len(partes) < 3:
+            bot.reply_to(message, "Uso: /fijo_set <Concepto> <Monto>")
+            return
+        concepto = partes[1]
+        try:
+            monto = int(partes[2].replace(".", "").replace(",", ""))
+        except ValueError:
+            bot.reply_to(message, "El monto debe ser un número entero.")
+            return
+
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        if repo.actualizar_monto_gasto_fijo(concepto, monto):
+            bot.reply_to(
+                message,
+                f"✅ Monto de '{concepto}' actualizado a ₲ {monto:,}".replace(",", "."),
+            )
+        else:
+            bot.reply_to(message, f"❌ No se encontró el concepto '{concepto}'.")
+
+    @bot.message_handler(commands=["fijo_nuevo"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_fijo_nuevo(message):
+        partes = message.text.split(maxsplit=1)
+        if len(partes) < 2:
+            bot.reply_to(
+                message, "Uso: /fijo_nuevo <Categoria> | <Concepto> | <Monto> | [Obs]"
+            )
+            return
+
+        segmentos = [s.strip() for s in partes[1].split("|")]
+        if len(segmentos) < 3:
+            bot.reply_to(message, "❌ Formato incorrecto. Separa los datos con '|'.")
+            return
+
+        categoria, concepto, monto_str = segmentos[0], segmentos[1], segmentos[2]
+        obs = segmentos[3] if len(segmentos) > 3 else ""
+
+        from logic.logic import safe_int
+
+        monto = safe_int(monto_str)
+
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        repo.agregar_gasto_fijo(categoria, concepto, monto, obs)
+        bot.reply_to(
+            message,
+            f"✅ Nuevo gasto fijo registrado: {concepto} (₲ {monto:,})".replace(
+                ",", "."
+            ),
+        )
+
+    @bot.callback_query_handler(func=lambda c: c.data.startswith("fijos_"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def handle_fijos_callback(call):
+        accion = call.data.replace("fijos_", "")
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+
+        if accion == "cerrar":
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            return
+
+        if accion == "ver":
+            datos = repo.obtener_gastos_fijos()
+            texto = "📊 *Desglose por Categoría*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            for cat, items in datos["gastos"].items():
+                texto += f"\n*Categoría: {cat}*\n"
+                subtotal = 0
+                for item in items:
+                    subtotal += item["monto"]
+                    texto += f" - {item['concepto']}: ₲ {item['monto']:,}\n".replace(
+                        ",", "."
+                    )
+                texto += f" _Subtotal: ₲ {subtotal:,}_\n".replace(",", ".")
+            markup = InlineKeyboardMarkup()
+            markup.row(InlineKeyboardButton("⬅️ Volver", callback_data="fijos_volver"))
+            bot.edit_message_text(
+                texto,
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup,
+                parse_mode="Markdown",
+            )
+
+        elif accion == "volver":
+            _enviar_menu_fijos(bot, call.message.chat.id)
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+
+        elif accion == "editar":
+            datos = repo.obtener_gastos_fijos()
+            markup = InlineKeyboardMarkup()
+            for cat, items in datos["gastos"].items():
+                for item in items:
+                    markup.add(
+                        InlineKeyboardButton(
+                            f"✏️ {item['concepto']}",
+                            callback_data=f"fijos_sel_{item['concepto']}",
+                        )
+                    )
+            markup.add(
+                InlineKeyboardButton("❌ Cancelar", callback_data="fijos_cerrar")
+            )
+            bot.edit_message_text(
+                "Selecciona el concepto que deseas modificar:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup,
+            )
+
+        elif accion.startswith("sel_"):
+            concepto = accion.replace("sel_", "")
+            set_state(call.from_user.id, "fijos_edit_monto", {"concepto": concepto})
+            msg = bot.send_message(
+                call.message.chat.id,
+                f"Has seleccionado *{concepto}*.\nIngresa el nuevo monto en Guaraníes (o escribe /cancelar):",
+                parse_mode="Markdown",
+            )
+            bot.register_next_step_handler(msg, _step_guardar_monto_fijo, concepto, bot)
+
+        elif accion == "nuevo":
+            markup = InlineKeyboardMarkup(row_width=2)
+            cats = [
+                "Servicios",
+                "Educación",
+                "Salud",
+                "Movilidad",
+                "Hogar/Alquiler",
+                "Otro",
+            ]
+            botones = [
+                InlineKeyboardButton(c, callback_data=f"fijos_ncat_{c}") for c in cats
+            ]
+            markup.add(*botones)
+            markup.add(
+                InlineKeyboardButton("❌ Cancelar", callback_data="fijos_cerrar")
+            )
+            bot.edit_message_text(
+                "Selecciona la categoría para el nuevo gasto:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup,
+            )
+
+        elif accion.startswith("ncat_"):
+            cat = accion.replace("ncat_", "")
+            set_state(call.from_user.id, "fijos_nuevo_concepto", {"categoria": cat})
+            msg = bot.send_message(
+                call.message.chat.id,
+                f"Categoría: *{cat}*.\nPor favor escribe el nombre o concepto del gasto (ej. Seguro Médico) o /cancelar:",
+                parse_mode="Markdown",
+            )
+            bot.register_next_step_handler(msg, _step_guardar_nuevo_concepto, cat, bot)
+
+    return True
+
+
+def _step_guardar_monto_fijo(message, concepto, bot):
+    if message.text.strip().lower() == "/cancelar":
+        clear_state(message.from_user.id)
+        bot.reply_to(message, "❌ Operación cancelada.")
+        return
+
+    from logic.logic import safe_int
+
+    monto = safe_int(message.text)
+    if monto == 0 and message.text.strip() != "0":
+        msg = bot.reply_to(message, "❌ Monto inválido. Ingresa solo números.")
+        bot.register_next_step_handler(msg, _step_guardar_monto_fijo, concepto, bot)
+        return
+
+    from repositories.sheets_repository import SheetsRepository
+
+    repo = SheetsRepository()
+    if repo.actualizar_monto_gasto_fijo(concepto, monto):
+        bot.reply_to(
+            message, f"✅ Se actualizó '{concepto}' a ₲ {monto:,}".replace(",", ".")
+        )
+    else:
+        bot.reply_to(
+            message, "❌ Hubo un error al actualizar (concepto no encontrado)."
+        )
+    clear_state(message.from_user.id)
+
+
+def _step_guardar_nuevo_concepto(message, categoria, bot):
+    if message.text.strip().lower() == "/cancelar":
+        clear_state(message.from_user.id)
+        bot.reply_to(message, "❌ Operación cancelada.")
+        return
+
+    concepto = message.text.strip()
+    state = get_state(message.from_user.id) or {}
+    state["concepto"] = concepto
+    set_state(message.from_user.id, "fijos_nuevo_monto", state)
+
+    msg = bot.reply_to(
+        message,
+        f"Concepto: *{concepto}*.\nAhora ingresa el monto mensual en ₲:",
+        parse_mode="Markdown",
+    )
+    bot.register_next_step_handler(msg, _step_guardar_nuevo_monto, bot)
+
+
+def _step_guardar_nuevo_monto(message, bot):
+    if message.text.strip().lower() == "/cancelar":
+        clear_state(message.from_user.id)
+        bot.reply_to(message, "❌ Operación cancelada.")
+        return
+
+    from logic.logic import safe_int
+
+    monto = safe_int(message.text)
+    if monto == 0 and message.text.strip() != "0":
+        msg = bot.reply_to(message, "❌ Monto inválido. Ingresa solo números.")
+        bot.register_next_step_handler(msg, _step_guardar_nuevo_monto, bot)
+        return
+
+    state = get_state(message.from_user.id)
+    if not state:
+        return
+
+    from repositories.sheets_repository import SheetsRepository
+
+    repo = SheetsRepository()
+    repo.agregar_gasto_fijo(state["categoria"], state["concepto"], monto, "")
+    bot.reply_to(
+        message,
+        f"✅ Gasto '{state['concepto']}' de ₲ {monto:,} guardado exitosamente.".replace(
+            ",", "."
+        ),
+    )
+    clear_state(message.from_user.id)
