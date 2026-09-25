@@ -123,8 +123,16 @@ def deploy() -> Any:
     # 3. Ejecutar git pull
     wsgi_path = "/var/www/kevin11000_pythonanywhere_com_wsgi.py"
     try:
+        # Hacer fetch y reset hard para evitar problemas de divergencia
+        subprocess.run(
+            ["git", "fetch", "origin", "Main-stable"],
+            cwd=base_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         resultado = subprocess.run(
-            ["git", "pull", "origin", "Main-stable"],
+            ["git", "reset", "--hard", "origin/Main-stable"],
             cwd=base_path,
             capture_output=True,
             text=True,
