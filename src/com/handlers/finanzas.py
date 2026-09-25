@@ -218,7 +218,7 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             "file_id": "",
         }
 
-        enqueue(chat_id, "registrar_movimiento", payload)
+        enqueue(chat_id, "registrar_movimiento", payload, sync_fallback=True, bot=bot)
         clear_state(user_id)
 
         if tipo == "Gasto":

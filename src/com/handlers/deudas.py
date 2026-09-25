@@ -201,6 +201,8 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                     "cuotas": datos["cuotas"],
                     "fecha": datos["fecha"],
                 },
+                sync_fallback=True,
+                bot=bot
             )
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
@@ -522,6 +524,8 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 "date": date_today,
                 "tasa_iva": tasa_iva,
             },
+            sync_fallback=True,
+            bot=bot
         )
 
         bot.edit_message_text(
