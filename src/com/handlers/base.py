@@ -252,7 +252,15 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     def comando_start(message):
         _registrar_comandos_menu(bot)
 
-        texto = "🤖 *Menú Principal GAMMA*\nSelecciona una opción:"
+        version = "1.x"
+        base_path = Path(__file__).resolve().parents[3]
+        version_path = base_path / "VERSION"
+        if version_path.exists():
+            with open(version_path, "r") as f:
+                version = f.read().strip()
+
+        texto = f"?? *Men? Principal GAMMA* {version}
+Selecciona una opci?n:"
         bot.reply_to(
             message, texto, parse_mode="Markdown", reply_markup=get_menu_raiz()
         )
