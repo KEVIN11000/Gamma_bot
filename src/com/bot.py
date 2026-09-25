@@ -29,11 +29,13 @@ class GAMMA:
 
         # Parche tolerante a fallos para PythonAnywhere ProxyError 503
         original_answer = self.bot.answer_callback_query
+
         def _safe_answer_callback(*args, **kwargs):
             try:
                 return original_answer(*args, **kwargs)
             except Exception as e:
                 logger.warning(f"Ignorando error cosmetico al responder callback: {e}")
+
         self.bot.answer_callback_query = _safe_answer_callback
 
         self.agente_excel = AgenteAutonomoHoras(spreadsheet_id=self.sheet_id)

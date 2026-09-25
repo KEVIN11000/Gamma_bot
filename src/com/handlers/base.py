@@ -256,11 +256,10 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         base_path = Path(__file__).resolve().parents[3]
         version_path = base_path / "VERSION"
         if version_path.exists():
-            with open(version_path, "r") as f:
+            with open(version_path, "r", encoding="utf-8") as f:
                 version = f.read().strip()
 
-        texto = f"?? *Men? Principal GAMMA* {version}
-Selecciona una opci?n:"
+        texto = f"🌟 *Menú Principal GAMMA* {version}\nSelecciona una opción:"
         bot.reply_to(
             message, texto, parse_mode="Markdown", reply_markup=get_menu_raiz()
         )

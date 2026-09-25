@@ -53,7 +53,7 @@ class SheetsRepository:
                 first_row = ws.row_values(1)
             except Exception:
                 first_row = []
-            
+
             expected = headers_map[sheet_name]
             if not first_row:
                 ws.append_row(expected)
@@ -63,7 +63,10 @@ class SheetsRepository:
                         ws.update_cell(1, col_idx, header)
                 except Exception as e:
                     import logging
-                    logging.getLogger("sheets_repo").error(f"Error syncing headers for {sheet_name}: {e}")
+
+                    logging.getLogger("sheets_repo").error(
+                        f"Error syncing headers for {sheet_name}: {e}"
+                    )
 
     def _get_sheet(self, sheet_name: str):
         if not hasattr(self, "_wb"):

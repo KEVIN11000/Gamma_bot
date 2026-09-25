@@ -202,7 +202,7 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                     "fecha": datos["fecha"],
                 },
                 sync_fallback=True,
-                bot=bot
+                bot=bot,
             )
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
@@ -525,7 +525,7 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 "tasa_iva": tasa_iva,
             },
             sync_fallback=True,
-            bot=bot
+            bot=bot,
         )
 
         bot.edit_message_text(
