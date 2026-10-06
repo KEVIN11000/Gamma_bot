@@ -1,11 +1,11 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import os
-import re
-import time
+import os  # noqa: E402
+import re  # noqa: E402
+import time  # noqa: E402
 
-from logger_config import setup_logger
-from logic.constants import (
+from logger_config import setup_logger  # noqa: E402
+from logic.constants import (  # noqa: F401  # noqa: E402
     ENCABEZADOS_LIBRO_DIARIO,
     ENCABEZADOS_CIERRES_HISTORICOS,
     HOJA_LIBRO_DIARIO,
@@ -14,7 +14,7 @@ from logic.constants import (
     TIPO_INGRESO,
     TIPO_EGRESO,
 )
-from logic.logic import ConexionSheets, safe_int, get_now_py
+from logic.logic import ConexionSheets, safe_int, get_now_py  # noqa: E402
 
 logger = setup_logger("financiero")
 
@@ -269,6 +269,29 @@ class AgenteFinanciero:
             logger.error(f"❌ Error registrando movimiento: {e}")
             return f"❌ Hubo un error al guardar en la planilla: {str(e)}"
 
+    def obtener_gastos_fijos(self) -> dict:
+        """Obtiene los gastos fijos agrupados por categoria y concepto, delegando al repositorio."""
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        return repo.obtener_gastos_fijos()
+
+    def actualizar_monto_gasto_fijo(self, concepto: str, nuevo_monto: int) -> bool:
+        """Actualiza el monto de un gasto fijo existente."""
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        return repo.actualizar_monto_gasto_fijo(concepto, nuevo_monto)
+
+    def agregar_gasto_fijo(
+        self, categoria: str, concepto: str, monto: int, obs: str = ""
+    ) -> bool:
+        """Agrega un nuevo gasto fijo al Presupuesto_Base."""
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        return repo.agregar_gasto_fijo(categoria, concepto, monto, obs)
+
     def obtener_balance(self) -> dict:
         """
         Calcula el Flujo Neto basado en el Libro Diario completo (o del mes actual).
@@ -422,10 +445,10 @@ class AgenteFinanciero:
 
 
 # Business logic for Data Schema Abstractions
-from repositories.sheets_repository import SheetsRepository
-from services.calendar_service import CalendarService
-from services.drive_service import DriveService
-import uuid
+from repositories.sheets_repository import SheetsRepository  # noqa: E402
+from services.calendar_service import CalendarService  # noqa: E402
+from services.drive_service import DriveService  # noqa: E402
+import uuid  # noqa: E402
 
 
 def calcular_margen_de_ataque() -> int:
@@ -636,7 +659,6 @@ def register_payment(
     debt_id: str, amount: int, date: str, tasa_iva: str = "Exento"
 ) -> None:
     repo = SheetsRepository()
-    import uuid
 
     gravado, iva = calcular_iva(amount, tasa_iva)
 

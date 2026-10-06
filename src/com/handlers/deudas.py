@@ -262,7 +262,7 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         foco = proy[0]
         bot.reply_to(
             message,
-            f"🎯 *Foco Actual:* {foco['nombre']} (ID: `{foco.get('id', 'N/A')}`)\nPago mensual proyectado: Gs. {foco['pago_mensual_proyectado']:,}\nMeses estimados: {foco['meses_estimados']}".replace(
+            f"🎯 *Foco Actual:* {foco['nombre']} (ID: `{foco.get('id', 'N/A')}`)\nPago mensual proyectado: Gs. {foco['pago_mensual_proyectado']:,}\nMeses estimados: {foco['meses_estimados']}".replace(  # noqa: E501
                 ",", "."
             ),
             parse_mode="Markdown",

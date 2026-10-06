@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta  # noqa: F401
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +9,6 @@ import requests
 
 from logger_config import setup_logger
 from logic.logic import get_now_py
-from logic.constants import TIMEZONE
 
 logger = setup_logger("cron_jobs")
 
@@ -363,7 +362,7 @@ def sincronizar_avisos_vencimientos() -> dict:
 
                 fecha_evento = hoy.replace(day=dia_evento)
 
-                titulo = f"Vencimiento: {d.get('Nombre', 'Deuda')} (Gs. {safe_int(d.get('Cuota_Referencia_Gs', 0)):,})".replace(
+                titulo = f"Vencimiento: {d.get('Nombre', 'Deuda')} (Gs. {safe_int(d.get('Cuota_Referencia_Gs', 0)):,})".replace(  # noqa: E501
                     ",", "."
                 )
                 fecha_str = fecha_evento.strftime("%d/%m/%Y")

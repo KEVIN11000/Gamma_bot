@@ -1,10 +1,10 @@
-import json
-import os
-import threading
-import time
-from typing import Any
+import json  # noqa: E402
+import os  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from typing import Any  # noqa: E402
 
-from pathlib import Path as _Path
+from pathlib import Path as _Path  # noqa: E402
 
 _UTILS_BASE = _Path(__file__).resolve().parents[2]  # resolves to src/
 PENDING_FILE = str(_UTILS_BASE / "data" / "pending_deletions.json")
@@ -46,7 +46,7 @@ def limpiar_menus_expirados(bot: Any):
         _save_pending(data)
 
 
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger("utils")
 

@@ -583,7 +583,7 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             set_state(call.from_user.id, "fijos_nuevo_concepto", {"categoria": cat})
             msg = bot.send_message(
                 call.message.chat.id,
-                f"Categoría: *{cat}*.\nPor favor escribe el nombre o concepto del gasto (ej. Seguro Médico) o /cancelar:",
+                f"Categoría: *{cat}*.\nPor favor escribe el nombre o concepto del gasto (ej. Seguro Médico) o /cancelar:",  # noqa: E501
                 parse_mode="Markdown",
             )
             bot.register_next_step_handler(msg, _step_guardar_nuevo_concepto, cat, bot)

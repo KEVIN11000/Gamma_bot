@@ -1,13 +1,13 @@
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import MagicMock, patch  # noqa: E402
+import pytest  # noqa: E402
 
 # Mock decorators before importing the module
 patch("com.core.security.auth_required", lambda bot: lambda f: f).start()
 patch("com.core.errors.safe_handler", lambda bot, logger: lambda f: f).start()
 
-import telebot
-from telebot.types import Message, CallbackQuery, Chat, User
-from com.handlers.avisos import (
+import telebot  # noqa: E402
+from telebot.types import Message, CallbackQuery, Chat, User  # noqa: E402
+from com.handlers.avisos import (  # noqa: E402
     register_avisos_handlers,
     _capturar_frase_aviso_secuencial,
     _procesar_frase_aviso,

@@ -1,14 +1,14 @@
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import MagicMock, patch  # noqa: E402
+import pytest  # noqa: E402
 
 # Mock decorators BEFORE importing handlers
 patch("com.core.security.auth_required", lambda bot: lambda f: f).start()
 patch("com.core.errors.safe_handler", lambda bot, logger: lambda f: f).start()
 
-from com.handlers.finanzas import register_finanzas_handlers
-from com.handlers.deudas import register_deudas_handlers
-from com.handlers.base import register_base_handlers
-from com.core import states
+from com.handlers.finanzas import register_finanzas_handlers  # noqa: E402
+from com.handlers.deudas import register_deudas_handlers  # noqa: E402
+from com.handlers.base import register_base_handlers  # noqa: E402
+from com.core import states  # noqa: E402
 
 
 class MockBot:

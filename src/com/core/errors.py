@@ -28,7 +28,7 @@ def safe_handler(bot: TeleBot, logger: logging.Logger) -> Any:
                 # Check if it's a RefreshError (invalid credentials)
                 error_msg = "❌ Error interno en el bot. Inténtalo de nuevo más tarde."
                 if "invalid_grant" in str(e) or e.__class__.__name__ == "RefreshError":
-                    error_msg = "❌ Error de credenciales (Google Sheets). El administrador debe actualizar 'credentials.json' en el servidor y reiniciar la app."
+                    error_msg = "❌ Error de credenciales (Google Sheets). El administrador debe actualizar 'credentials.json' en el servidor y reiniciar la app."  # noqa: E501
 
                 try:
                     if hasattr(obj, "data"):

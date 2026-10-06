@@ -80,6 +80,9 @@ def test_safe_int_validations():
     # Valida que no crashee con un número con comas y decimales
     res = safe_int("1,500.5")
     assert isinstance(res, int)
+    assert safe_int("Gs. 150.000") == 150000
+    assert safe_int("150000") == 150000
+    assert safe_int("Gs 10.500") == 10500
 
 
 def test_time_utc3():

@@ -1,31 +1,31 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import hashlib
-import hmac
-import json
-import os
-import subprocess
-import time
-import traceback
-from pathlib import Path
-from typing import Any
+import hashlib  # noqa: E402
+import hmac  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+import traceback  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
 
-import telebot
-from flask import Flask, abort, request
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+import telebot  # noqa: E402
+from flask import Flask, abort, request  # noqa: E402
+from flask_limiter import Limiter  # noqa: E402
+from flask_limiter.util import get_remote_address  # noqa: E402
 
-import sys
+import sys  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-import config
+import config  # noqa: E402
 
 config.validate_production_config()
-from com.bot import GAMMA
-from logger_config import setup_logger
-from logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs
-from com.core.utils import limpiar_menus_expirados
+from com.bot import GAMMA  # noqa: E402
+from logger_config import setup_logger  # noqa: E402
+from logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs  # noqa: E402
+from com.core.utils import limpiar_menus_expirados  # noqa: E402
 
 logger = setup_logger("flask")
 app = Flask(__name__)

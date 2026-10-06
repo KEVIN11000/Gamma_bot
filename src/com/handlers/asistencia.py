@@ -15,7 +15,7 @@ from com.core.errors import safe_handler
 from com.core.security import auth_required
 from logger_config import setup_logger
 from logic.logic import EstadoGestor
-from services.asistencia_service import (
+from services.asistencia_service import (  # noqa: F401
     iniciar_flujo_reporte_horas,
     generar_y_enviar_reporte_financiero,
     capturar_monto_descuento,
@@ -25,7 +25,7 @@ from services.asistencia_service import (
 )
 
 from app_queue.worker import enqueue
-from com.core.states import clear_state, has_state
+from com.core.states import clear_state, has_state  # noqa: F401
 
 logger = setup_logger("asistencia_handler")
 
@@ -42,7 +42,7 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             tipo = partes[1].strip().lower()
             if tipo in ["normal", "directo"]:
                 fake_msg = message
-                fake_msg.text = f"/marcar_{tipo}"  # just internal routing if possible, but actually let's just trigger the callback logic
+                fake_msg.text = f"/marcar_{tipo}"  # just internal routing if possible, but actually let's just trigger the callback logic  # noqa: E501
                 # It's easier to call gamma_app directly like in callback_marcado
                 estado = "normal" if tipo == "normal" else "directo"
                 bot.reply_to(message, "⏳ Registrando marcación...")

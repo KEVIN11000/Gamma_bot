@@ -1,5 +1,4 @@
 import unittest
-import os
 from unittest.mock import patch
 
 from logic.financiero import (
@@ -245,6 +244,140 @@ class TestFinancieroLogic(unittest.TestCase):
         res = simular_impacto_abono(2000, "999")
         self.assertEqual(res["saldo_nuevo"], 3000)
         self.assertEqual(res["meses_restantes"], 3)
+
+    @patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    @patch("repositories.sheets_repository.SheetsRepository._get_records")
+    def test_repo_obtener_gastos_fijos(self, mock_get_records, mock_get_sheet):
+        from repositories.sheets_repository import SheetsRepository
+
+        mock_get_records.return_value = [
+            {
+                "Tipo_Flujo": "Gasto Fijo",
+                "Categoria": "Vivienda",
+                "Concepto": "Alquiler",
+                "Monto_Mensual_Gs": "2.000.000",
+            },
+            {
+                "Tipo_Flujo": "Gasto Fijo",
+                "Categoria": "Vivienda",
+                "Concepto": "Luz",
+                "Monto_Mensual_Gs": "150.000",
+            },
+            {
+                "Tipo_Flujo": "Ingreso Fijo",
+                "Categoria": "Sueldo",
+                "Concepto": "Salario",
+                "Monto_Mensual_Gs": "5.000.000",
+            },
+            {
+                "Tipo_Ingreso_Gasto": "Fijo",
+                "Categoria": "Suscripciones",
+                "Concepto": "Netflix",
+                "Monto_Mensual_Gs": "Gs. 50.000",
+            },
+        ]
+
+        repo = SheetsRepository()
+        res = repo.obtener_gastos_fijos()
+
+        self.assertIn("Vivienda", res["gastos"])
+        self.assertEqual(len(res["gastos"]["Vivienda"]), 2)
+        self.assertEqual(res["gastos"]["Vivienda"][0]["concepto"], "Alquiler")
+        self.assertEqual(res["gastos"]["Vivienda"][0]["monto"], 2000000)
+
+        self.assertNotIn("Sueldo", res["gastos"])
+
+        self.assertIn("Suscripciones", res["gastos"])
+        self.assertEqual(res["gastos"]["Suscripciones"][0]["concepto"], "Netflix")
+        self.assertEqual(res["gastos"]["Suscripciones"][0]["monto"], 50000)
+        self.assertEqual(res["total"], 2200000)
+
+    @patch("repositories.sheets_repository.SheetsRepository")
+    def test_agente_obtener_gastos_fijos(self, MockRepo):
+        from logic.financiero import AgenteFinanciero
+
+        repo_instance = MockRepo.return_value
+        repo_instance.obtener_gastos_fijos.return_value = {
+            "gastos": {
+                "Vivienda": [{"fila": 2, "concepto": "Alquiler", "monto": 2000000}]
+            },
+            "total": 2000000,
+        }
+
+        agente = AgenteFinanciero("dummy_id")
+        res = agente.obtener_gastos_fijos()
+
+        self.assertIn("Vivienda", res["gastos"])
+        self.assertEqual(res["gastos"]["Vivienda"][0]["monto"], 2000000)
+        repo_instance.obtener_gastos_fijos.assert_called_once()
+
+    @patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    @patch("repositories.sheets_repository.SheetsRepository._get_records")
+    def test_repo_actualizar_monto_gasto_fijo(self, mock_get_records, mock_get_sheet):
+        from repositories.sheets_repository import SheetsRepository
+
+        mock_ws = mock_get_sheet.return_value
+
+        mock_get_records.return_value = [
+            {
+                "Tipo_Flujo": "Gasto Fijo",
+                "Categoria": "Vivienda",
+                "Concepto": "Alquiler",
+                "Monto_Mensual_Gs": "2000000",
+            }
+        ]
+
+        repo = SheetsRepository()
+        res = repo.actualizar_monto_gasto_fijo("Alquiler", 2500000)
+
+        self.assertTrue(res)
+        mock_ws.update_cell.assert_called_once_with(2, 4, 2500000)
+
+        # Test no encontrado
+        res2 = repo.actualizar_monto_gasto_fijo("No Existe", 1000)
+        self.assertFalse(res2)
+
+    @patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_repo_agregar_gasto_fijo(self, mock_get_sheet):
+        from repositories.sheets_repository import SheetsRepository
+
+        mock_ws = mock_get_sheet.return_value
+
+        repo = SheetsRepository()
+        res = repo.agregar_gasto_fijo("Vivienda", "Internet", 150000, "Tigo")
+
+        self.assertTrue(res)
+        mock_ws.append_row.assert_called_once_with(
+            ["Gasto Fijo", "Vivienda", "Internet", 150000, "Fijo", "Tigo"]
+        )
+
+    @patch("repositories.sheets_repository.SheetsRepository")
+    def test_agente_actualizar_monto(self, MockRepo):
+        from logic.financiero import AgenteFinanciero
+
+        repo_instance = MockRepo.return_value
+        repo_instance.actualizar_monto_gasto_fijo.return_value = True
+
+        agente = AgenteFinanciero("dummy_id")
+        res = agente.actualizar_monto_gasto_fijo("Alquiler", 2500000)
+        self.assertTrue(res)
+        repo_instance.actualizar_monto_gasto_fijo.assert_called_once_with(
+            "Alquiler", 2500000
+        )
+
+    @patch("repositories.sheets_repository.SheetsRepository")
+    def test_agente_agregar_gasto(self, MockRepo):
+        from logic.financiero import AgenteFinanciero
+
+        repo_instance = MockRepo.return_value
+        repo_instance.agregar_gasto_fijo.return_value = True
+
+        agente = AgenteFinanciero("dummy_id")
+        res = agente.agregar_gasto_fijo("Vivienda", "Internet", 150000)
+        self.assertTrue(res)
+        repo_instance.agregar_gasto_fijo.assert_called_once_with(
+            "Vivienda", "Internet", 150000, ""
+        )
 
 
 if __name__ == "__main__":

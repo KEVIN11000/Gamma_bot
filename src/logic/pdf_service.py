@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional  # noqa: F401
 
 from logger_config import setup_logger
 from logic.logic import get_now_py

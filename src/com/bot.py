@@ -27,6 +27,10 @@ class GAMMA:
 
         self.bot = telebot.TeleBot(self.token, threaded=False)
 
+        # Habilitar tolerancia nativa a caídas de red de Telegram
+        telebot.apihelper.RETRY_ON_ERROR = True
+        telebot.apihelper.MAX_RETRIES = 3
+
         # Parche tolerante a fallos para PythonAnywhere ProxyError 503
         original_answer = self.bot.answer_callback_query
 

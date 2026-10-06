@@ -1,20 +1,20 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import json
-import os
-from typing import Any
-import sqlite3
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+import json  # noqa: E402
+import os  # noqa: E402
+from typing import Any  # noqa: E402
+import sqlite3  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-from google import genai  # noqa: F401
-from google.genai import types  # noqa: F401
-import gspread
+from google import genai  # noqa: F401  # noqa: E402
+from google.genai import types  # noqa: F401  # noqa: E402
+import gspread  # noqa: E402
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
-from logger_config import setup_logger
-from logic.constants import (
+from logger_config import setup_logger  # noqa: E402
+from logic.constants import (  # noqa: E402
     COLUMNAS_DIRECTO,
     COLUMNAS_LETRAS,
     COLUMNAS_NORMAL,
@@ -52,7 +52,7 @@ def format_timestamp_py(
     return dt.strftime(formato)
 
 
-import re
+import re  # noqa: E402
 
 
 def safe_int(value, default=0):

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
 
 from google import genai
 from google.genai import types
 
 from logger_config import setup_logger
-from logic.logic import get_now_py, format_timestamp_py
+from logic.logic import get_now_py, format_timestamp_py  # noqa: F401
 
 logger = setup_logger("ai_service")
 

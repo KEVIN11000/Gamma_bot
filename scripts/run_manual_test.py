@@ -1,12 +1,12 @@
-import os
-import sys
-from pathlib import Path
+import os  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR / "src"))
 
-from logic.logic import AgenteAutonomoHoras
-from com.core.utils import reply_with_expiration
+from logic.logic import AgenteAutonomoHoras  # noqa: E402
+from com.core.utils import reply_with_expiration  # noqa: E402
 
 
 class FakeBot:

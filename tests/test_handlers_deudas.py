@@ -1,13 +1,13 @@
-import unittest
-from unittest.mock import MagicMock, patch
+import unittest  # noqa: E402
+from unittest.mock import MagicMock, patch  # noqa: E402
 
 # Mock the decorators BEFORE importing the handlers
 
 patch("com.core.security.auth_required", lambda bot: lambda f: f).start()
 patch("com.core.errors.safe_handler", lambda bot, logger: lambda f: f).start()
 
-from com.handlers.deudas import register_deudas_handlers
-import com.core.states as states
+from com.handlers.deudas import register_deudas_handlers  # noqa: E402
+import com.core.states as states  # noqa: E402
 
 
 class TestDeudasHandlers(unittest.TestCase):

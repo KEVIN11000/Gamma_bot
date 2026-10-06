@@ -2,13 +2,13 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
+import os
 
-from telebot.types import Message
+from telebot.types import Message, CallbackQuery
 
-from com.core.states import clear_state, get_state, set_state
+from com.core.states import clear_state, get_state
 from com.handlers.soporte import (
     _inferir_tipo_y_descripcion,
-    _procesar_y_confirmar_soporte,
     register_soporte_handlers,
 )
 
@@ -19,6 +19,35 @@ class TestSoporteHandler(unittest.TestCase):
     def setUp(self) -> None:
         self.bot = MagicMock()
         self.gamma_app = MagicMock()
+        self.handlers = {}
+        self.callback_handlers = []
+        self.msg_func_handlers = []
+
+        os.environ["CHAT_ID"] = "12345"
+
+        def mock_message_handler(**kwargs):
+            def decorator(func):
+                if "commands" in kwargs:
+                    for cmd in kwargs["commands"]:
+                        self.handlers[cmd] = func
+                elif "func" in kwargs:
+                    self.msg_func_handlers.append((kwargs["func"], func))
+                return func
+
+            return decorator
+
+        def mock_callback_handler(**kwargs):
+            def decorator(func):
+                if "func" in kwargs:
+                    self.callback_handlers.append((kwargs["func"], func))
+                return func
+
+            return decorator
+
+        self.bot.message_handler = mock_message_handler
+        self.bot.callback_query_handler = mock_callback_handler
+
+        register_soporte_handlers(self.bot, self.gamma_app)
         clear_state(12345)
 
     def tearDown(self) -> None:
@@ -42,48 +71,68 @@ class TestSoporteHandler(unittest.TestCase):
         self.assertEqual(desc, "el sistema no cargó la foto")
 
     @patch("com.handlers.soporte.reportar_incidente_vigia")
-    def test_procesar_y_confirmar_soporte(self, mock_reportar) -> None:
+    @patch("com.handlers.soporte._guardar_ticket_fallback")
+    def test_procesar_y_confirmar_soporte(self, mock_fallback, mock_reportar) -> None:
         mock_reportar.return_value = True
 
-        _procesar_y_confirmar_soporte(
-            bot=self.bot,
-            chat_id=12345,
-            tipo="bug",
-            descripcion="Fallo en reporte PDF",
-            autor="kevin_dev",
-        )
-
-        mock_reportar.assert_called_once()
-        self.bot.send_message.assert_called_once()
-        args, kwargs = self.bot.send_message.call_args
-        self.assertEqual(args[0], 12345)
-        self.assertIn("Ticket registrado con éxito", args[1])
-        self.assertIn("Fallo en reporte PDF", args[1])
-
-    @patch("com.handlers.soporte._procesar_y_confirmar_soporte")
-    def test_modo_directo_con_argumentos(self, mock_procesar) -> None:
-        register_soporte_handlers(self.bot, self.gamma_app)
-
-        # Llamar directamente a la lógica simulando un mensaje con texto inline
         msg = MagicMock(spec=Message)
         msg.text = "/soporte bug El botón no responde"
         msg.chat = MagicMock(id=12345)
         msg.from_user = MagicMock(id=12345, username="tester")
 
-        # Probar que la inferencia y procesamiento se ejecutan
-        tipo, desc = _inferir_tipo_y_descripcion("bug El botón no responde")
-        _procesar_y_confirmar_soporte(self.bot, 12345, tipo, desc, "tester")
+        self.handlers["soporte"](msg)
+
+        mock_reportar.assert_called_once()
+        self.bot.send_message.assert_called_once()
+        args, kwargs = self.bot.send_message.call_args
+        self.assertEqual(args[0], 12345)
+        self.assertIn("Ticket registrado", args[1])
+
+    @patch("com.handlers.soporte.reportar_incidente_vigia")
+    @patch("com.handlers.soporte._guardar_ticket_fallback")
+    def test_modo_interactivo_callback_y_flujo_completo(
+        self, mock_fallback, mock_reportar
+    ) -> None:
+        mock_reportar.return_value = True
+
+        msg = MagicMock(spec=Message)
+        msg.text = "/soporte"
+        msg.chat = MagicMock(id=12345)
+        msg.from_user = MagicMock(id=12345, username="tester")
+
+        self.handlers["soporte"](msg)
         self.bot.send_message.assert_called_once()
 
-    def test_modo_interactivo_callback_y_cancelacion(self) -> None:
-        set_state(12345, "SOPORTE_ESPERANDO_TEXTO", {"tipo": "sugerencia"})
+        call = MagicMock(spec=CallbackQuery)
+        call.id = "mocked_id"; call.data = "soporte_tipo:sugerencia"
+        call.from_user = MagicMock(id=12345)
+        call.message = MagicMock(chat=MagicMock(id=12345), message_id=999)
+
+        for condition, handler in self.callback_handlers:
+            if condition(call):
+                handler(call)
+                break
+
         state = get_state(12345)
         self.assertIsNotNone(state)
         self.assertEqual(state.get("estado"), "SOPORTE_ESPERANDO_TEXTO")
         self.assertEqual(state.get("datos", {}).get("tipo"), "sugerencia")
+        self.bot.edit_message_text.assert_called_once()
 
-        # Cancelación
-        clear_state(12345)
+        text_msg = MagicMock(spec=Message)
+        text_msg.text = "Mejorar los colores"
+        text_msg.chat = MagicMock(id=12345)
+        text_msg.from_user = MagicMock(id=12345, username="tester")
+
+        for condition, handler in self.msg_func_handlers:
+            if condition(text_msg):
+                handler(text_msg)
+                break
+
+        mock_reportar.assert_called_once()
+        args, kwargs = mock_reportar.call_args
+        self.assertEqual(kwargs["origen"], "telegram-soporte")
+
         self.assertIsNone(get_state(12345))
 
 

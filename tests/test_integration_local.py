@@ -15,9 +15,8 @@ Usa un FakeWorksheet en memoria para simular Google Sheets sin conexión real.
 """
 
 import os
-import sys
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch, PropertyMock  # noqa: F401
 from copy import deepcopy
 
 # ── Entorno ──────────────────────────────────────────────────────────────────
@@ -588,7 +587,7 @@ class TestIntegrationAgenteFinanciero(unittest.TestCase):
         self.assertIn("Duplicada", result_dup)
 
         print(
-            f"  ✅ Balance: Ingresos={balance['ingresos']:,} | Gastos={balance['gastos']:,} | Neto={balance['flujo_neto']:,}"
+            f"  ✅ Balance: Ingresos={balance['ingresos']:,} | Gastos={balance['gastos']:,} | Neto={balance['flujo_neto']:,}"  # noqa: E501
         )
         print("  ✅ Factura duplicada detectada correctamente")
 
