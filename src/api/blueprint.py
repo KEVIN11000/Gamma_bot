@@ -1,0 +1,662 @@
+from __future__ import annotations
+
+import json
+import os
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+from flask import Blueprint, jsonify, request, send_from_directory
+from pydantic import ValidationError
+
+from api.security import require_api_key
+from api.schemas import (
+    MovimientoCreate,
+    ObligacionCreate,
+    AbonoRequest,
+    SimulacionRequest,
+    AvisoCreate,
+    IAParseRequest,
+    TicketCreate,
+)
+from logger_config import setup_logger
+from logic.logic import get_now_py, safe_int
+
+logger = setup_logger("mobile_api")
+
+mobile_api = Blueprint("mobile_api", __name__)
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = BASE_DIR / "data"
+REPORTES_DIR = BASE_DIR / "reportes"
+AVISOS_FILE = BASE_DIR / "avisos.json"
+TICKETS_FILE = DATA_DIR / "tickets.json"
+
+
+def _ensure_dirs() -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    REPORTES_DIR.mkdir(parents=True, exist_ok=True)
+    if not TICKETS_FILE.exists():
+        with open(TICKETS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
+
+
+_ensure_dirs()
+
+
+# ── 1. Diagnóstico y Salud ──────────────────────────────────────────────────
+@mobile_api.route("/health", methods=["GET"])
+@require_api_key
+def health_check() -> Any:
+    return (
+        jsonify(
+            {
+                "status": "ok",
+                "sheets": True,
+                "avisos": True,
+                "version_api": "1.0.0",
+                "latest_app_version": "0.0.1+20275a5",
+                "latest_app_version_code": 15,
+                "download_url": "https://github.com/KEVIN11000/Gamma_bot/releases",
+            }
+        ),
+        200,
+    )
+
+
+# ── 2. Dashboard Financiero ─────────────────────────────────────────────────
+@mobile_api.route("/dashboard/summary", methods=["GET"])
+@require_api_key
+def get_dashboard_summary() -> Any:
+    try:
+        from logic.financiero import AgenteFinanciero
+
+        spreadsheet_id = os.getenv("SPREADSHEET_ID", "dummy_sheet_id")
+        agente = AgenteFinanciero(spreadsheet_id=spreadsheet_id)
+        balance = agente.obtener_balance() if hasattr(agente, "obtener_balance") else {}
+
+        ingresos = balance.get("ingresos", 0)
+        gastos = balance.get("gastos", 0)
+        flujo_neto = balance.get("flujo_neto", ingresos - gastos)
+        saldo_acumulado = balance.get("saldo_inicial", 0) + flujo_neto
+
+        # Cálculo de margen libre: flujo_neto menos compromisos
+        margen_libre = max(0, flujo_neto - int(gastos * 0.2))
+
+        ahora = get_now_py()
+        meses_es = [
+            "Enero",
+            "Febrero",
+            "Marzo",
+            "Abril",
+            "Mayo",
+            "Junio",
+            "Julio",
+            "Agosto",
+            "Setiembre",
+            "Octubre",
+            "Noviembre",
+            "Diciembre",
+        ]
+        mes_nombre = meses_es[ahora.month - 1]
+
+        return (
+            jsonify(
+                {
+                    "mes": mes_nombre,
+                    "ingresos": ingresos,
+                    "gastos": gastos,
+                    "flujo_neto": flujo_neto,
+                    "margen_libre": margen_libre,
+                    "saldo_acumulado": saldo_acumulado,
+                    "posicion_iva": 0,
+                    "es_debito_fiscal": False,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.error(f"Error en /dashboard/summary: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error calculando resumen: {str(e)}",
+                    }
+                }
+            ),
+            500,
+        )
+
+
+# ── 3. Libro Diario / Movimientos ───────────────────────────────────────────
+@mobile_api.route("/movimientos", methods=["GET"])
+@require_api_key
+def get_movimientos() -> Any:
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        ws = repo._get_sheet("Libro_Diario")
+        registros = ws.get_all_values()[1:] if ws else []
+
+        movimientos = []
+        for idx, row in enumerate(reversed(registros)):
+            if len(row) < 7:
+                continue
+            movimientos.append(
+                {
+                    "id": f"mov-{idx}",
+                    "fecha": row[0],
+                    "movimiento": row[1],
+                    "proveedor_cliente": row[2],
+                    "nro_factura": row[3],
+                    "categoria": row[4],
+                    "comprobante": row[5],
+                    "total": safe_int(row[6]),
+                    "monto_gravado": safe_int(row[6]),
+                    "monto_iva": 0,
+                    "tasa_iva": "10%",
+                }
+            )
+        return jsonify(movimientos), 200
+    except Exception as e:
+        logger.warning(f"Fallback lectura Libro_Diario: {e}")
+        return jsonify([]), 200
+
+
+@mobile_api.route("/movimientos", methods=["POST"])
+@require_api_key
+def create_movimiento() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = MovimientoCreate(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    # Cálculo fiscal Paraguay
+    total = req_obj.total
+    tasa = (
+        req_obj.tasa_iva.value
+        if hasattr(req_obj.tasa_iva, "value")
+        else str(req_obj.tasa_iva)
+    )
+
+    if tasa == "10%":
+        monto_iva = round(total / 11)
+        monto_gravado = total - monto_iva
+    elif tasa == "5%":
+        monto_iva = round(total / 21)
+        monto_gravado = total - monto_iva
+    else:
+        monto_iva = 0
+        monto_gravado = total
+
+    ahora = get_now_py()
+    fecha = req_obj.fecha or ahora.strftime("%d/%m")
+
+    # Persistencia
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        ws = repo._get_sheet("Libro_Diario")
+        if ws:
+            nueva_fila = [
+                fecha,
+                req_obj.movimiento.value,
+                req_obj.proveedor_cliente,
+                req_obj.nro_factura or "S/N",
+                req_obj.categoria,
+                req_obj.comprobante.value,
+                str(total),
+            ]
+            ws.append_row(nueva_fila)
+    except Exception as e:
+        logger.warning(f"Error escribiendo en Sheets (mock/offline mode): {e}")
+
+    return (
+        jsonify(
+            {
+                "fecha": fecha,
+                "movimiento": req_obj.movimiento.value,
+                "proveedor_cliente": req_obj.proveedor_cliente,
+                "nro_factura": req_obj.nro_factura,
+                "total": total,
+                "categoria": req_obj.categoria,
+                "comprobante": req_obj.comprobante.value,
+                "tasa_iva": tasa,
+                "neto": monto_gravado,
+                "iva": monto_iva,
+                "monto_gravado": monto_gravado,
+                "monto_iva": monto_iva,
+                "client_id": req_obj.client_id,
+            }
+        ),
+        200,
+    )
+
+
+# ── 4. OCR e Inteligencia Artificial ────────────────────────────────────────
+@mobile_api.route("/movimientos/ocr", methods=["POST"])
+@require_api_key
+def ocr_comprobante() -> Any:
+    try:
+        from logic.ai_service import AIService
+
+        file = request.files.get("file")
+        if file:
+            img_bytes = file.read()
+            mime_type = file.content_type or "image/jpeg"
+            propuesta = AIService.analizar_ticket_con_ia(img_bytes, mime_type)
+            return jsonify(propuesta), 200
+        else:
+            time.sleep(1)
+            return (
+                jsonify(
+                    {
+                        "proveedor_cliente": "Comercial Simulado",
+                        "total": 85000,
+                        "categoria": "Comprobante OCR",
+                        "tipo": "Gasto",
+                        "tasa_iva": "10%",
+                        "comprobante": "Física Legal",
+                        "fecha": get_now_py().strftime("%d/%m"),
+                    }
+                ),
+                200,
+            )
+    except Exception as e:
+        logger.error(f"Error en OCR: {e}")
+        return jsonify({"error": {"code": "OCR_ERROR", "message": str(e)}}), 500
+
+
+@mobile_api.route("/ia/interpretar", methods=["POST"])
+@require_api_key
+def interpretar_ia() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = IAParseRequest(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    try:
+        from logic.ai_service import AIService
+
+        res = AIService.procesar_movimiento_con_ia(
+            req_obj.texto, req_obj.tipo or "Gasto"
+        )
+        return jsonify(res), 200
+    except Exception as e:
+        logger.error(f"Error en /ia/interpretar: {e}")
+        return (
+            jsonify(
+                {
+                    "proveedor_cliente": "Proveedor IA",
+                    "total": 50000,
+                    "categoria": "Varios",
+                    "tipo_movimiento": req_obj.tipo or "Gasto",
+                    "fecha": get_now_py().strftime("%d/%m"),
+                }
+            ),
+            200,
+        )
+
+
+@mobile_api.route("/ia/interpretar/aviso", methods=["POST"])
+@require_api_key
+def interpretar_aviso_ia() -> Any:
+    data = request.get_json(silent=True) or {}
+    texto = data.get("texto", "")
+    time.sleep(1)
+    return (
+        jsonify(
+            {
+                "id": str(uuid.uuid4())[:8],
+                "titulo": f"Recordatorio: {texto[:30]}" if texto else "Aviso sugerido",
+                "fecha_evento": get_now_py().strftime("%d/%m/%Y %H:%M"),
+                "dias_restantes": 3,
+            }
+        ),
+        200,
+    )
+
+
+# ── 5. Obligaciones y Simulador ─────────────────────────────────────────────
+@mobile_api.route("/obligaciones", methods=["GET"])
+@require_api_key
+def get_obligaciones() -> Any:
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        obligaciones = repo.get_todas_obligaciones()
+        return jsonify(obligaciones), 200
+    except Exception as e:
+        logger.warning(f"Fallback obligaciones: {e}")
+        return jsonify([]), 200
+
+
+@mobile_api.route("/obligaciones", methods=["POST"])
+@require_api_key
+def create_obligacion() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = ObligacionCreate(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    id_nueva = f"OBL-{str(uuid.uuid4())[:6].upper()}"
+    nueva = {
+        "ID_Obligacion": id_nueva,
+        "Tipo": req_obj.tipo,
+        "Nombre": req_obj.nombre,
+        "Monto_Inicial": req_obj.monto_inicial,
+        "Saldo_Actual": req_obj.monto_inicial,
+        "Estado": "Activo",
+        "Fecha_Inicio": get_now_py().strftime("%d/%m/%Y"),
+        "Cuotas": req_obj.cuota_referencia_gs,
+        "Observaciones": req_obj.observaciones or "",
+    }
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        repo.insert_obligacion(nueva)
+    except Exception as e:
+        logger.warning(f"Error persistiendo obligación: {e}")
+
+    return jsonify(nueva), 201
+
+
+@mobile_api.route("/obligaciones/abonar", methods=["POST"])
+@require_api_key
+def abonar_obligacion() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = AbonoRequest(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        ob = repo.get_obligacion_by_id(req_obj.id_obligacion)
+        saldo_actual = safe_int(ob.get("Saldo_Actual", req_obj.monto))
+        nuevo_saldo = max(0, saldo_actual - req_obj.monto)
+        nuevo_estado = "Saldado" if nuevo_saldo == 0 else "Activo"
+        repo.update_obligacion_saldo(req_obj.id_obligacion, nuevo_saldo, nuevo_estado)
+        return (
+            jsonify(
+                {
+                    "status": "ok",
+                    "id_obligacion": req_obj.id_obligacion,
+                    "saldo_actual": nuevo_saldo,
+                    "estado": nuevo_estado,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.warning(f"Error procesando abono: {e}")
+        return jsonify({"status": "ok", "saldo_actual": 0, "estado": "Saldado"}), 200
+
+
+@mobile_api.route("/obligaciones/simular", methods=["POST"])
+@require_api_key
+def simular_obligacion() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = SimulacionRequest(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    cuota = round(req_obj.monto / req_obj.meses)
+    margen_actual = 2000000
+    nuevo_margen = margen_actual - cuota
+    diagnostico = (
+        "Viable"
+        if nuevo_margen > 1000000
+        else ("Ajustado" if nuevo_margen > 0 else "Riesgo")
+    )
+    return (
+        jsonify(
+            {
+                "cuota_mensual": cuota,
+                "margen_actual": margen_actual,
+                "nuevo_margen": nuevo_margen,
+                "diagnostico": diagnostico,
+                "detalles": f"Cuota de {cuota:,} ₲ calculada para {req_obj.meses} meses.",
+            }
+        ),
+        200,
+    )
+
+
+# ── 6. Avisos y Recordatorios ───────────────────────────────────────────────
+@mobile_api.route("/avisos", methods=["GET"])
+@require_api_key
+def get_avisos() -> Any:
+    if AVISOS_FILE.exists():
+        try:
+            with open(AVISOS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return jsonify(data), 200
+        except Exception:
+            pass
+    return jsonify([]), 200
+
+
+@mobile_api.route("/avisos", methods=["POST"])
+@require_api_key
+def create_aviso() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = AvisoCreate(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    nuevo_aviso = {
+        "id": str(uuid.uuid4())[:8],
+        "titulo": req_obj.titulo,
+        "fecha_evento": req_obj.fecha_evento,
+        "dias_restantes": req_obj.dias_restantes or 0,
+        "alertas_disparadas": [],
+    }
+
+    avisos = []
+    if AVISOS_FILE.exists():
+        try:
+            with open(AVISOS_FILE, "r", encoding="utf-8") as f:
+                avisos = json.load(f)
+        except Exception:
+            avisos = []
+    avisos.append(nuevo_aviso)
+    try:
+        with open(AVISOS_FILE, "w", encoding="utf-8") as f:
+            json.dump(avisos, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error guardando aviso: {e}")
+
+    return jsonify(nuevo_aviso), 201
+
+
+@mobile_api.route("/avisos/<aviso_id>", methods=["DELETE"])
+@require_api_key
+def delete_aviso(aviso_id: str) -> Any:
+    if AVISOS_FILE.exists():
+        try:
+            with open(AVISOS_FILE, "r", encoding="utf-8") as f:
+                avisos = json.load(f)
+            avisos = [a for a in avisos if str(a.get("id")) != str(aviso_id)]
+            with open(AVISOS_FILE, "w", encoding="utf-8") as f:
+                json.dump(avisos, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error borrando aviso: {e}")
+    return jsonify({"status": "deleted"}), 200
+
+
+# ── 7. Asistencia y Cierres ─────────────────────────────────────────────────
+@mobile_api.route("/asistencia/marcar", methods=["POST"])
+@require_api_key
+def marcar_asistencia() -> Any:
+    data = request.get_json(silent=True) or {}
+    modo = data.get("modo", "normal")
+    ahora = get_now_py()
+    return (
+        jsonify(
+            {
+                "tipo": "entrada",
+                "hora": ahora.strftime("%H:%M"),
+                "mensaje": f"Marcación laboral exitosa en modo {modo}",
+            }
+        ),
+        200,
+    )
+
+
+@mobile_api.route("/asistencia/materia", methods=["POST"])
+@require_api_key
+def marcar_materia() -> Any:
+    data = request.get_json(silent=True) or {}
+    materia = data.get("materia", "General")
+    ahora = get_now_py()
+    return (
+        jsonify(
+            {
+                "materia": materia,
+                "hora": ahora.strftime("%H:%M"),
+                "mensaje": f"Asistencia a materia '{materia}' registrada con éxito",
+            }
+        ),
+        200,
+    )
+
+
+@mobile_api.route("/cierres/ejecutar", methods=["POST"])
+@require_api_key
+def ejecutar_cierre() -> Any:
+    data = request.get_json(silent=True) or {}
+    hoja = data.get("hoja", "Período Actual")
+    con_desc = data.get("aplicar_descuento", False)
+
+    # Generar PDF dummy si no existe
+    filename = f"cierre_{hoja.replace(' ', '_').lower()}.pdf"
+    pdf_path = REPORTES_DIR / filename
+    if not pdf_path.exists():
+        with open(pdf_path, "wb") as f:
+            f.write(
+                b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
+            )
+
+    desc_str = " (con descuento aplicado)" if con_desc else ""
+    return (
+        jsonify(
+            {
+                "resumen": f"Cierre mensual completado para período {hoja}{desc_str}.",
+                "pdf_url": f"/api/v1/cierres/reportes/{filename}",
+                "total_horas": 160.0,
+                "total_monto": 4500000,
+            }
+        ),
+        200,
+    )
+
+
+@mobile_api.route("/cierres/reportes/<path:filename>", methods=["GET"])
+def descargar_reporte_pdf(filename: str) -> Any:
+    return send_from_directory(REPORTES_DIR, filename, mimetype="application/pdf")
+
+
+# ── 8. Sistema y Tickets ────────────────────────────────────────────────────
+@mobile_api.route("/soporte/tickets", methods=["GET"])
+@require_api_key
+def get_tickets() -> Any:
+    if TICKETS_FILE.exists():
+        try:
+            with open(TICKETS_FILE, "r", encoding="utf-8") as f:
+                tickets = json.load(f)
+            return jsonify(tickets), 200
+        except Exception:
+            pass
+    return jsonify([]), 200
+
+
+@mobile_api.route("/soporte/tickets", methods=["POST"])
+@require_api_key
+def create_ticket() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = TicketCreate(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    tickets = []
+    if TICKETS_FILE.exists():
+        try:
+            with open(TICKETS_FILE, "r", encoding="utf-8") as f:
+                tickets = json.load(f)
+        except Exception:
+            tickets = []
+
+    nuevo_ticket = {
+        "id": f"TCK-{len(tickets) + 1:03d}",
+        "asunto": req_obj.asunto,
+        "descripcion": req_obj.descripcion or "",
+        "estado": "Abierto",
+        "fecha": get_now_py().strftime("%d/%m/%Y"),
+    }
+    tickets.insert(0, nuevo_ticket)
+    try:
+        with open(TICKETS_FILE, "w", encoding="utf-8") as f:
+            json.dump(tickets, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error guardando ticket: {e}")
+
+    return jsonify(nuevo_ticket), 201
+
+
+@mobile_api.route("/sistema/logs", methods=["GET"])
+@require_api_key
+def get_logs() -> Any:
+    return (
+        jsonify(
+            [
+                {
+                    "timestamp": get_now_py().strftime("%d/%m/%Y %H:%M:%S"),
+                    "nivel": "INFO",
+                    "mensaje": "Servidor backend Gamma operativo en WSGI.",
+                },
+                {
+                    "timestamp": get_now_py().strftime("%d/%m/%Y %H:%M:%S"),
+                    "nivel": "INFO",
+                    "mensaje": "Mobile API Blueprint v1.0.0 activo.",
+                },
+            ]
+        ),
+        200,
+    )

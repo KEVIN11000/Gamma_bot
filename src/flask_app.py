@@ -39,6 +39,10 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 limiter.init_app(app)
+
+from api.blueprint import mobile_api  # noqa: E402
+app.register_blueprint(mobile_api, url_prefix="/api/v1")
+
 bot_instance = GAMMA()
 base_path = Path(__file__).resolve().parent.parent
 

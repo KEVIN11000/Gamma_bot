@@ -39,6 +39,7 @@ def _registrar_comandos_menu(bot: TeleBot) -> Any:
         BotCommand("avisos", "Ver lista de avisos activos."),
         BotCommand("cierre", "Ejecutar cierre de período de marcaciones."),
         BotCommand("soporte", "Reportar un bug, error o sugerencia."),
+        BotCommand("app", "Descargar la app Android Gamma Mobile."),
     ]
 
     if os.environ.get("MODO_DESARROLLADOR", "False").lower() == "true":
@@ -317,8 +318,22 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             "📄 /reporte — Generar reporte PDF de período anterior\n\n"
             "*Avisos & Agenda:*\n"
             "✍️ /aviso — Agendar hito o recordatorio con IA\n"
-            "📋 /avisos — Ver lista de avisos activos\n"
+            "📱 /app — Descargar la app Android Gamma Mobile\n"
             f"{texto_debug}"
+        )
+        bot.reply_to(message, texto, parse_mode="Markdown")
+
+    @bot.message_handler(commands=["app", "descargar_app"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_app(message):
+        texto = (
+            "📱 *Gamma Mobile (Android)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "Versión actual: *0.0.1+20275a5*\n\n"
+            "Podés descargar e instalar el instalador APK oficial desde:\n"
+            "🔗 [GitHub Releases](https://github.com/KEVIN11000/Gamma_bot/releases)\n\n"
+            "_Para actualizar, simplemente descargá el archivo e instalalo sobre la versión actual._"
         )
         bot.reply_to(message, texto, parse_mode="Markdown")
 
