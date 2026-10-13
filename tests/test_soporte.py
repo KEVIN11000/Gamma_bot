@@ -104,7 +104,8 @@ class TestSoporteHandler(unittest.TestCase):
         self.bot.send_message.assert_called_once()
 
         call = MagicMock(spec=CallbackQuery)
-        call.id = "mocked_id"; call.data = "soporte_tipo:sugerencia"
+        call.id = "mocked_id"
+        call.data = "soporte_tipo:sugerencia"
         call.from_user = MagicMock(id=12345)
         call.message = MagicMock(chat=MagicMock(id=12345), message_id=999)
 

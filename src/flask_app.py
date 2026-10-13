@@ -24,7 +24,11 @@ import config  # noqa: E402
 config.validate_production_config()
 from com.bot import GAMMA  # noqa: E402
 from logger_config import setup_logger  # noqa: E402
-from logic.cron_jobs import notificacion_clima, resumen_semanal, rotar_logs  # noqa: E402
+from logic.cron_jobs import (  # noqa: E402
+    notificacion_clima,
+    resumen_semanal,
+    rotar_logs,
+)
 from com.core.utils import limpiar_menus_expirados  # noqa: E402
 
 logger = setup_logger("flask")
@@ -283,14 +287,21 @@ def cron_cierre_mensual() -> Any:
     chat_id = os.environ.get("CHAT_ID")
     if not chat_id:
         return "❌ CHAT_ID no configurado.", 500
+    from datetime import datetime
+    from logic.financiero import execute_monthly_closing
     from logic.cron_jobs import informe_estadistico_mensual
 
-    exito = informe_estadistico_mensual(bot_instance, chat_id)
-    return (
-        ("✅ Informe estadístico ejecutado y reportes enviados.", 200)
-        if exito
-        else ("❌ Error en informe.", 500)
-    )
+    now = datetime.now()
+    try:
+        drive_id = execute_monthly_closing(now.month, now.year)
+        informe_estadistico_mensual(bot_instance, chat_id)
+        return (
+            f"✅ Cierre contable mensual ejecutado para {now.month}/{now.year}. Backup ID: {drive_id}",
+            200,
+        )
+    except Exception as e:
+        logger.error(f"❌ Error en /cron/cierre-mensual: {e}")
+        return f"❌ Error en cierre mensual: {e}", 500
 
 
 @app.route("/cron/asesor-ia", methods=["GET", "POST"])

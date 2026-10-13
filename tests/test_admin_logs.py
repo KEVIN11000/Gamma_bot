@@ -71,6 +71,22 @@ class TestAdminLogs(unittest.TestCase):
         data = resp.get_json()
         self.assertLessEqual(data["returned_lines"], 3)
 
+    @patch("logic.financiero.execute_monthly_closing")
+    @patch("logic.cron_jobs.informe_estadistico_mensual")
+    def test_cron_cierre_mensual_endpoint(self, mock_informe, mock_closing) -> None:
+        mock_closing.return_value = "backup_drive_id"
+        mock_informe.return_value = True
+        os.environ["CHAT_ID"] = "123456"
+        client = self._make_app("clave_secreta_vigia")
+        resp = client.get(
+            "/cron/cierre-mensual",
+            headers={"X-Cron-Secret": "clave_secreta_vigia"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("backup_drive_id", resp.get_data(as_text=True))
+        mock_closing.assert_called_once()
+        mock_informe.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

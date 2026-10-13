@@ -90,3 +90,46 @@ def test_retry_on_failure():
         assert row["reintentos"] == 1
     finally:
         conn.close()
+
+
+def test_despachar_generar_reporte_financiero(tmp_path):
+    chat_id = 88888
+    mock_bot = MagicMock()
+    fake_pdf = tmp_path / "reporte_test.pdf"
+    fake_pdf.write_bytes(b"%PDF-1.4 test")
+
+    with patch("logic.financiero.AgenteFinanciero") as mock_agente_cls, patch(
+        "logic.pdf_service.PDFService.generar_reporte_generico",
+        return_value=(str(fake_pdf), "Reporte generado"),
+    ):
+        mock_agente = MagicMock()
+        mock_agente.preparar_datos_reporte.return_value = ({"datos": True}, None)
+        mock_agente_cls.return_value = mock_agente
+
+        worker.despachar_trabajo(
+            mock_bot, "generar_reporte", {"tipo": "financiero"}, chat_id
+        )
+
+        mock_bot.send_document.assert_called_once()
+        args, kwargs = mock_bot.send_document.call_args
+        assert args[0] == chat_id
+        assert kwargs["caption"] == "📊 Reporte generado"
+
+
+def test_sync_fallback_failure_notifies_user():
+    chat_id = 88888
+    mock_bot = MagicMock()
+
+    with patch(
+        "app_queue.worker.despachar_trabajo", side_effect=ValueError("Fallo simulado")
+    ):
+        res = worker.enqueue(
+            chat_id,
+            "generar_reporte",
+            {"tipo": "financiero"},
+            sync_fallback=True,
+            bot=mock_bot,
+        )
+        assert res > 0  # Enqueued as fallback in sqlite
+        mock_bot.send_message.assert_called_once()
+        assert "❌ Ocurrió un error" in mock_bot.send_message.call_args[0][1]

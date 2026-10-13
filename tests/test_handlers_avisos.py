@@ -163,7 +163,11 @@ def test_callback_aviso_confirmar_success(
     aviso_handler(mock_call)
 
     mock_enqueue.assert_called_once_with(
-        12345, "crear_aviso_calendar", {"titulo": "Test", "fecha": "2023-10-10"}
+        12345,
+        "crear_aviso_calendar",
+        {"titulo": "Test", "fecha": "2023-10-10"},
+        sync_fallback=True,
+        bot=mock_bot,
     )
     mock_estado.pop.assert_called_once_with(12345)
     assert mock_bot.edit_message_text.call_count == 1

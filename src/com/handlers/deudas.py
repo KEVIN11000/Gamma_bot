@@ -222,9 +222,30 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     @safe_handler(bot, logger)
     def handle_estrategia(message):
         parts = shlex.split(message.text)
-        criterio = "prioridad"
-        if len(parts) > 1 and parts[1] in ["saldo", "prioridad"]:
-            criterio = parts[1]
+        if len(parts) > 1 and parts[1].lower() in ["saldo", "prioridad"]:
+            criterio = parts[1].lower()
+        else:
+            # Modo asistido / interactivo si no se indicó criterio
+            if len(parts) <= 1:
+                markup = InlineKeyboardMarkup()
+                markup.row(
+                    InlineKeyboardButton(
+                        "🎯 Por Prioridad / Urgencia",
+                        callback_data="estrategia_sel:prioridad",
+                    ),
+                    InlineKeyboardButton(
+                        "💰 Menor Saldo (Bola de Nieve)",
+                        callback_data="estrategia_sel:saldo",
+                    ),
+                )
+                bot.reply_to(
+                    message,
+                    "🎯 *Estrategia de Pago de Deudas*\nSelecciona el criterio de amortización:",
+                    reply_markup=markup,
+                    parse_mode="Markdown",
+                )
+                return
+            criterio = "prioridad"
 
         res = proyectar_cola_deudas(criterio)
         margen = res["margen_ataque"]
@@ -249,6 +270,19 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             )
         response += "_Nota: Proyección estimada sin intereses. Los plazos reales pueden variar._"
         bot.reply_to(message, response, parse_mode="Markdown")
+
+    @bot.callback_query_handler(
+        func=lambda call: call.data.startswith("estrategia_sel:")
+    )
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_estrategia_sel(call):
+        bot.answer_callback_query(call.id)
+        criterio = call.data.split(":")[1]
+        fake_msg = call.message
+        fake_msg.text = f"/estrategia {criterio}"
+        fake_msg.from_user = call.from_user
+        bot.process_new_messages([fake_msg])
 
     @bot.message_handler(commands=["foco"])
     @auth_required(bot)

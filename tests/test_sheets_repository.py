@@ -123,6 +123,27 @@ class TestSheetsRepository(unittest.TestCase):
         self.assertEqual(ingresos, 5000)
         self.assertEqual(gastos, 3000)
 
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_get_records_header_normalization_cuotas(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        # Simulate remote sheet having 'Tasa Interés' column instead of 'Cuotas'
+        mock_ws.get_all_records.side_effect = [
+            Exception("Header mismatch"),
+            [
+                {
+                    "ID_Obligacion": "OBL-10",
+                    "Nombre": "Préstamo Cooperativa",
+                    "Tasa Interés": 12,
+                    "Estado": "Activo",
+                }
+            ],
+        ]
+        mock_get_sheet.return_value = mock_ws
+        activas = self.repo.get_obligaciones_activas()
+        self.assertEqual(len(activas), 1)
+        self.assertEqual(activas[0]["Cuotas"], 12)
+        self.assertEqual(activas[0]["Tasa_Interes"], 12)
+
 
 if __name__ == "__main__":
     unittest.main()

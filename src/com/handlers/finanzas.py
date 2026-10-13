@@ -245,14 +245,25 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
 
         emoji_neto = "🟢" if balance_data["flujo_neto"] >= 0 else "🔴"
 
-        msg = (
-            "⚖️ *Balance General (Libro Diario)*\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📈 Ingresos Totales: Gs. {ingresos}\n"
-            f"📉 Gastos Totales: Gs. {gastos}\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"{emoji_neto} *Flujo Neto: Gs. {neto}*"
+        msg_lineas = [
+            "⚖️ *Balance General (Libro Diario)*",
+            "━━━━━━━━━━━━━━━━━━━━━",
+        ]
+        if balance_data.get("saldo_inicial", 0) != 0:
+            saldo_ini_str = "{:,}".format(balance_data["saldo_inicial"]).replace(
+                ",", "."
+            )
+            msg_lineas.append(f"🏛️ Saldo Inicial Traspasado: Gs. {saldo_ini_str}")
+
+        msg_lineas.extend(
+            [
+                f"📈 Ingresos del Período: Gs. {ingresos}",
+                f"📉 Gastos del Período: Gs. {gastos}",
+                "━━━━━━━━━━━━━━━━━━━━━",
+                f"{emoji_neto} *Flujo Neto / Saldo: Gs. {neto}*",
+            ]
         )
+        msg = "\n".join(msg_lineas)
         bot.reply_to(message, msg, parse_mode="Markdown")
 
     @bot.message_handler(content_types=["photo"])

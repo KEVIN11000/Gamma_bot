@@ -305,6 +305,7 @@ class AgenteFinanciero:
         try:
             registros = self.ws.get_all_values()[1:]  # Omitir encabezado
 
+            saldo_inicial = 0
             total_ingresos = 0
             total_gastos = 0
 
@@ -323,10 +324,18 @@ class AgenteFinanciero:
                     total_ingresos += monto_val
                 elif tipo in ("egreso", "gasto"):
                     total_gastos += monto_val
+                elif tipo in (
+                    "saldo inicial",
+                    "saldo_inicial",
+                    "saldo acumulado",
+                    "saldo_acumulado",
+                ):
+                    saldo_inicial += monto_val
 
-            flujo_neto = total_ingresos - total_gastos
+            flujo_neto = saldo_inicial + total_ingresos - total_gastos
 
             return {
+                "saldo_inicial": saldo_inicial,
                 "ingresos": total_ingresos,
                 "gastos": total_gastos,
                 "flujo_neto": flujo_neto,
@@ -782,6 +791,13 @@ def execute_monthly_closing(month: int, year: int) -> str:
     # Update the cierre with the drive ID
     cierre_dict["Archivo_Backup_Drive"] = drive_id
     repo.insert_cierre_mensual(cierre_dict)
+
+    # Resetear Libro_Diario para el nuevo período con el saldo acumulado transferido
+    next_month = (month % 12) + 1
+    next_year = year + 1 if month == 12 else year
+    fecha_traspaso = f"01/{str(next_month).zfill(2)}/{next_year}"
+    repo.reset_libro_diario_con_saldo_inicial(saldo_acumulado_actual, fecha_traspaso)
+
     return drive_id
 
 

@@ -67,7 +67,13 @@ def register_avisos_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 chat_id,
                 call.message.message_id,
             )
-            enqueue(chat_id, "crear_aviso_calendar", datos_evento)
+            enqueue(
+                chat_id,
+                "crear_aviso_calendar",
+                datos_evento,
+                sync_fallback=True,
+                bot=bot,
+            )
             EstadoGestor.pop(chat_id)
 
         except Exception as e:

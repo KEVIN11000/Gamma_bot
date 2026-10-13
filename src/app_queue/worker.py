@@ -127,7 +127,7 @@ def despachar_trabajo(
 
             spreadsheet_id_cal = str(os.getenv("SPREADSHEET_ID") or "")
             agente_excel = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id_cal)
-            nombre_hoja = payload.get("nombre_hoja")
+            nombre_hoja = payload.get("nombre_hoja") or payload.get("hoja")
             descuento = float(payload.get("descuento", 0))
             incluir_iva = bool(payload.get("incluir_iva", False))
             datos, error = agente_excel.preparar_datos_reporte(
@@ -185,6 +185,13 @@ def enqueue(
             return 0
         except Exception as e:
             logger.error(f"Error in sync_fallback execution: {e}")
+            try:
+                bot.send_message(
+                    chat_id,
+                    f"❌ Ocurrió un error al procesar tu reporte: {e}. Se reintentará en segundo plano.",
+                )
+            except Exception:
+                pass
 
     try:
         conn = get_connection()

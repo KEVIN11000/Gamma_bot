@@ -37,10 +37,16 @@ def test_registrar_comandos_menu_prod(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 17
+    assert len(commands_called) == 23
     command_names = [c.command for c in commands_called]
     assert "debug" not in command_names
     assert "soporte" in command_names
+    assert "cancelar" in command_names
+    assert "fijos" in command_names
+    assert "estrategia" in command_names
+    assert "foco" in command_names
+    assert "evaluar_abono" in command_names
+    assert "vencimientos" in command_names
 
 
 @patch.dict(os.environ, {"MODO_DESARROLLADOR": "True"})
@@ -48,7 +54,7 @@ def test_registrar_comandos_menu_dev(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 18
+    assert len(commands_called) == 24
     command_names = [c.command for c in commands_called]
     assert "debug" in command_names
     assert "soporte" in command_names

@@ -130,12 +130,13 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             bot.reply_to(message, respuesta, parse_mode="Markdown")
 
             bot.reply_to(message, "⏳ Generando tu reporte...")
-            from com.core.dispatcher import enqueue
 
             enqueue(
                 message.chat.id,
                 "generar_reporte",
                 {"tipo": "cierre", "descuento": descuento, "incluir_iva": incluir_iva},
+                sync_fallback=True,
+                bot=bot,
             )
             return
 
@@ -152,7 +153,17 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             reply_markup=teclado,
         )
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("cierre_"))
+    @bot.callback_query_handler(
+        func=lambda call: call.data
+        in (
+            "cierre_cancelar",
+            "cierre_confirmar",
+            "cierre_iva_si",
+            "cierre_iva_no",
+            "cierre_descuento_no",
+            "cierre_descuento_si",
+        )
+    )
     @auth_required(bot)
     @safe_handler(bot, logger)
     def callback_cierre(call):
@@ -233,6 +244,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                 chat_id,
                 "generar_reporte",
                 {"tipo": "cierre", "descuento": 0, "incluir_iva": incluir_iva},
+                sync_fallback=True,
+                bot=bot,
             )
             return
 
@@ -264,6 +277,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                             "descuento": monto,
                             "incluir_iva": incluir_iva,
                         },
+                        sync_fallback=True,
+                        bot=bot,
                     )
                 except ValueError:
                     bot.reply_to(
@@ -308,10 +323,12 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                         "generar_reporte",
                         {
                             "tipo": "horas",
-                            "hoja": hoja,
+                            "nombre_hoja": hoja,
                             "descuento": descuento,
                             "incluir_iva": incluir_iva,
                         },
+                        sync_fallback=True,
+                        bot=bot,
                     )
                     return
                 iniciar_flujo_reporte_horas(message, bot, gamma_app)
@@ -322,7 +339,13 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                     "⏳ Generando tu reporte... te lo envío en instantes.",
                 )
 
-                enqueue(message.chat.id, "generar_reporte", {"tipo": "financiero"})
+                enqueue(
+                    message.chat.id,
+                    "generar_reporte",
+                    {"tipo": "financiero"},
+                    sync_fallback=True,
+                    bot=bot,
+                )
                 return
 
         teclado = InlineKeyboardMarkup()
@@ -362,7 +385,13 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
             bot.edit_message_text(
                 "⏳ Generando tu reporte... te lo envío en instantes.", chat_id, msg_id
             )
-            enqueue(chat_id, "generar_reporte", {"tipo": "financiero"})
+            enqueue(
+                chat_id,
+                "generar_reporte",
+                {"tipo": "financiero"},
+                sync_fallback=True,
+                bot=bot,
+            )
             return
 
         if data.startswith("reporte_hoja_"):
@@ -435,6 +464,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                     "descuento": 0,
                     "incluir_iva": incluir_iva,
                 },
+                sync_fallback=True,
+                bot=bot,
             )
             return
 
@@ -473,6 +504,8 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
                             "descuento": monto,
                             "incluir_iva": incluir_iva,
                         },
+                        sync_fallback=True,
+                        bot=bot,
                     )
                 except ValueError:
                     bot.reply_to(

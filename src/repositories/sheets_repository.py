@@ -95,11 +95,30 @@ class SheetsRepository:
         Tries strict validation against expected_headers first.
         If the remote sheet lacks some columns, falls back to dynamic parsing
         with expected_headers=[] to avoid breaking execution.
+        Also normalizes known header aliases like 'Tasa Interés' -> 'Cuotas'.
         """
         try:
-            return ws.get_all_records(expected_headers=expected_headers)
+            records = ws.get_all_records(expected_headers=expected_headers)
         except Exception:
-            return ws.get_all_records(expected_headers=[])
+            records = ws.get_all_records(expected_headers=[])
+
+        alt_cuotas = (
+            "Tasa Interés",
+            "Tasa Interes",
+            "Tasa de Interés",
+            "Tasa de Interes",
+            "Tasa_Interes",
+            "Tasa",
+        )
+        for r in records:
+            if "Cuotas" not in r:
+                for alt in alt_cuotas:
+                    if alt in r:
+                        r["Cuotas"] = r[alt]
+                        break
+            if "Tasa_Interes" not in r and "Cuotas" in r:
+                r["Tasa_Interes"] = r["Cuotas"]
+        return records
 
     # --- Obligaciones_Maestro ---
     def insert_obligacion(self, obligacion_dict: dict) -> None:
@@ -201,6 +220,41 @@ class SheetsRepository:
     def get_all_movimientos(self) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
         return self._get_records(ws, ENCABEZADOS_LIBRO_DIARIO)
+
+    def reset_libro_diario_con_saldo_inicial(
+        self, saldo_inicial: int, fecha_str: str
+    ) -> None:
+        ws = self._get_sheet("Libro_Diario")
+        try:
+            ws.clear()
+        except Exception as e:
+            import logging
+
+            logging.getLogger("sheets_repo").warning(
+                f"Error al limpiar Libro_Diario: {e}"
+            )
+        self._ensure_headers(ws, "Libro_Diario")
+        if saldo_inicial != 0:
+            mes_str = fecha_str.split("/")[1] if "/" in fecha_str else ""
+            row = [
+                fecha_str,
+                "Saldo Inicial",
+                "Cierre Anterior",
+                "N/A",
+                str(saldo_inicial),
+                "0",
+                str(saldo_inicial),
+                "Saldo Inicial / Traspaso",
+                "N/A",
+                "N/A",
+                mes_str,
+                "",
+                "0",
+                str(saldo_inicial),
+                "0",
+                "Exento",
+            ]
+            ws.append_row(row)
 
     # --- Cierres_Historicos ---
     def get_last_cierre_mensual(self) -> dict:

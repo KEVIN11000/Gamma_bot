@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from logic.financiero import (
     create_debt,
@@ -377,6 +377,57 @@ class TestFinancieroLogic(unittest.TestCase):
         self.assertTrue(res)
         repo_instance.agregar_gasto_fijo.assert_called_once_with(
             "Vivienda", "Internet", 150000, ""
+        )
+
+    def test_obtener_balance_con_saldo_inicial(self):
+        from logic.financiero import AgenteFinanciero
+
+        agente = AgenteFinanciero("dummy_id")
+        mock_ws = MagicMock()
+        mock_ws.get_all_values.return_value = [
+            ["Fecha", "Movimiento", "Proveedor", "Factura", "Neto", "IVA", "Total"],
+            [
+                "01/10/2026",
+                "Saldo Inicial",
+                "Cierre Anterior",
+                "N/A",
+                "500000",
+                "0",
+                "500000",
+            ],
+            ["05/10/2026", "Ingreso", "Cliente A", "F-01", "100000", "0", "100000"],
+            ["06/10/2026", "Egreso", "Proveedor B", "F-02", "40000", "0", "40000"],
+        ]
+        agente._ws = mock_ws
+
+        balance = agente.obtener_balance()
+        self.assertEqual(balance["saldo_inicial"], 500000)
+        self.assertEqual(balance["ingresos"], 100000)
+        self.assertEqual(balance["gastos"], 40000)
+        self.assertEqual(balance["flujo_neto"], 500000 + 100000 - 40000)
+
+    @patch("logic.financiero.SheetsRepository")
+    @patch("logic.financiero.DriveService")
+    @patch("logic.financiero.get_now_py")
+    @patch("builtins.open", new_callable=unittest.mock.mock_open)
+    def test_execute_monthly_closing_resets_libro_diario(
+        self, mock_open, mock_get_now, MockDrive, MockRepo
+    ):
+        import datetime
+        from dateutil.tz import tzutc
+
+        mock_get_now.return_value = datetime.datetime(2026, 9, 30, tzinfo=tzutc())
+        repo_instance = MockRepo.return_value
+        repo_instance.get_movimientos_mes.return_value = []
+        repo_instance.get_last_cierre_mensual.return_value = {
+            "Saldo_Acumulado": 1500000
+        }
+        MockDrive.upload_backup.return_value = "drive_id_backup"
+
+        drive_id = execute_monthly_closing(9, 2026)
+        self.assertEqual(drive_id, "drive_id_backup")
+        repo_instance.reset_libro_diario_con_saldo_inicial.assert_called_once_with(
+            1500000, "01/10/2026"
         )
 
 

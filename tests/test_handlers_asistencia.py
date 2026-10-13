@@ -208,6 +208,8 @@ def test_callback_cierre(
         call.message.chat.id,
         "generar_reporte",
         {"tipo": "cierre", "descuento": 0, "incluir_iva": True},
+        sync_fallback=True,
+        bot=mock_bot,
     )
 
     call.data = "cierre_descuento_si"
@@ -230,7 +232,11 @@ def test_comando_reporte(
     msg = create_message("reporte finanzas")
     handler(msg)
     mock_enqueue.assert_called_once_with(
-        msg.chat.id, "generar_reporte", {"tipo": "financiero"}
+        msg.chat.id,
+        "generar_reporte",
+        {"tipo": "financiero"},
+        sync_fallback=True,
+        bot=mock_bot,
     )
 
     mock_bot.reset_mock()
@@ -262,7 +268,11 @@ def test_callback_reporte(
     call.data = "reporte_tipo_finanzas"
     handler(call)
     mock_enqueue.assert_called_once_with(
-        call.message.chat.id, "generar_reporte", {"tipo": "financiero"}
+        call.message.chat.id,
+        "generar_reporte",
+        {"tipo": "financiero"},
+        sync_fallback=True,
+        bot=mock_bot,
     )
 
     # seleccionar hoja → debe preguntar IVA ahora
@@ -294,6 +304,8 @@ def test_callback_reporte(
             "descuento": 0,
             "incluir_iva": False,
         },
+        sync_fallback=True,
+        bot=mock_bot,
     )
 
     # Test session expired
@@ -311,3 +323,19 @@ def test_callback_reporte(
     mock_bot.reset_mock()
     handler(call)
     mock_bot.register_next_step_handler.assert_called_once()
+
+
+def test_cierre_mensual_no_interceptado_por_asistencia(registered_handlers):
+    call = create_callback("cierre_mensual_actual")
+    for condition, _ in registered_handlers.get("callbacks", []):
+        if condition and condition(call):
+            assert (
+                False
+            ), "asistencia callback handler interceptó cierre_mensual_actual erróneamente"
+
+    call_manual = create_callback("cierre_mensual_manual")
+    for condition, _ in registered_handlers.get("callbacks", []):
+        if condition and condition(call_manual):
+            assert (
+                False
+            ), "asistencia callback handler interceptó cierre_mensual_manual erróneamente"
