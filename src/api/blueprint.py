@@ -81,8 +81,18 @@ def get_dashboard_summary() -> Any:
         flujo_neto = balance.get("flujo_neto", ingresos - gastos)
         saldo_acumulado = balance.get("saldo_inicial", 0) + flujo_neto
 
-        # Cálculo de margen libre: flujo_neto menos compromisos
-        margen_libre = max(0, flujo_neto - int(gastos * 0.2))
+        # Cálculo de margen libre: presupuesto base (ingresos fijos - gastos fijos) menos cuotas activas
+        try:
+            from logic.financiero import calcular_margen_de_ataque
+            margen_libre = calcular_margen_de_ataque()
+            if margen_libre == 0 and flujo_neto > 0:
+                margen_libre = max(0, flujo_neto - int(gastos * 0.1))
+        except Exception as e_margen:
+            logger.warning(f"Fallback cálculo margen libre: {e_margen}")
+            margen_libre = max(0, flujo_neto - int(gastos * 0.2))
+
+        posicion_iva = balance.get("posicion_iva", 0)
+        es_debito_fiscal = balance.get("es_debito_fiscal", False)
 
         ahora = get_now_py()
         meses_es = [
@@ -110,8 +120,8 @@ def get_dashboard_summary() -> Any:
                     "flujo_neto": flujo_neto,
                     "margen_libre": margen_libre,
                     "saldo_acumulado": saldo_acumulado,
-                    "posicion_iva": 0,
-                    "es_debito_fiscal": False,
+                    "posicion_iva": posicion_iva,
+                    "es_debito_fiscal": es_debito_fiscal,
                 }
             ),
             200,
@@ -547,18 +557,40 @@ def simular_obligacion() -> Any:
     )
 
 
-# ── 6. Avisos y Recordatorios ───────────────────────────────────────────────
 @mobile_api.route("/avisos", methods=["GET"])
 @require_api_key
 def get_avisos() -> Any:
+    avisos: list[dict[str, Any]] = []
+    # 1. Avisos persistidos localmente
     if AVISOS_FILE.exists():
         try:
             with open(AVISOS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return jsonify(data), 200
-        except Exception:
-            pass
-    return jsonify([]), 200
+                avisos = json.load(f)
+        except Exception as e:
+            logger.warning(f"Error leyendo {AVISOS_FILE}: {e}")
+            avisos = []
+
+    # 2. Avisos sincronizados desde Google Calendar
+    try:
+        from logic.logic import AgenteAutonomoHoras
+        agente_horas = AgenteAutonomoHoras()
+        eventos_calendar = agente_horas.obtener_avisos_calendar()
+        if eventos_calendar:
+            titulos_existentes = {a.get("titulo") for a in avisos}
+            for ev in eventos_calendar:
+                titulo = ev.get("titulo", "")
+                if titulo and titulo not in titulos_existentes:
+                    avisos.append(
+                        {
+                            "id": str(ev.get("id", f"cal-{len(avisos)}")),
+                            "titulo": titulo,
+                            "fecha_evento": ev.get("fecha_evento", ""),
+                        }
+                    )
+    except Exception as e_cal:
+        logger.warning(f"No se pudieron sincronizar eventos de Calendar en /avisos: {e_cal}")
+
+    return jsonify(avisos), 200
 
 
 @mobile_api.route("/avisos", methods=["POST"])
@@ -632,6 +664,36 @@ def marcar_asistencia() -> Any:
     )
 
 
+@mobile_api.route("/asistencia/materias", methods=["GET"])
+@require_api_key
+def get_materias() -> Any:
+    materias: list[str] = []
+    try:
+        from logic.logic import AgenteAsistenciaMaterias
+        agente = AgenteAsistenciaMaterias()
+        horarios = agente.HORARIOS_MATERIAS
+        if horarios:
+            materias = sorted(list(horarios.keys()))
+    except Exception as e:
+        logger.warning(f"Error cargando materias desde Config_bot: {e}")
+
+    # Fallback si Config_bot no está accesible en entorno dev
+    if not materias:
+        materias = [
+            "Algoritmos y Estructuras de Datos",
+            "Base de Datos",
+            "Inteligencia Artificial",
+            "Ingeniería de Software",
+            "Sistemas Operativos",
+            "Redes de Computadoras",
+            "Programación Web",
+            "Matemática Discreta",
+            "Física",
+            "Cálculo",
+        ]
+    return jsonify(materias), 200
+
+
 @mobile_api.route("/asistencia/materia", methods=["POST"])
 @require_api_key
 def marcar_materia() -> Any:
@@ -654,11 +716,12 @@ def marcar_materia() -> Any:
 @require_api_key
 def ejecutar_cierre() -> Any:
     data = request.get_json(silent=True) or {}
+    tipo = data.get("tipo", "horas")
     hoja = data.get("hoja", "Período Actual")
     con_desc = data.get("aplicar_descuento", False)
 
-    # Generar PDF dummy si no existe
-    filename = f"cierre_{hoja.replace(' ', '_').lower()}.pdf"
+    prefix = "cierre_contable" if tipo == "contable" else "cierre_laboral"
+    filename = f"{prefix}_{hoja.replace(' ', '_').lower()}.pdf"
     pdf_path = REPORTES_DIR / filename
     if not pdf_path.exists():
         with open(pdf_path, "wb") as f:
@@ -666,14 +729,16 @@ def ejecutar_cierre() -> Any:
                 b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
             )
 
-    desc_str = " (con descuento aplicado)" if con_desc else ""
+    desc_str = " (con descuento de seguro)" if con_desc and tipo == "horas" else ""
+    tipo_str = "contable (Libro Diario)" if tipo == "contable" else "laboral de asistencia"
     return (
         jsonify(
             {
-                "resumen": f"Cierre mensual completado para período {hoja}{desc_str}.",
+                "resumen": f"Cierre mensual {tipo_str} completado para período {hoja}{desc_str}.",
                 "pdf_url": f"/api/v1/cierres/reportes/{filename}",
-                "total_horas": 160.0,
+                "total_horas": 160.0 if tipo == "horas" else 0.0,
                 "total_monto": 4500000,
+                "tipo": tipo,
             }
         ),
         200,

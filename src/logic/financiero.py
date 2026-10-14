@@ -308,10 +308,12 @@ class AgenteFinanciero:
             saldo_inicial = 0
             total_ingresos = 0
             total_gastos = 0
+            total_iva_credito = 0
+            total_iva_debito = 0
 
             for idx, fila in enumerate(registros):
-                # Pad short rows instead of skipping
-                fila = (fila + [""] * 7)[: max(len(fila), 7)]
+                # Pad short rows to at least 16 columns
+                fila = (fila + [""] * 16)[: max(len(fila), 16)]
                 tipo = fila[1].strip().lower()
                 monto_raw = fila[6].strip()
                 monto_val = safe_int(monto_raw)
@@ -320,20 +322,40 @@ class AgenteFinanciero:
                         f"obtener_balance: fila {idx + 2} descartada — "
                         f"monto no parseable: '{monto_raw}'"
                     )
+
+                # IVA column: columna 14 (Monto_IVA) o columna 5 (IVA) o estimación por tasa
+                iva_raw = fila[14].strip() if len(fila) > 14 and fila[14].strip() else (fila[5].strip() if len(fila) > 5 else "")
+                iva_val = safe_int(iva_raw)
+                if iva_val == 0 and monto_val > 0:
+                    tasa = fila[12].strip() if len(fila) > 12 else ""
+                    if "10" in tasa:
+                        iva_val = round(monto_val / 11)
+                    elif "5" in tasa:
+                        iva_val = round(monto_val / 21)
+
                 if tipo in ("ingreso", "ingresos", "entrada", "venta"):
                     total_ingresos += monto_val
+                    total_iva_debito += iva_val
                 elif tipo in ("egreso", "egresos", "gasto", "gastos", "salida", "compra", "pago"):
                     total_gastos += monto_val
+                    total_iva_credito += iva_val
                 elif any(k in tipo for k in ("saldo inicial", "saldo_inicial", "saldo acumulado", "saldo_acumulado", "apertura")):
                     saldo_inicial += monto_val
 
             flujo_neto = saldo_inicial + total_ingresos - total_gastos
+            posicion_iva_neta = total_iva_credito - total_iva_debito
+            es_debito_fiscal = posicion_iva_neta < 0
+            posicion_iva = abs(posicion_iva_neta)
 
             return {
                 "saldo_inicial": saldo_inicial,
                 "ingresos": total_ingresos,
                 "gastos": total_gastos,
                 "flujo_neto": flujo_neto,
+                "total_iva_credito": total_iva_credito,
+                "total_iva_debito": total_iva_debito,
+                "posicion_iva": posicion_iva,
+                "es_debito_fiscal": es_debito_fiscal,
             }
         except Exception as e:
             logger.error(f"❌ Error al obtener balance: {e}")

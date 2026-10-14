@@ -57,8 +57,9 @@ def test_dashboard_summary(client):
     assert res.status_code == 200
     data = res.get_json()
     assert "mes" in data
-    assert "flujo_neto" in data
     assert "margen_libre" in data
+    assert "posicion_iva" in data
+    assert "es_debito_fiscal" in data
 
 
 def test_movimientos_crud(client):
@@ -235,4 +236,26 @@ def test_contracts_parity_and_remediation(client):
     assert "25/11/2026" in aviso_data["fecha_evento"]
     assert "15:00" in aviso_data["fecha_evento"]
     assert aviso_data["dias_restantes"] >= 1
+
+
+def test_asistencia_materias_and_dual_cierre(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+    # 1. GET /asistencia/materias
+    res_mat = client.get("/api/v1/asistencia/materias", headers=headers)
+    assert res_mat.status_code == 200
+    materias = res_mat.get_json()
+    assert isinstance(materias, list)
+    assert len(materias) > 0
+
+    # 2. Cierre Contable
+    res_cierre_contable = client.post(
+        "/api/v1/cierres/ejecutar",
+        headers=headers,
+        json={"hoja": "Octubre 2026", "tipo": "contable"},
+    )
+    assert res_cierre_contable.status_code == 200
+    data_cierre = res_cierre_contable.get_json()
+    assert "pdf_url" in data_cierre
+    assert "cierre_contable" in data_cierre["pdf_url"]
+    assert data_cierre["tipo"] == "contable"
 
