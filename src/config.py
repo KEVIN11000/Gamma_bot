@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
+load_dotenv(dotenv_path=BASE_DIR.parent / ".env")
 
 # Load environment variables with minimal validation
 TOKEN: str = os.getenv("TOKEN", "")
