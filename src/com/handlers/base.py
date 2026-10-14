@@ -330,9 +330,10 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         texto = (
             "📱 *Gamma Mobile (Android)*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "Versión actual: *0.0.1+20275a5*\n\n"
+            "Versión actual: *0.0.1+3048e4c* (v0.0.1)\n\n"
             "Podés descargar e instalar el instalador APK oficial desde:\n"
-            "🔗 [GitHub Releases](https://github.com/KEVIN11000/Gamma_bot/releases)\n\n"
+            "🔗 [GitHub Releases](https://github.com/KEVIN11000/Gamma_Mobile/releases)\n\n"
+            "📥 [Descarga Directa APK](https://github.com/KEVIN11000/Gamma_Mobile/releases/download/v0.0.1/app-release.apk)\n\n"
             "_Para actualizar, simplemente descargá el archivo e instalalo sobre la versión actual._"
         )
         bot.reply_to(message, texto, parse_mode="Markdown")
