@@ -189,3 +189,50 @@ def test_soporte_tickets_and_logs(client):
     res_logs = client.get("/api/v1/sistema/logs", headers=headers)
     assert res_logs.status_code == 200
     assert len(res_logs.get_json()) >= 1
+
+
+def test_contracts_parity_and_remediation(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    # 1. Movimientos contrato con tipo y movimiento
+    res_post_mov = client.post(
+        "/api/v1/movimientos",
+        headers=headers,
+        json={
+            "proveedor_cliente": "Farmacia Test",
+            "total": 55000,
+            "categoria": "Salud",
+            "tasa_iva": "10%",
+            "movimiento": "Gasto",
+            "comprobante": "Física Legal",
+        },
+    )
+    assert res_post_mov.status_code == 200
+    data_mov = res_post_mov.get_json()
+    assert "tipo" in data_mov
+    assert "movimiento" in data_mov
+    assert data_mov["categoria"] == "Salud"
+
+    # 2. Obligaciones snake_case
+    res_ob = client.get("/api/v1/obligaciones", headers=headers)
+    assert res_ob.status_code == 200
+    obs = res_ob.get_json()
+    if len(obs) > 0:
+        primera = obs[0]
+        assert "id" in primera
+        assert "nombre" in primera
+        assert "monto_inicial" in primera
+        assert "saldo_actual" in primera
+
+    # 3. Interpretación de aviso con fecha futura
+    res_aviso = client.post(
+        "/api/v1/ia/interpretar/aviso",
+        headers=headers,
+        json={"texto": "Reunión de balance el 25/11/2026 a las 15:00"},
+    )
+    assert res_aviso.status_code == 200
+    aviso_data = res_aviso.get_json()
+    assert "25/11/2026" in aviso_data["fecha_evento"]
+    assert "15:00" in aviso_data["fecha_evento"]
+    assert aviso_data["dias_restantes"] >= 1
+

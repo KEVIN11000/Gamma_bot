@@ -144,21 +144,25 @@ def get_movimientos() -> Any:
 
         movimientos = []
         for idx, row in enumerate(reversed(registros)):
-            if len(row) < 7:
+            if len(row) < 2:
                 continue
+            r = (row + [""] * 16)[: max(len(row), 16)]
             movimientos.append(
                 {
                     "id": f"mov-{idx}",
-                    "fecha": row[0],
-                    "movimiento": row[1],
-                    "proveedor_cliente": row[2],
-                    "nro_factura": row[3],
-                    "categoria": row[4],
-                    "comprobante": row[5],
-                    "total": safe_int(row[6]),
-                    "monto_gravado": safe_int(row[6]),
-                    "monto_iva": 0,
-                    "tasa_iva": "10%",
+                    "fecha": r[0],
+                    "tipo": r[1],
+                    "movimiento": r[1],
+                    "proveedor_cliente": r[2],
+                    "nro_factura": r[3],
+                    "neto": safe_int(r[4]),
+                    "monto_gravado": safe_int(r[4]) if safe_int(r[4]) > 0 else safe_int(r[6]),
+                    "iva": safe_int(r[5]),
+                    "monto_iva": safe_int(r[5]),
+                    "total": safe_int(r[6]),
+                    "categoria": r[7] if r[7] else "General",
+                    "comprobante": r[8] if r[8] else "No Legal",
+                    "tasa_iva": r[12] if r[12] else "10%",
                 }
             )
         return jsonify(movimientos), 200
@@ -200,7 +204,7 @@ def create_movimiento() -> Any:
     ahora = get_now_py()
     fecha = req_obj.fecha or ahora.strftime("%d/%m")
 
-    # Persistencia
+    # Persistencia con 16 columnas oficiales según ENCABEZADOS_LIBRO_DIARIO
     try:
         from repositories.sheets_repository import SheetsRepository
 
@@ -208,13 +212,22 @@ def create_movimiento() -> Any:
         ws = repo._get_sheet("Libro_Diario")
         if ws:
             nueva_fila = [
-                fecha,
-                req_obj.movimiento.value,
-                req_obj.proveedor_cliente,
-                req_obj.nro_factura or "S/N",
-                req_obj.categoria,
-                req_obj.comprobante.value,
-                str(total),
+                fecha,                         # 0 Fecha
+                req_obj.movimiento.value,      # 1 Movimiento
+                req_obj.proveedor_cliente,     # 2 Proveedor/Cliente
+                req_obj.nro_factura or "S/N",  # 3 Nro Factura
+                str(monto_gravado),            # 4 Neto
+                str(monto_iva),                # 5 IVA
+                str(total),                    # 6 Total
+                req_obj.categoria,             # 7 Categoría
+                req_obj.comprobante.value,     # 8 Comprobante
+                "",                            # 9 Rastro/Foto
+                ahora.strftime("%m/%Y"),       # 10 Mes
+                "",                            # 11 ID_Obligacion
+                tasa,                          # 12 Tasa_IVA
+                str(monto_gravado),            # 13 Monto_Gravado
+                str(monto_iva),                # 14 Monto_IVA
+                "",                            # 15 Clasificacion_IVA
             ]
             ws.append_row(nueva_fila)
     except Exception as e:
@@ -224,6 +237,7 @@ def create_movimiento() -> Any:
         jsonify(
             {
                 "fecha": fecha,
+                "tipo": req_obj.movimiento.value,
                 "movimiento": req_obj.movimiento.value,
                 "proveedor_cliente": req_obj.proveedor_cliente,
                 "nro_factura": req_obj.nro_factura,
@@ -316,14 +330,81 @@ def interpretar_ia() -> Any:
 def interpretar_aviso_ia() -> Any:
     data = request.get_json(silent=True) or {}
     texto = data.get("texto", "")
-    time.sleep(1)
+    ahora = get_now_py()
+
+    titulo = f"Recordatorio: {texto[:30]}" if texto else "Aviso sugerido"
+    fecha_evento_str = None
+
+    # Intentar parseo con IA si hay API KEY disponible
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key and texto:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=api_key)
+            prompt = (
+                f"Eres un asistente organizador. Analiza el siguiente texto de un recordatorio o evento.\n"
+                f"Hoy es {ahora.strftime('%d/%m/%Y %H:%M')}.\n"
+                f"Extrae y devuelve un JSON estricto con:\n"
+                f"1. 'titulo': nombre breve y descriptivo del evento.\n"
+                f"2. 'fecha_evento': fecha y hora del evento en formato 'DD/MM/YYYY HH:MM'. Si el usuario menciona un día o fecha futura (ej. 'mañana', 'el 25', 'el viernes'), calcula la fecha correcta. Si no especifica hora, asume 09:00.\n"
+                f"Texto: {texto}"
+            )
+            resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            parsed = json.loads(resp.text)
+            titulo = parsed.get("titulo", titulo)
+            fecha_evento_str = parsed.get("fecha_evento")
+        except Exception as e_ai:
+            logger.warning(f"Error procesando aviso con Gemini: {e_ai}")
+
+    # Fallback determinista con regex si no hubo IA o falló
+    if not fecha_evento_str:
+        import re
+        from datetime import timedelta
+        match_fecha = re.search(r"(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?", texto)
+        match_hora = re.search(r"(\d{1,2}):(\d{2})", texto)
+        hora_str = f"{match_hora.group(1).zfill(2)}:{match_hora.group(2)}" if match_hora else "09:00"
+
+        if match_fecha:
+            d = match_fecha.group(1).zfill(2)
+            m = match_fecha.group(2).zfill(2)
+            y = match_fecha.group(3) or str(ahora.year)
+            if len(y) == 2:
+                y = f"20{y}"
+            fecha_evento_str = f"{d}/{m}/{y} {hora_str}"
+        elif "mañana" in texto.lower():
+            manana = ahora + timedelta(days=1)
+            fecha_evento_str = manana.strftime(f"%d/%m/%Y {hora_str}")
+        elif "pasado mañana" in texto.lower():
+            pasado = ahora + timedelta(days=2)
+            fecha_evento_str = pasado.strftime(f"%d/%m/%Y {hora_str}")
+        else:
+            # Fallback seguro: agendar para mañana a las 09:00 (nunca la hora de la petición)
+            fallback_dt = ahora + timedelta(days=1)
+            fecha_evento_str = fallback_dt.strftime("%d/%m/%Y 09:00")
+
+    # Cálculo relativo de días restantes
+    dias_restantes = 1
+    try:
+        from datetime import datetime
+        dt_evento = datetime.strptime(fecha_evento_str.split()[0], "%d/%m/%Y")
+        dt_hoy = datetime(ahora.year, ahora.month, ahora.day)
+        dias_restantes = max(0, (dt_evento - dt_hoy).days)
+    except Exception:
+        pass
+
     return (
         jsonify(
             {
                 "id": str(uuid.uuid4())[:8],
-                "titulo": f"Recordatorio: {texto[:30]}" if texto else "Aviso sugerido",
-                "fecha_evento": get_now_py().strftime("%d/%m/%Y %H:%M"),
-                "dias_restantes": 3,
+                "titulo": titulo,
+                "fecha_evento": fecha_evento_str,
+                "dias_restantes": dias_restantes,
             }
         ),
         200,
@@ -338,7 +419,22 @@ def get_obligaciones() -> Any:
         from repositories.sheets_repository import SheetsRepository
 
         repo = SheetsRepository()
-        obligaciones = repo.get_todas_obligaciones()
+        raw_obligaciones = repo.get_todas_obligaciones()
+        obligaciones = []
+        for o in raw_obligaciones:
+            obligaciones.append(
+                {
+                    "id": o.get("ID_Obligacion") or o.get("id", ""),
+                    "nombre": o.get("Nombre") or o.get("nombre", ""),
+                    "tipo": o.get("Tipo") or o.get("tipo", ""),
+                    "monto_inicial": safe_int(o.get("Monto_Inicial") or o.get("monto_inicial")),
+                    "saldo_actual": safe_int(o.get("Saldo_Actual") or o.get("saldo_actual")),
+                    "estado": o.get("Estado") or o.get("estado", "Activo"),
+                    "cuota_referencia_gs": safe_int(o.get("Cuota_Referencia_Gs") or o.get("Cuotas")),
+                    "fecha_inicio": o.get("Fecha_Inicio") or o.get("fecha_inicio", ""),
+                    "observaciones": o.get("Observaciones") or o.get("observaciones", ""),
+                }
+            )
         return jsonify(obligaciones), 200
     except Exception as e:
         logger.warning(f"Fallback obligaciones: {e}")
@@ -636,6 +732,37 @@ def create_ticket() -> Any:
             json.dump(tickets, f, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.error(f"Error guardando ticket: {e}")
+
+    # Telemetría Vigía (creación de Issue en GitHub)
+    try:
+        from com.core.telemetry import reportar_incidente_vigia
+
+        reportar_incidente_vigia(
+            titulo=f"[APP TICKET] {nuevo_ticket['id']}: {req_obj.asunto}",
+            detalle=f"Ticket reportado desde Gamma Mobile:\n\n{req_obj.descripcion or 'Sin detalle'}",
+            origen="gamma-mobile",
+        )
+    except Exception as e_vigia:
+        logger.warning(f"No se pudo reportar a Vigía: {e_vigia}")
+
+    # Alerta push al Telegram del Administrador
+    try:
+        chat_id = os.getenv("CHAT_ID")
+        if chat_id:
+            from flask_app import bot_instance
+
+            if bot_instance and hasattr(bot_instance, "bot") and bot_instance.bot:
+                bot_instance.bot.send_message(
+                    int(chat_id),
+                    f"🎫 <b>Nuevo Ticket de Soporte (App Móvil)</b>\n\n"
+                    f"🆔 <b>ID:</b> <code>{nuevo_ticket['id']}</code>\n"
+                    f"📌 <b>Asunto:</b> {nuevo_ticket['asunto']}\n"
+                    f"📝 <b>Descripción:</b> {nuevo_ticket['descripcion']}\n"
+                    f"📅 <b>Fecha:</b> {nuevo_ticket['fecha']}",
+                    parse_mode="HTML",
+                )
+    except Exception as e_tg:
+        logger.warning(f"No se pudo enviar notificación de ticket a Telegram: {e_tg}")
 
     return jsonify(nuevo_ticket), 201
 
