@@ -320,16 +320,11 @@ class AgenteFinanciero:
                         f"obtener_balance: fila {idx + 2} descartada — "
                         f"monto no parseable: '{monto_raw}'"
                     )
-                if tipo == "ingreso":
+                if tipo in ("ingreso", "ingresos", "entrada", "venta"):
                     total_ingresos += monto_val
-                elif tipo in ("egreso", "gasto"):
+                elif tipo in ("egreso", "egresos", "gasto", "gastos", "salida", "compra", "pago"):
                     total_gastos += monto_val
-                elif tipo in (
-                    "saldo inicial",
-                    "saldo_inicial",
-                    "saldo acumulado",
-                    "saldo_acumulado",
-                ):
+                elif any(k in tipo for k in ("saldo inicial", "saldo_inicial", "saldo acumulado", "saldo_acumulado", "apertura")):
                     saldo_inicial += monto_val
 
             flujo_neto = saldo_inicial + total_ingresos - total_gastos
