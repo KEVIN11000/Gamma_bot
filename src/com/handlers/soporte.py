@@ -29,10 +29,11 @@ from logger_config import setup_logger
 logger = setup_logger("soporte_handler")
 BASE_DIR = Path(__file__).resolve().parents[2]
 FALLBACK_TICKETS_FILE = BASE_DIR / "incidentes_telegram.json"
+UNIFIED_TICKETS_FILE = BASE_DIR / "src" / "data" / "tickets.json"
 
 
 def _guardar_ticket_fallback(ticket_data: Dict[str, Any]) -> None:
-    """Guarda una copia del ticket en disco en caso de que GitHub API no esté disponible."""
+    """Guarda una copia del ticket en disco y sincroniza con el almacén unificado de la app."""
     try:
         tickets = []
         if FALLBACK_TICKETS_FILE.exists():
@@ -46,6 +47,35 @@ def _guardar_ticket_fallback(ticket_data: Dict[str, Any]) -> None:
             json.dump(tickets, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Error guardando ticket en fallback local: {e}")
+
+    # Sincronización transparente con el almacén unificado (tickets.json) para Gamma Mobile
+    try:
+        app_tickets = []
+        if UNIFIED_TICKETS_FILE.exists():
+            try:
+                with open(UNIFIED_TICKETS_FILE, "r", encoding="utf-8") as f_u:
+                    app_tickets = json.load(f_u)
+            except Exception:
+                app_tickets = []
+
+        import datetime
+
+        fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y")
+        nuevo_id = f"TCK-{len(app_tickets) + 1:03d}"
+        app_ticket = {
+            "id": nuevo_id,
+            "asunto": ticket_data.get("titulo", "Ticket Telegram"),
+            "descripcion": ticket_data.get("descripcion", ""),
+            "estado": "Abierto",
+            "fecha": fecha_hoy,
+            "origen": "telegram",
+            "resolucion": None,
+        }
+        app_tickets.insert(0, app_ticket)
+        with open(UNIFIED_TICKETS_FILE, "w", encoding="utf-8") as f_u:
+            json.dump(app_tickets, f_u, ensure_ascii=False, indent=2)
+    except Exception as e_sync:
+        logger.warning(f"No se pudo sincronizar ticket con tickets.json: {e_sync}")
 
 
 def _procesar_y_confirmar_soporte(

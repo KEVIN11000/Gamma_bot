@@ -172,19 +172,57 @@ def test_cierres_and_pdf(client):
     assert res_pdf.content_type == "application/pdf"
 
 
-def test_soporte_tickets_and_logs(client):
+def test_soporte_tickets_and_logs(client, monkeypatch, tmp_path):
     headers = {"X-API-KEY": "test-secret-key"}
+    fake_tickets = tmp_path / "tickets.json"
+    fake_tickets.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr("api.blueprint.TICKETS_FILE", fake_tickets)
+
     # Ticket POST
     res_post = client.post(
         "/api/v1/soporte/tickets",
         headers=headers,
-        json={"asunto": "Fallo sincronización", "descripcion": "Prueba unitaria"},
+        json={"asunto": "Fallo sincronización", "descripcion": "Prueba unitaria", "origen": "telegram"},
     )
     assert res_post.status_code == 201
+    post_data = res_post.get_json()
+    assert post_data["origen"] == "telegram"
+    assert post_data["estado"] == "Abierto"
+    ticket_id = post_data["id"]
 
     # Ticket GET
     res_get = client.get("/api/v1/soporte/tickets", headers=headers)
     assert res_get.status_code == 200
+    tickets = res_get.get_json()
+    assert len(tickets) == 1
+    assert tickets[0]["origen"] == "telegram"
+
+    # Ticket PATCH - Éxito
+    res_patch = client.patch(
+        f"/api/v1/soporte/tickets/{ticket_id}",
+        headers=headers,
+        json={"estado": "Cerrado", "resolucion": "Resuelto en testing"},
+    )
+    assert res_patch.status_code == 200
+    patch_data = res_patch.get_json()
+    assert patch_data["estado"] == "Cerrado"
+    assert patch_data["resolucion"] == "Resuelto en testing"
+
+    # Ticket PATCH - Estado inválido
+    res_patch_invalid = client.patch(
+        f"/api/v1/soporte/tickets/{ticket_id}",
+        headers=headers,
+        json={"estado": "Invalido"},
+    )
+    assert res_patch_invalid.status_code == 400
+
+    # Ticket PATCH - 404 No encontrado
+    res_patch_404 = client.patch(
+        "/api/v1/soporte/tickets/TCK-999",
+        headers=headers,
+        json={"estado": "Cerrado"},
+    )
+    assert res_patch_404.status_code == 404
 
     # Logs
     res_logs = client.get("/api/v1/sistema/logs", headers=headers)
@@ -258,4 +296,3 @@ def test_asistencia_materias_and_dual_cierre(client):
     assert "pdf_url" in data_cierre
     assert "cierre_contable" in data_cierre["pdf_url"]
     assert data_cierre["tipo"] == "contable"
-

@@ -151,7 +151,10 @@ class SheetsRepository:
     def get_obligaciones_activas(self) -> list[dict]:
         ws = self._get_sheet("Obligaciones_Maestro")
         records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
-        return [r for r in records if str(r.get("Estado", "")).lower() == "activo"]
+        return [
+            r for r in records
+            if str(r.get("Estado", "")).strip().lower() in ("activo", "activa")
+        ]
 
     def update_obligacion_saldo(
         self,

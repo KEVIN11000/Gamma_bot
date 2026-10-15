@@ -19,6 +19,7 @@ from api.schemas import (
     AvisoCreate,
     IAParseRequest,
     TicketCreate,
+    TicketUpdate,
 )
 from logger_config import setup_logger
 from logic.logic import get_now_py, safe_int
@@ -505,8 +506,15 @@ def abonar_obligacion() -> Any:
         ob = repo.get_obligacion_by_id(req_obj.id_obligacion)
         saldo_actual = safe_int(ob.get("Saldo_Actual", req_obj.monto))
         nuevo_saldo = max(0, saldo_actual - req_obj.monto)
-        nuevo_estado = "Saldado" if nuevo_saldo == 0 else "Activo"
-        repo.update_obligacion_saldo(req_obj.id_obligacion, nuevo_saldo, nuevo_estado)
+        nuevo_estado = "Saldada" if nuevo_saldo == 0 else "Activo"
+        cuotas_restantes = safe_int(ob.get("Cuotas_Restantes", ob.get("Cuotas", 0)))
+        nuevas_cuotas = cuotas_restantes - 1 if cuotas_restantes > 0 else 0
+        repo.update_obligacion_saldo(
+            req_obj.id_obligacion,
+            nuevo_saldo,
+            cuotas_restantes=nuevas_cuotas,
+            nuevo_estado=nuevo_estado,
+        )
         return (
             jsonify(
                 {
@@ -520,7 +528,7 @@ def abonar_obligacion() -> Any:
         )
     except Exception as e:
         logger.warning(f"Error procesando abono: {e}")
-        return jsonify({"status": "ok", "saldo_actual": 0, "estado": "Saldado"}), 200
+        return jsonify({"status": "ok", "saldo_actual": 0, "estado": "Saldada"}), 200
 
 
 @mobile_api.route("/obligaciones/simular", methods=["POST"])
@@ -758,6 +766,12 @@ def get_tickets() -> Any:
         try:
             with open(TICKETS_FILE, "r", encoding="utf-8") as f:
                 tickets = json.load(f)
+            # Asegurar retrocompatibilidad para registros que no tengan origen o resolución
+            for t in tickets:
+                if "origen" not in t:
+                    t["origen"] = "app"
+                if "resolucion" not in t:
+                    t["resolucion"] = None
             return jsonify(tickets), 200
         except Exception:
             pass
@@ -790,6 +804,8 @@ def create_ticket() -> Any:
         "descripcion": req_obj.descripcion or "",
         "estado": "Abierto",
         "fecha": get_now_py().strftime("%d/%m/%Y"),
+        "origen": req_obj.origen or "app",
+        "resolucion": None,
     }
     tickets.insert(0, nuevo_ticket)
     try:
@@ -823,13 +839,72 @@ def create_ticket() -> Any:
                     f"🆔 <b>ID:</b> <code>{nuevo_ticket['id']}</code>\n"
                     f"📌 <b>Asunto:</b> {nuevo_ticket['asunto']}\n"
                     f"📝 <b>Descripción:</b> {nuevo_ticket['descripcion']}\n"
-                    f"📅 <b>Fecha:</b> {nuevo_ticket['fecha']}",
+                    f"📅 <b>Fecha:</b> {nuevo_ticket['fecha']}\n"
+                    f"🌐 <b>Origen:</b> {nuevo_ticket['origen']}",
                     parse_mode="HTML",
                 )
     except Exception as e_tg:
         logger.warning(f"No se pudo enviar notificación de ticket a Telegram: {e_tg}")
 
     return jsonify(nuevo_ticket), 201
+
+
+@mobile_api.route("/soporte/tickets/<ticket_id>", methods=["PATCH"])
+@require_api_key
+def update_ticket(ticket_id: str) -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = TicketUpdate(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    estados_validos = {"Abierto", "En proceso", "Cerrado"}
+    if req_obj.estado not in estados_validos:
+        return (
+            jsonify({
+                "error": {
+                    "code": "INVALID_STATE",
+                    "message": f"Estado '{req_obj.estado}' inválido. Debe ser uno de: {sorted(list(estados_validos))}",
+                }
+            }),
+            400,
+        )
+
+    if not TICKETS_FILE.exists():
+        return jsonify({"error": {"code": "NOT_FOUND", "message": f"Ticket {ticket_id} no encontrado"}}), 404
+
+    try:
+        with open(TICKETS_FILE, "r", encoding="utf-8") as f:
+            tickets = json.load(f)
+    except Exception as e:
+        return jsonify({"error": {"code": "READ_ERROR", "message": str(e)}}), 500
+
+    target = None
+    for t in tickets:
+        if t.get("id") == ticket_id:
+            target = t
+            break
+
+    if not target:
+        return jsonify({"error": {"code": "NOT_FOUND", "message": f"Ticket {ticket_id} no encontrado"}}), 404
+
+    target["estado"] = req_obj.estado
+    if req_obj.resolucion is not None:
+        target["resolucion"] = req_obj.resolucion
+    if "origen" not in target:
+        target["origen"] = "app"
+
+    try:
+        with open(TICKETS_FILE, "w", encoding="utf-8") as f:
+            json.dump(tickets, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error actualizando ticket {ticket_id}: {e}")
+        return jsonify({"error": {"code": "WRITE_ERROR", "message": str(e)}}), 500
+
+    return jsonify(target), 200
 
 
 @mobile_api.route("/sistema/logs", methods=["GET"])

@@ -84,3 +84,9 @@ class CierreEjecutarRequest(BaseModel):
 class TicketCreate(BaseModel):
     asunto: str
     descripcion: Optional[str] = ""
+    origen: Optional[str] = "app"
+
+
+class TicketUpdate(BaseModel):
+    estado: str
+    resolucion: Optional[str] = None
