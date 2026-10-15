@@ -181,6 +181,32 @@ class TestFinancieroLogic(unittest.TestCase):
         self.assertEqual(margen, 4000)
 
     @patch("logic.financiero.SheetsRepository")
+    def test_calcular_margen_de_ataque_fallback_libro_diario(self, MockRepo):
+        repo_instance = MockRepo.return_value
+        # Presupuesto_Base carece de ingreso registrado (ingresos_base == 0)
+        repo_instance.obtener_presupuesto_base_completo.return_value = (0, 1000000)
+        repo_instance.obtener_ultimo_salario_libro_diario.return_value = 5000000
+        repo_instance.get_obligaciones_activas.return_value = [
+            {"Cuota_Referencia_Gs": "500000"},
+            {"Cuota_Referencia_Gs": "500000"},
+        ]
+        margen = calcular_margen_de_ataque()
+        # 5.000.000 (fallback sueldo) - 1.000.000 (gastos) - 1.000.000 (cuotas) = 3.000.000
+        self.assertEqual(margen, 3000000)
+        repo_instance.obtener_ultimo_salario_libro_diario.assert_called_once()
+
+    @patch("logic.financiero.SheetsRepository")
+    def test_calcular_margen_de_ataque_fallback_zero_when_no_salary(self, MockRepo):
+        repo_instance = MockRepo.return_value
+        repo_instance.obtener_presupuesto_base_completo.return_value = (0, 1000000)
+        repo_instance.obtener_ultimo_salario_libro_diario.return_value = 0
+        repo_instance.get_obligaciones_activas.return_value = [
+            {"Cuota_Referencia_Gs": "500000"},
+        ]
+        margen = calcular_margen_de_ataque()
+        self.assertEqual(margen, 0)
+
+    @patch("logic.financiero.SheetsRepository")
     @patch("logic.logic.get_now_py")
     def test_proyectar_cola_deudas(self, mock_get_now, MockRepo):
         import datetime
@@ -429,6 +455,99 @@ class TestFinancieroLogic(unittest.TestCase):
         repo_instance.reset_libro_diario_con_saldo_inicial.assert_called_once_with(
             1500000, "01/10/2026"
         )
+
+    @patch("logic.financiero.SheetsRepository")
+    @patch("logic.financiero.DriveService")
+    @patch("logic.financiero.get_now_py")
+    def test_execute_monthly_closing_aborts_on_inconsistent_balance(
+        self, mock_get_now, MockDrive, MockRepo
+    ):
+        repo_instance = MockRepo.return_value
+        # Fila con inconsistencia contable flagrante (Neto + IVA != Total)
+        repo_instance.get_movimientos_mes.return_value = [
+            {
+                "Movimiento": "Ingreso",
+                "Neto": 1000000,
+                "Monto_IVA": 200000,
+                "Total": 500000,  # Debería ser 1.200.000
+            }
+        ]
+
+        with self.assertRaises(ValueError) as ctx:
+            execute_monthly_closing(9, 2026)
+
+        self.assertIn("Validación de balance fallida", str(ctx.exception))
+        MockDrive.upload_backup.assert_not_called()
+        repo_instance.insert_cierre_mensual.assert_not_called()
+        repo_instance.reset_libro_diario_con_saldo_inicial.assert_not_called()
+
+    @patch("logic.financiero.SheetsRepository")
+    @patch("logic.financiero.DriveService")
+    @patch("logic.financiero.get_now_py")
+    @patch("builtins.open", new_callable=unittest.mock.mock_open)
+    def test_execute_monthly_closing_aborts_on_drive_failure(
+        self, mock_open, mock_get_now, MockDrive, MockRepo
+    ):
+        repo_instance = MockRepo.return_value
+        repo_instance.get_movimientos_mes.return_value = []
+        # Simular fallo en la subida a Drive retornando None
+        MockDrive.upload_backup.return_value = None
+
+        with self.assertRaises(RuntimeError) as ctx:
+            execute_monthly_closing(9, 2026)
+
+        self.assertIn("Fallo al generar el backup en Google Drive", str(ctx.exception))
+        repo_instance.insert_cierre_mensual.assert_not_called()
+        repo_instance.reset_libro_diario_con_saldo_inicial.assert_not_called()
+
+    @patch("repositories.sheets_repository.SheetsRepository")
+    def test_registrar_movimiento_auto_sync_salario(self, MockRepo):
+        from logic.financiero import AgenteFinanciero
+
+        agente = AgenteFinanciero("dummy_id")
+        mock_ws = MagicMock()
+        mock_ws.col_values.return_value = []
+        agente._ws = mock_ws
+        agente._retry_operation = MagicMock()
+
+        repo_instance = MockRepo.return_value
+
+        datos = {
+            "fecha": "15/10/2026",
+            "tipo_movimiento": "Ingreso",
+            "proveedor_cliente": "Empresa Empleadora",
+            "nro_factura": "S/N",
+            "total": 5500000,
+            "neto": 5500000,
+            "categoria": "Salario",
+        }
+        res = agente.registrar_movimiento(datos)
+        self.assertIn("✅", res)
+        repo_instance.upsert_salario_presupuesto_base.assert_called_once_with(5500000)
+
+    @patch("repositories.sheets_repository.SheetsRepository")
+    def test_registrar_movimiento_no_sync_for_non_salary(self, MockRepo):
+        from logic.financiero import AgenteFinanciero
+
+        agente = AgenteFinanciero("dummy_id")
+        mock_ws = MagicMock()
+        mock_ws.col_values.return_value = []
+        agente._ws = mock_ws
+        agente._retry_operation = MagicMock()
+
+        repo_instance = MockRepo.return_value
+
+        datos = {
+            "fecha": "15/10/2026",
+            "tipo_movimiento": "Gasto",
+            "proveedor_cliente": "Farmacia",
+            "nro_factura": "S/N",
+            "total": 150000,
+            "categoria": "Salud",
+        }
+        res = agente.registrar_movimiento(datos)
+        self.assertIn("✅", res)
+        repo_instance.upsert_salario_presupuesto_base.assert_not_called()
 
 
 if __name__ == "__main__":

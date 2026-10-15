@@ -1,5 +1,6 @@
 import os
 import sys
+import unittest
 from unittest.mock import patch, MagicMock
 import pytest
 
@@ -296,3 +297,88 @@ def test_asistencia_materias_and_dual_cierre(client):
     assert "pdf_url" in data_cierre
     assert "cierre_contable" in data_cierre["pdf_url"]
     assert data_cierre["tipo"] == "contable"
+
+
+def test_soporte_tickets_github_sync_dispatch(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    with unittest.mock.patch(
+        "services.github_service.GitHubIssueSyncService.create_github_issue"
+    ) as mock_create_gh, unittest.mock.patch(
+        "services.github_service.GitHubIssueSyncService.sync_ticket_status"
+    ) as mock_sync_gh:
+        # 1. Crear ticket y verificar dispatch hacia GitHub
+        res_post = client.post(
+            "/api/v1/soporte/tickets",
+            headers=headers,
+            json={
+                "asunto": "Fallo sincronización",
+                "descripcion": "Error al conectar con servidor",
+                "origen": "app",
+            },
+        )
+        assert res_post.status_code == 201
+        ticket_id = res_post.get_json()["id"]
+        mock_create_gh.assert_called_once()
+
+        # 2. Cerrar ticket y verificar sync hacia GitHub
+        res_patch = client.patch(
+            f"/api/v1/soporte/tickets/{ticket_id}",
+            headers=headers,
+            json={"estado": "Cerrado", "resolucion": "Corregido en release"},
+        )
+        assert res_patch.status_code == 200
+        mock_sync_gh.assert_called_once_with(
+            ticket_id=ticket_id,
+            nuevo_estado="Cerrado",
+            resolucion="Corregido en release",
+        )
+
+        # 3. Resiliencia: Si GitHub falla por timeout, la API no se cae
+        mock_sync_gh.side_effect = Exception("GitHub API Timeout")
+        res_patch_error = client.patch(
+            f"/api/v1/soporte/tickets/{ticket_id}",
+            headers=headers,
+            json={"estado": "Abierto"},
+        )
+        assert res_patch_error.status_code == 200
+        assert res_patch_error.get_json()["estado"] == "Abierto"
+
+
+def test_github_service_direct_unit_tests():
+    from services.github_service import GitHubIssueSyncService
+
+    # 1. Sin GITHUB_TOKEN configurado -> Retorna None/False sin hacer requests
+    with unittest.mock.patch.dict(os.environ, {}, clear=True):
+        assert GitHubIssueSyncService.is_configured() is False
+        assert GitHubIssueSyncService.create_github_issue({"id": "TCK-1"}) is None
+        assert (
+            GitHubIssueSyncService.sync_ticket_status(
+                "TCK-1", "Cerrado", "Fix", issue_number=10
+            )
+            is False
+        )
+
+    # 2. Con GITHUB_TOKEN -> Despacha requests correctamente
+    with unittest.mock.patch.dict(
+        os.environ, {"GITHUB_TOKEN": "mock-token", "GITHUB_REPO": "test/repo"}
+    ), unittest.mock.patch("requests.post") as mock_post, unittest.mock.patch(
+        "requests.patch"
+    ) as mock_patch:
+        # Mock de creación exitosa (201)
+        mock_post.return_value.status_code = 201
+        mock_post.return_value.json.return_value = {"number": 42}
+
+        issue_num = GitHubIssueSyncService.create_github_issue(
+            {"id": "TCK-10", "asunto": "Problema", "origen": "app"}
+        )
+        assert issue_num == 42
+        mock_post.assert_called_once()
+
+        # Mock de cierre exitoso (200)
+        mock_patch.return_value.status_code = 200
+        synced = GitHubIssueSyncService.sync_ticket_status(
+            "TCK-10", "Cerrado", resolucion="Listo", issue_number=42
+        )
+        assert synced is True
+        mock_patch.assert_called_once()

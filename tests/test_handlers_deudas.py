@@ -188,6 +188,48 @@ class TestDeudasHandlers(unittest.TestCase):
         self.bot_mock.answer_callback_query.assert_called_once_with(call.id)
         self.bot_mock.process_new_messages.assert_called_once()
 
+    @patch("com.handlers.deudas.execute_monthly_closing")
+    @patch("repositories.sheets_repository.SheetsRepository")
+    @patch("com.handlers.deudas.get_state")
+    @patch("com.handlers.deudas.clear_state")
+    def test_callback_cierre_anio_formatted_report(
+        self, mock_clear_state, mock_get_state, MockRepo, mock_execute
+    ):
+        mock_execute.return_value = "drive_backup_789"
+        mock_get_state.return_value = {"estado": "CIERRE_ANIO", "datos": {"mes": 10}}
+        repo_instance = MockRepo.return_value
+        repo_instance.get_last_cierre_mensual.return_value = {
+            "Saldo_Acumulado": 2500000,
+            "Margen_Libre_Disponible": 1200000,
+            "Estado_IVA": "Saldo a Favor",
+        }
+
+        call = MagicMock()
+        call.data = "cierre_anio:2026"
+        call.message.chat.id = 12345
+        call.message.message_id = 99
+        call.from_user.id = 12345
+
+        handler_found = None
+        for condition, func in self.callbacks:
+            if condition and condition(call):
+                handler_found = func
+                break
+
+        self.assertIsNotNone(handler_found)
+        handler_found(call)
+
+        mock_execute.assert_called_once_with(10, 2026)
+        mock_clear_state.assert_called_once_with(12345)
+        self.assertEqual(self.bot_mock.edit_message_text.call_count, 2)
+        final_call_args = self.bot_mock.edit_message_text.call_args_list[-1]
+        text_sent = final_call_args[1].get("text", "")
+        self.assertIn("Cierre mensual ejecutado para 10/2026", text_sent)
+        self.assertIn("Balance Validado:", text_sent)
+        self.assertIn("Gs. 1.200.000", text_sent)
+        self.assertIn("Gs. 2.500.000", text_sent)
+        self.assertIn("drive_backup_789", text_sent)
+
 
 if __name__ == "__main__":
     unittest.main()

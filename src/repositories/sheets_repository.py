@@ -205,6 +205,51 @@ class SheetsRepository:
         row = [movimiento_dict.get(h, "") for h in headers]
         ws.append_row(row)
 
+        try:
+            mov = str(
+                movimiento_dict.get(
+                    "Movimiento", movimiento_dict.get("tipo_movimiento", "")
+                )
+            ).lower().strip()
+            cat = str(
+                movimiento_dict.get(
+                    "Categoría",
+                    movimiento_dict.get(
+                        "Categoria", movimiento_dict.get("categoria", "")
+                    ),
+                )
+            ).lower().strip()
+            prov = str(
+                movimiento_dict.get(
+                    "Proveedor/Cliente",
+                    movimiento_dict.get("proveedor_cliente", ""),
+                )
+            ).lower().strip()
+            if "ingreso" in mov and (
+                "salario" in cat
+                or "sueldo" in cat
+                or "salario" in prov
+                or "sueldo" in prov
+            ):
+                from logic.logic import safe_int
+
+                monto = safe_int(
+                    movimiento_dict.get(
+                        "Total",
+                        movimiento_dict.get(
+                            "total", movimiento_dict.get("Neto", 0)
+                        ),
+                    )
+                )
+                if monto > 0:
+                    self.upsert_salario_presupuesto_base(monto)
+        except Exception as e:
+            import logging
+
+            logging.getLogger("sheets_repo").warning(
+                f"Error al auto-sincronizar salario en insert_movimiento_diario: {e}"
+            )
+
     def get_movimientos_mes(self, month: str, year: str) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
         records = self._get_records(ws, ENCABEZADOS_LIBRO_DIARIO)
@@ -223,6 +268,27 @@ class SheetsRepository:
     def get_all_movimientos(self) -> list[dict]:
         ws = self._get_sheet("Libro_Diario")
         return self._get_records(ws, ENCABEZADOS_LIBRO_DIARIO)
+
+    def obtener_ultimo_salario_libro_diario(self) -> int:
+        from logic.logic import safe_int
+
+        records = self.get_all_movimientos()
+        for r in reversed(records):
+            movimiento = str(r.get("Movimiento", "")).lower().strip()
+            categoria = str(r.get("Categoría", r.get("Categoria", ""))).lower().strip()
+            proveedor = str(r.get("Proveedor/Cliente", "")).lower().strip()
+
+            if "ingreso" in movimiento:
+                if (
+                    "salario" in categoria
+                    or "sueldo" in categoria
+                    or "salario" in proveedor
+                    or "sueldo" in proveedor
+                ):
+                    monto = safe_int(r.get("Total", r.get("Neto", 0)))
+                    if monto > 0:
+                        return monto
+        return 0
 
     def reset_libro_diario_con_saldo_inicial(
         self, saldo_inicial: int, fecha_str: str
@@ -355,5 +421,43 @@ class SheetsRepository:
         ws = self._get_sheet("Presupuesto_Base")
         # "Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs", "Tipo_Ingreso_Gasto", "Observaciones"
         row = ["Gasto Fijo", categoria, concepto, monto, "Fijo", obs]
+        ws.append_row(row)
+        return True
+
+    def upsert_salario_presupuesto_base(self, nuevo_salario: int) -> bool:
+        """Actualiza la fila de sueldo/salario en Presupuesto_Base o la inserta si no existe."""
+        if nuevo_salario <= 0:
+            return False
+
+        ws = self._get_sheet("Presupuesto_Base")
+        records = self._get_records(ws, ENCABEZADOS_PRESUPUESTO_BASE)
+
+        for idx, r in enumerate(records, start=2):
+            categoria = str(r.get("Categoria", "")).lower().strip()
+            concepto = str(r.get("Concepto", "")).lower().strip()
+
+            if (
+                "salario" in categoria
+                or "sueldo" in categoria
+                or "salario" in concepto
+                or "sueldo" in concepto
+            ):
+                keys = list(r.keys())
+                try:
+                    col_idx = keys.index("Monto_Mensual_Gs") + 1
+                except ValueError:
+                    col_idx = 4
+                ws.update_cell(idx, col_idx, nuevo_salario)
+                return True
+
+        # Si no existe, insertar nueva fila con encabezados canónicos
+        row = [
+            "Ingreso Fijo",
+            "Salario",
+            "Sueldo Mensual",
+            nuevo_salario,
+            "Fijo",
+            "Auto-sincronizado desde Libro Diario",
+        ]
         ws.append_row(row)
         return True

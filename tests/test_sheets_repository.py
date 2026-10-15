@@ -144,6 +144,123 @@ class TestSheetsRepository(unittest.TestCase):
         self.assertEqual(activas[0]["Cuotas"], 12)
         self.assertEqual(activas[0]["Tasa_Interes"], 12)
 
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_obtener_ultimo_salario_libro_diario(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {
+                "Movimiento": "Ingreso",
+                "Categoría": "Salario",
+                "Proveedor/Cliente": "Empresa ABC",
+                "Total": 4500000,
+            },
+            {
+                "Movimiento": "Egreso",
+                "Categoría": "Supermercado",
+                "Proveedor/Cliente": "Super X",
+                "Total": 300000,
+            },
+            {
+                "Movimiento": "Ingreso",
+                "Categoría": "Sueldo",
+                "Proveedor/Cliente": "Empresa ABC",
+                "Total": 5200000,
+            },
+        ]
+        mock_get_sheet.return_value = mock_ws
+        salario = self.repo.obtener_ultimo_salario_libro_diario()
+        # Debe tomar el más reciente (5.200.000)
+        self.assertEqual(salario, 5200000)
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_obtener_ultimo_salario_libro_diario_none_found(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {
+                "Movimiento": "Egreso",
+                "Categoría": "Supermercado",
+                "Proveedor/Cliente": "Super X",
+                "Total": 300000,
+            }
+        ]
+        mock_get_sheet.return_value = mock_ws
+        salario = self.repo.obtener_ultimo_salario_libro_diario()
+        self.assertEqual(salario, 0)
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_upsert_salario_presupuesto_base_update_existing(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {
+                "Tipo_Flujo": "Ingreso Fijo",
+                "Categoria": "Salario",
+                "Concepto": "Sueldo",
+                "Monto_Mensual_Gs": 4000000,
+                "Tipo_Ingreso_Gasto": "Fijo",
+                "Observaciones": "",
+            }
+        ]
+        mock_get_sheet.return_value = mock_ws
+        res = self.repo.upsert_salario_presupuesto_base(5500000)
+        self.assertTrue(res)
+        mock_ws.update_cell.assert_called_once_with(2, 4, 5500000)
+        mock_ws.append_row.assert_not_called()
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_upsert_salario_presupuesto_base_insert_new(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {
+                "Tipo_Flujo": "Gasto Fijo",
+                "Categoria": "Alquiler",
+                "Concepto": "Vivienda",
+                "Monto_Mensual_Gs": 2000000,
+                "Tipo_Ingreso_Gasto": "Fijo",
+                "Observaciones": "",
+            }
+        ]
+        mock_get_sheet.return_value = mock_ws
+        res = self.repo.upsert_salario_presupuesto_base(6000000)
+        self.assertTrue(res)
+        mock_ws.update_cell.assert_not_called()
+        mock_ws.append_row.assert_called_once_with(
+            [
+                "Ingreso Fijo",
+                "Salario",
+                "Sueldo Mensual",
+                6000000,
+                "Fijo",
+                "Auto-sincronizado desde Libro Diario",
+            ]
+        )
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_upsert_salario_presupuesto_base_invalid_amount(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_get_sheet.return_value = mock_ws
+        res = self.repo.upsert_salario_presupuesto_base(0)
+        self.assertFalse(res)
+        mock_ws.update_cell.assert_not_called()
+        mock_ws.append_row.assert_not_called()
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_insert_movimiento_diario_auto_sync_salario(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_get_sheet.return_value = mock_ws
+
+        with unittest.mock.patch.object(
+            self.repo, "upsert_salario_presupuesto_base"
+        ) as mock_upsert:
+            movimiento = {
+                "Fecha": "15/10/2026",
+                "Movimiento": "Ingreso",
+                "Categoría": "Sueldo",
+                "Total": 4800000,
+            }
+            self.repo.insert_movimiento_diario(movimiento)
+            mock_ws.append_row.assert_called_once()
+            mock_upsert.assert_called_once_with(4800000)
+
 
 if __name__ == "__main__":
     unittest.main()

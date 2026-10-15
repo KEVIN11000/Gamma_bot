@@ -611,10 +611,31 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         )
         try:
             drive_id = execute_monthly_closing(now.month, now.year)
+            from repositories.sheets_repository import SheetsRepository
+
+            repo = SheetsRepository()
+            ultimo_cierre = repo.get_last_cierre_mensual()
+            saldo_fmt = "{:,}".format(
+                int(ultimo_cierre.get("Saldo_Acumulado", 0))
+            ).replace(",", ".")
+            margen_fmt = "{:,}".format(
+                int(ultimo_cierre.get("Margen_Libre_Disponible", 0))
+            ).replace(",", ".")
+            estado_iva = ultimo_cierre.get("Estado_IVA", "N/A")
+
+            resumen_msg = (
+                f"✅ *Cierre mensual ejecutado para {now.month:02d}/{now.year}*\n\n"
+                f"📊 *Balance Validado:*\n"
+                f"• Margen Libre: Gs. {margen_fmt}\n"
+                f"• Saldo Acumulado Transferido: Gs. {saldo_fmt}\n"
+                f"• Estado IVA: {estado_iva}\n"
+                f"📁 Backup Drive ID: `{drive_id}`\n\n"
+                f"✨ _Libro Diario reiniciado para el siguiente período._"
+            )
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
-                text=f"✅ Cierre mensual ejecutado para {now.month}/{now.year}.\nBackup ID: `{drive_id}`",
+                text=resumen_msg,
                 parse_mode="Markdown",
             )
         except Exception as e:
@@ -685,9 +706,12 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
 
         mes = state["datos"]["mes"]
         anio = int(call.data.split(":")[1])
-        clear_state(
-            call.fromuser.id if hasattr(call, "fromuser") else call.from_user.id
+        user_id = (
+            call.from_user.id
+            if hasattr(call, "from_user")
+            else getattr(call, "fromuser", None).id
         )
+        clear_state(user_id)
 
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -697,10 +721,31 @@ def register_deudas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
 
         try:
             drive_id = execute_monthly_closing(mes, anio)
+            from repositories.sheets_repository import SheetsRepository
+
+            repo = SheetsRepository()
+            ultimo_cierre = repo.get_last_cierre_mensual()
+            saldo_fmt = "{:,}".format(
+                int(ultimo_cierre.get("Saldo_Acumulado", 0))
+            ).replace(",", ".")
+            margen_fmt = "{:,}".format(
+                int(ultimo_cierre.get("Margen_Libre_Disponible", 0))
+            ).replace(",", ".")
+            estado_iva = ultimo_cierre.get("Estado_IVA", "N/A")
+
+            resumen_msg = (
+                f"✅ *Cierre mensual ejecutado para {mes:02d}/{anio}*\n\n"
+                f"📊 *Balance Validado:*\n"
+                f"• Margen Libre: Gs. {margen_fmt}\n"
+                f"• Saldo Acumulado Transferido: Gs. {saldo_fmt}\n"
+                f"• Estado IVA: {estado_iva}\n"
+                f"📁 Backup Drive ID: `{drive_id}`\n\n"
+                f"✨ _Libro Diario reiniciado para el siguiente período._"
+            )
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
-                text=f"✅ Cierre mensual ejecutado para {mes}/{anio}.\nBackup ID: `{drive_id}`",
+                text=resumen_msg,
                 parse_mode="Markdown",
             )
         except Exception as e:

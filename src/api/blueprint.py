@@ -846,6 +846,14 @@ def create_ticket() -> Any:
     except Exception as e_tg:
         logger.warning(f"No se pudo enviar notificación de ticket a Telegram: {e_tg}")
 
+    # Sincronización con GitHub Issues si GITHUB_TOKEN está configurado
+    try:
+        from services.github_service import GitHubIssueSyncService
+
+        GitHubIssueSyncService.create_github_issue(nuevo_ticket)
+    except Exception as e_gh:
+        logger.warning(f"Error no bloqueante al crear issue en GitHub: {e_gh}")
+
     return jsonify(nuevo_ticket), 201
 
 
@@ -903,6 +911,20 @@ def update_ticket(ticket_id: str) -> Any:
     except Exception as e:
         logger.error(f"Error actualizando ticket {ticket_id}: {e}")
         return jsonify({"error": {"code": "WRITE_ERROR", "message": str(e)}}), 500
+
+    # Sincronización con GitHub Issues al actualizar estado
+    try:
+        from services.github_service import GitHubIssueSyncService
+
+        GitHubIssueSyncService.sync_ticket_status(
+            ticket_id=ticket_id,
+            nuevo_estado=req_obj.estado,
+            resolucion=req_obj.resolucion,
+        )
+    except Exception as e_gh:
+        logger.warning(
+            f"Error no bloqueante al sincronizar estado de issue en GitHub: {e_gh}"
+        )
 
     return jsonify(target), 200
 

@@ -257,6 +257,28 @@ class AgenteFinanciero:
                 value_input_option="USER_ENTERED",
             )
 
+            # Auto-sincronización reactiva a Presupuesto_Base si es ingreso de Salario/Sueldo
+            try:
+                tipo_mov = str(datos.get("tipo_movimiento", "")).lower().strip()
+                cat = str(datos.get("categoria", "")).lower().strip()
+                prov = str(datos.get("proveedor_cliente", "")).lower().strip()
+                if "ingreso" in tipo_mov and (
+                    "salario" in cat
+                    or "sueldo" in cat
+                    or "salario" in prov
+                    or "sueldo" in prov
+                ):
+                    monto_salario = safe_int(datos.get("total", datos.get("neto", 0)))
+                    if monto_salario > 0:
+                        from repositories.sheets_repository import SheetsRepository
+
+                        repo = SheetsRepository()
+                        repo.upsert_salario_presupuesto_base(monto_salario)
+            except Exception as e_upsert:
+                logger.warning(
+                    f"⚠️ Error no bloqueante al auto-sincronizar salario con Presupuesto_Base: {e_upsert}"
+                )
+
             icono = "🟢" if datos.get("tipo_movimiento") == "Ingreso" else "🔴"
             monto_fmt = "{:,}".format(int(datos.get("total", 0))).replace(",", ".")
             return (
@@ -483,6 +505,12 @@ def calcular_margen_de_ataque() -> int:
     deudas_activas = repo.get_obligaciones_activas()
 
     suma_cuotas = sum(safe_int(d.get("Cuota_Referencia_Gs", 0)) for d in deudas_activas)
+
+    # Fallback dinámico si Presupuesto_Base no tiene ingresos registrados (TCK-004)
+    if ingresos_base <= 0:
+        salario_fallback = repo.obtener_ultimo_salario_libro_diario()
+        if salario_fallback > 0:
+            ingresos_base = salario_fallback
 
     margen = ingresos_base - gastos_fijos - suma_cuotas
     return margen if margen > 0 else 0
@@ -726,6 +754,28 @@ def register_payment(
             CalendarService.mark_event_completed(event_id)
 
 
+def validar_consistencia_movimientos_mes(
+    movimientos: list[dict],
+) -> tuple[bool, str | None]:
+    """Valida la consistencia contable de los movimientos de un mes antes del corte."""
+    for idx, m in enumerate(movimientos, start=1):
+        total = safe_int(m.get("Total", 0))
+        if total < 0:
+            return False, f"Fila {idx} contiene un monto Total negativo ({total})."
+        neto = safe_int(m.get("Neto", 0))
+        if neto < 0:
+            return False, f"Fila {idx} contiene un monto Neto negativo ({neto})."
+        monto_iva = safe_int(m.get("Monto_IVA", m.get("IVA", 0)))
+        if monto_iva < 0:
+            return False, f"Fila {idx} contiene un monto de IVA negativo ({monto_iva})."
+        if neto > 0 and monto_iva > 0 and abs((neto + monto_iva) - total) > 50:
+            return (
+                False,
+                f"Inconsistencia contable en fila {idx}: Neto ({neto}) + IVA ({monto_iva}) != Total ({total}).",
+            )
+    return True, None
+
+
 def execute_monthly_closing(month: int, year: int) -> str:
     import tempfile
     import os
@@ -734,6 +784,14 @@ def execute_monthly_closing(month: int, year: int) -> str:
 
     repo = SheetsRepository()
     movimientos = repo.get_movimientos_mes(str(month), str(year))
+
+    # Validación de consistencia contable previa al corte
+    es_valido, error_msg = validar_consistencia_movimientos_mes(movimientos)
+    if not es_valido:
+        raise ValueError(
+            f"Validación de balance fallida para el período {month}/{year}: {error_msg}. "
+            "El cierre mensual fue abortado para preservar los datos de Libro Diario."
+        )
 
     total_gastos = sum(
         safe_int(m.get("Total", 0))
@@ -805,6 +863,12 @@ def execute_monthly_closing(month: int, year: int) -> str:
             f.write("No hay movimientos para este mes.")
 
     drive_id = DriveService.upload_backup(backup_path)
+    if not drive_id:
+        raise RuntimeError(
+            f"Fallo al generar el backup en Google Drive para el período {month}/{year}. "
+            "El cierre mensual fue abortado sin modificar Libro Diario."
+        )
+
     # Update the cierre with the drive ID
     cierre_dict["Archivo_Backup_Drive"] = drive_id
     repo.insert_cierre_mensual(cierre_dict)
