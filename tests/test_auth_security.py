@@ -9,6 +9,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 class TestAuthSecurity(unittest.TestCase):
     """Verify fail-closed behavior: missing secrets always yield 403."""
 
+    def setUp(self):
+        self._orig_env = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._orig_env)
+
     def _make_app(self, env_overrides: dict):
         """Create a fresh Flask test client with specific env vars."""
         for k, v in env_overrides.items():

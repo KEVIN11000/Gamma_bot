@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 import os
+import re
+from pathlib import Path
 from typing import Any
 import requests
 
@@ -146,3 +151,131 @@ class GitHubIssueSyncService:
             logger.warning(f"Error no bloqueante al actualizar issue #{issue_number}: {e}")
 
         return False
+
+
+class GitHubWebhookService:
+    """Servicio para recepción, validación y procesamiento reactivo de webhooks de GitHub."""
+
+    @classmethod
+    def get_webhook_secret(cls) -> str | None:
+        return os.getenv("GITHUB_WEBHOOK_SECRET") or None
+
+    @classmethod
+    def verify_signature(
+        cls,
+        payload_bytes: bytes,
+        signature_header: str | None,
+        secret: str | None = None,
+    ) -> bool:
+        """Valida la firma HMAC-SHA256 enviada por GitHub en el encabezado X-Hub-Signature-256."""
+        secret_to_use = secret if secret is not None else cls.get_webhook_secret()
+        if not secret_to_use:
+            # Modo permisivo si no hay secret configurado en entorno local / desarrollo
+            return True
+
+        if not signature_header or not signature_header.startswith("sha256="):
+            return False
+
+        computed_mac = hmac.new(
+            secret_to_use.encode("utf-8"), payload_bytes, hashlib.sha256
+        ).hexdigest()
+        expected_header = f"sha256={computed_mac}"
+        return hmac.compare_digest(expected_header, signature_header)
+
+    @classmethod
+    def extract_ticket_id(cls, title: str | None) -> str | None:
+        """Extrae el identificador [TCK-XXX] del título del issue."""
+        if not title:
+            return None
+        match = re.search(r"\[(TCK-\d+)\]", title, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+        return None
+
+    @classmethod
+    def process_issue_event(
+        cls,
+        action: str,
+        issue_data: dict[str, Any],
+        tickets_file_path: Path | str,
+    ) -> dict[str, Any]:
+        """Procesa un evento de issue (closed / reopened) y actualiza tickets.json de forma atómica."""
+        path = Path(tickets_file_path)
+        title = issue_data.get("title", "")
+        ticket_id = cls.extract_ticket_id(title)
+        issue_number = issue_data.get("number")
+        state_reason = issue_data.get("state_reason") or "resuelto en GitHub"
+
+        if not ticket_id:
+            logger.info(f"Webhook de GitHub ignorado: título '{title}' no contiene [TCK-XXX].")
+            return {
+                "status": "ignored",
+                "reason": f"No TCK identifier found in title '{title}'",
+            }
+
+        if action not in ("closed", "reopened"):
+            return {
+                "status": "ignored",
+                "reason": f"Acción '{action}' no requiere actualización de estado de ticket",
+            }
+
+        if not path.exists():
+            return {
+                "status": "error",
+                "message": f"Archivo de tickets no encontrado en {path}",
+            }
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                tickets: list[dict[str, Any]] = json.load(f)
+        except Exception as e_read:
+            logger.error(f"Error leyendo {path}: {e_read}")
+            return {"status": "error", "message": str(e_read)}
+
+        target = None
+        for t in tickets:
+            if t.get("id") == ticket_id:
+                target = t
+                break
+
+        if not target:
+            logger.info(f"Ticket {ticket_id} no encontrado en {path}.")
+            return {
+                "status": "ignored",
+                "reason": f"Ticket {ticket_id} not found in database",
+            }
+
+        nuevo_estado = "Cerrado" if action == "closed" else "Abierto"
+        estado_previo = target.get("estado")
+        target["estado"] = nuevo_estado
+
+        if action == "closed":
+            # Si no tenía resolución o es nula, actualizar con detalle de GitHub
+            res_actual = target.get("resolucion")
+            if not res_actual:
+                target["resolucion"] = (
+                    f"Cerrado vía GitHub Issue #{issue_number} ({state_reason})"
+                    if issue_number
+                    else f"Cerrado vía GitHub Issue ({state_reason})"
+                )
+
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(tickets, f, indent=2, ensure_ascii=False)
+            logger.info(
+                f"Ticket {ticket_id} actualizado reactivamente desde GitHub: "
+                f"'{estado_previo}' -> '{nuevo_estado}'"
+            )
+        except Exception as e_write:
+            logger.error(f"Error escribiendo {path}: {e_write}")
+            return {"status": "error", "message": str(e_write)}
+
+        return {
+            "status": "processed",
+            "ticket_id": ticket_id,
+            "action": action,
+            "nuevo_estado": nuevo_estado,
+            "issue_number": issue_number,
+        }
+

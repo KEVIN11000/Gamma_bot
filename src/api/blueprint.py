@@ -949,3 +949,92 @@ def get_logs() -> Any:
         ),
         200,
     )
+
+
+# ── 9. Webhooks de GitHub ───────────────────────────────────────────────────
+@mobile_api.route("/webhooks/github", methods=["POST"])
+def github_webhook() -> Any:
+    """Receptor público de webhooks de GitHub para sincronización reactiva."""
+    from services.github_service import GitHubWebhookService
+
+    # 1. Validación de firma HMAC si GITHUB_WEBHOOK_SECRET está configurado
+    signature_header = request.headers.get("X-Hub-Signature-256")
+    payload_bytes = request.get_data()
+
+    if not GitHubWebhookService.verify_signature(payload_bytes, signature_header):
+        logger.warning("Intento de webhook de GitHub con firma HMAC inválida o ausente.")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INVALID_SIGNATURE",
+                        "message": "Firma HMAC de GitHub no coincide con el secret configurado.",
+                    }
+                }
+            ),
+            401,
+        )
+
+    event_type = request.headers.get("X-GitHub-Event", "")
+
+    # 2. Manejo de Ping
+    if event_type == "ping":
+        logger.info("GitHub Webhook ping recibido exitosamente.")
+        return (
+            jsonify(
+                {
+                    "status": "pong",
+                    "message": "GitHub Webhook listener operational",
+                }
+            ),
+            200,
+        )
+
+    # 3. Manejo de Eventos de Issues
+    if event_type == "issues":
+        data = request.get_json(silent=True) or {}
+        action = data.get("action", "")
+        issue_data = data.get("issue", {})
+
+        resultado = GitHubWebhookService.process_issue_event(
+            action=action,
+            issue_data=issue_data,
+            tickets_file_path=TICKETS_FILE,
+        )
+
+        # Notificación reactiva al Telegram del Administrador si el ticket fue procesado
+        if resultado.get("status") == "processed":
+            try:
+                chat_id = os.getenv("CHAT_ID")
+                if chat_id:
+                    from flask_app import bot_instance
+
+                    if bot_instance and hasattr(bot_instance, "bot") and bot_instance.bot:
+                        accion_emoji = (
+                            "✅" if resultado.get("nuevo_estado") == "Cerrado" else "🔄"
+                        )
+                        bot_instance.bot.send_message(
+                            int(chat_id),
+                            f"{accion_emoji} <b>Actualización de Ticket desde GitHub</b>\n\n"
+                            f"🆔 <b>Ticket:</b> <code>{resultado.get('ticket_id')}</code>\n"
+                            f"📌 <b>Estado:</b> {resultado.get('nuevo_estado')}\n"
+                            f"🐙 <b>Issue:</b> #{resultado.get('issue_number')}\n"
+                            f"⚡ <b>Acción:</b> <code>{action}</code>",
+                            parse_mode="HTML",
+                        )
+            except Exception as e_tg:
+                logger.warning(f"Error no bloqueante notificando a Telegram: {e_tg}")
+
+        return jsonify(resultado), 200
+
+    # 4. Cualquier otro evento no manejado se acepta sin error (para evitar retries de GitHub)
+    return (
+        jsonify(
+            {
+                "status": "ignored",
+                "reason": f"Event '{event_type}' not handled",
+            }
+        ),
+        200,
+    )
+
