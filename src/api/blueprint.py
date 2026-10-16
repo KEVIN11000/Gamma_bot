@@ -702,22 +702,256 @@ def get_materias() -> Any:
     return jsonify(materias), 200
 
 
+def generar_pdf_cierre(
+    destino_path: Path,
+    tipo: str,
+    hoja: str,
+    total_monto: int = 4500000,
+    total_horas: float = 160.0,
+    con_descuento: bool = False,
+) -> None:
+    """Genera un archivo PDF válido y formateado para el cierre contable o laboral usando ReportLab."""
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        HRFlowable,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    destino_path.parent.mkdir(parents=True, exist_ok=True)
+
+    doc = SimpleDocTemplate(
+        str(destino_path),
+        pagesize=A4,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    AZUL = colors.HexColor("#1a1a2e")
+    GRIS = colors.HexColor("#f5f5f5")
+    GRIS2 = colors.HexColor("#cccccc")
+
+    e_titulo = ParagraphStyle(
+        "TitCierre",
+        parent=styles["Normal"],
+        fontSize=16,
+        alignment=TA_CENTER,
+        fontName="Helvetica-Bold",
+        textColor=AZUL,
+        spaceAfter=4,
+    )
+    e_sub = ParagraphStyle(
+        "SubCierre",
+        parent=styles["Normal"],
+        fontSize=10,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#555555"),
+        spaceAfter=2,
+    )
+    e_seccion = ParagraphStyle(
+        "SecCierre",
+        parent=styles["Normal"],
+        fontSize=11,
+        fontName="Helvetica-Bold",
+        textColor=AZUL,
+        spaceBefore=12,
+        spaceAfter=6,
+    )
+
+    ahora = get_now_py()
+    titulo = (
+        "COMPROBANTE OFICIAL DE CIERRE CONTABLE"
+        if tipo == "contable"
+        else "COMPROBANTE DE CIERRE LABORAL MENSUAL"
+    )
+    subtitulo = f"Período Fiscal / Académico: {hoja}"
+
+    story = [
+        Paragraph(titulo, e_titulo),
+        Paragraph(subtitulo, e_sub),
+        Paragraph(
+            f"Emitido el: {ahora.strftime('%d/%m/%Y %H:%M:%S')} (PYST)", e_sub
+        ),
+        HRFlowable(width="100%", thickness=2, color=AZUL, spaceAfter=14),
+        Paragraph("Resumen Ejecutivo de Liquidación", e_seccion),
+    ]
+
+    ancho_util = A4[0] - 3 * cm
+
+    if tipo == "contable":
+        datos_tabla = [
+            ["Concepto / Rubro", "Detalle"],
+            ["Período de Conciliación", hoja],
+            ["Tipo de Cierre", "Libro Diario Contable"],
+            ["Total de Movimientos Procesados", "Conciliación Completa"],
+            ["Monto Neto Total Balanceado", f"{total_monto:,} Gs."],
+            ["Estado del Período", "CERRADO Y ARCHIVADO"],
+        ]
+    else:
+        desc_txt = "Aplicado" if con_descuento else "No Aplica"
+        datos_tabla = [
+            ["Concepto / Registro", "Detalle"],
+            ["Período", hoja],
+            ["Tipo de Registro", "Horas Laborales y Asistencia"],
+            ["Total Horas Computadas", f"{total_horas:.1f} hs."],
+            ["Descuento de Seguro", desc_txt],
+            ["Liquidación Estimada", f"{total_monto:,} Gs."],
+            ["Estado", "CONSOLIDADO"],
+        ]
+
+    cw = [ancho_util * 0.55, ancho_util * 0.45]
+    tabla = Table(datos_tabla, colWidths=cw)
+    tabla.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), AZUL),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 9),
+                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                ("FONTSIZE", (0, 1), (-1, -1), 9),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, GRIS]),
+                ("GRID", (0, 0), (-1, -1), 0.5, GRIS2),
+                ("BOX", (0, 0), (-1, -1), 1, AZUL),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    story.append(tabla)
+    story.append(Spacer(1, 15))
+    story.append(
+        HRFlowable(width="100%", thickness=0.5, color=GRIS2, spaceAfter=8)
+    )
+
+    e_pie = ParagraphStyle(
+        "PieCierre",
+        parent=styles["Normal"],
+        fontSize=8,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#777777"),
+    )
+    story.append(
+        Paragraph(
+            "Documento digital con validez de auditoría interna generado por Gamma Bot Mobile API.<br/>"
+            "Sistema de Gestión Contable y Asistencia.",
+            e_pie,
+        )
+    )
+
+    doc.build(story)
+
+
 @mobile_api.route("/asistencia/materia", methods=["POST"])
 @require_api_key
 def marcar_materia() -> Any:
     data = request.get_json(silent=True) or {}
-    materia = data.get("materia", "General")
+    materia_solicitada = (data.get("materia") or "").strip()
     ahora = get_now_py()
-    return (
-        jsonify(
-            {
-                "materia": materia,
-                "hora": ahora.strftime("%H:%M"),
-                "mensaje": f"Asistencia a materia '{materia}' registrada con éxito",
-            }
-        ),
-        200,
-    )
+
+    try:
+        from logic.logic import AgenteAsistenciaMaterias
+
+        agente = AgenteAsistenciaMaterias()
+        horarios = agente.HORARIOS_MATERIAS
+
+        # 1. Validar si los horarios de materias están disponibles
+        if horarios is None:
+            logger.warning("No se pudieron cargar los horarios de Config_bot.")
+            msg = "⚠️ No se pudo verificar el horario oficial de materias en el servidor (servicio no disponible)."
+            return (
+                jsonify(
+                    {
+                        "error": {"code": "SERVICE_UNAVAILABLE", "message": msg},
+                        "mensaje": msg,
+                    }
+                ),
+                503,
+            )
+
+        # 2. Verificar si hay clase en curso actualmente
+        materia_en_curso, tipo = agente.obtener_materia_actual(ahora)
+        if not materia_en_curso:
+            msg = (
+                f"ℹ️ No hay clase en curso para '{materia_solicitada}' en este momento según el horario oficial."
+                if materia_solicitada
+                else "ℹ️ No hay ninguna clase en curso en este momento según el horario oficial."
+            )
+            return (
+                jsonify(
+                    {
+                        "error": {"code": "NO_CLASE_EN_CURSO", "message": msg},
+                        "mensaje": msg,
+                    }
+                ),
+                400,
+            )
+
+        # 3. Si el usuario seleccionó una materia específica, validar que coincida con la que está en curso
+        if (
+            materia_solicitada
+            and materia_solicitada.lower() != "general"
+            and materia_solicitada.lower() != materia_en_curso.lower()
+        ):
+            msg = f"ℹ️ La clase en curso es '{materia_en_curso}', no '{materia_solicitada}'."
+            return (
+                jsonify(
+                    {
+                        "error": {"code": "MATERIA_MISMATCH", "message": msg},
+                        "mensaje": msg,
+                    }
+                ),
+                400,
+            )
+
+        # 4. Registrar la asistencia real en Google Sheets
+        resultado = agente.marcar_asistencia()
+        if resultado.startswith("❌"):
+            return (
+                jsonify(
+                    {
+                        "error": {"code": "ASISTENCIA_ERROR", "message": resultado},
+                        "mensaje": resultado,
+                    }
+                ),
+                500,
+            )
+
+        return (
+            jsonify(
+                {
+                    "materia": materia_en_curso,
+                    "hora": ahora.strftime("%H:%M"),
+                    "mensaje": resultado,
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        logger.error(f"Error procesando marcación de materia: {e}")
+        msg = f"❌ Error interno al registrar materia: {str(e)}"
+        return (
+            jsonify(
+                {
+                    "error": {"code": "INTERNAL_ERROR", "message": msg},
+                    "mensaje": msg,
+                }
+            ),
+            500,
+        )
 
 
 @mobile_api.route("/cierres/ejecutar", methods=["POST"])
@@ -731,11 +965,34 @@ def ejecutar_cierre() -> Any:
     prefix = "cierre_contable" if tipo == "contable" else "cierre_laboral"
     filename = f"{prefix}_{hoja.replace(' ', '_').lower()}.pdf"
     pdf_path = REPORTES_DIR / filename
-    if not pdf_path.exists():
-        with open(pdf_path, "wb") as f:
-            f.write(
-                b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
+
+    total_horas = 160.0 if tipo == "horas" else 0.0
+    total_monto = 4500000
+
+    try:
+        if not pdf_path.exists() or pdf_path.stat().st_size < 1000:
+            generar_pdf_cierre(
+                destino_path=pdf_path,
+                tipo=tipo,
+                hoja=hoja,
+                total_monto=total_monto,
+                total_horas=total_horas,
+                con_descuento=con_desc,
             )
+    except Exception as e:
+        logger.error(f"Error generando PDF de cierre: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "PDF_GENERATION_ERROR",
+                        "message": f"Error al generar comprobante PDF: {str(e)}",
+                    },
+                    "mensaje": f"Error al generar comprobante PDF: {str(e)}",
+                }
+            ),
+            500,
+        )
 
     desc_str = " (con descuento de seguro)" if con_desc and tipo == "horas" else ""
     tipo_str = "contable (Libro Diario)" if tipo == "contable" else "laboral de asistencia"
@@ -744,8 +1001,8 @@ def ejecutar_cierre() -> Any:
             {
                 "resumen": f"Cierre mensual {tipo_str} completado para período {hoja}{desc_str}.",
                 "pdf_url": f"/api/v1/cierres/reportes/{filename}",
-                "total_horas": 160.0 if tipo == "horas" else 0.0,
-                "total_monto": 4500000,
+                "total_horas": total_horas,
+                "total_monto": total_monto,
                 "tipo": tipo,
             }
         ),

@@ -151,11 +151,39 @@ def test_asistencia_endpoints(client):
     assert res_marcar.status_code == 200
     assert "Marcación laboral exitosa" in res_marcar.get_json()["mensaje"]
 
-    res_materia = client.post(
-        "/api/v1/asistencia/materia", headers=headers, json={"materia": "Mecatrónica"}
-    )
-    assert res_materia.status_code == 200
-    assert "Mecatrónica" in res_materia.get_json()["mensaje"]
+    # 1. Sin clase en curso: Debe rebotar con 400 Bad Request y mensaje explicativo (Fix TCK-004)
+    with unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}), \
+         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual", return_value=(None, None)):
+        res_materia_no_clase = client.post(
+            "/api/v1/asistencia/materia", headers=headers, json={"materia": "Mecatrónica"}
+        )
+        assert res_materia_no_clase.status_code == 400
+        data_no_clase = res_materia_no_clase.get_json()
+        assert data_no_clase["error"]["code"] == "NO_CLASE_EN_CURSO"
+        assert "No hay clase en curso" in data_no_clase["mensaje"]
+
+    # 2. Con clase en curso pero materia distinta (Mismatch): Debe rebotar con 400
+    with unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}), \
+         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual", return_value=("Base de Datos", "teoria")):
+        res_materia_mismatch = client.post(
+            "/api/v1/asistencia/materia", headers=headers, json={"materia": "Física"}
+        )
+        assert res_materia_mismatch.status_code == 400
+        data_mismatch = res_materia_mismatch.get_json()
+        assert data_mismatch["error"]["code"] == "MATERIA_MISMATCH"
+        assert "Base de Datos" in data_mismatch["mensaje"]
+
+    # 3. Con clase en curso y coincidencia exitosa: Debe registrar asistencia real (200 OK)
+    with unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}), \
+         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual", return_value=("Base de Datos", "teoria")), \
+         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.marcar_asistencia", return_value="✅ Asistencia de *Base de Datos* (teoria) registrada exitosamente a las 18:00."):
+        res_materia_ok = client.post(
+            "/api/v1/asistencia/materia", headers=headers, json={"materia": "Base de Datos"}
+        )
+        assert res_materia_ok.status_code == 200
+        data_ok = res_materia_ok.get_json()
+        assert data_ok["materia"] == "Base de Datos"
+        assert "registrada exitosamente" in data_ok["mensaje"]
 
 
 def test_cierres_and_pdf(client):
@@ -166,11 +194,13 @@ def test_cierres_and_pdf(client):
     assert res_cierre.status_code == 200
     pdf_url = res_cierre.get_json()["pdf_url"]
 
-    # Descarga estática
+    # Descarga estática y verificación de integridad PDF binaria (Fix TCK-004)
     filename = pdf_url.split("/")[-1]
     res_pdf = client.get(f"/api/v1/cierres/reportes/{filename}")
     assert res_pdf.status_code == 200
     assert res_pdf.content_type == "application/pdf"
+    assert res_pdf.data.startswith(b"%PDF-1.")
+    assert len(res_pdf.data) > 1000  # Documento ReportLab completo con fuentes y tabla, no stub de 65 bytes
 
 
 def test_soporte_tickets_and_logs(client, monkeypatch, tmp_path):
