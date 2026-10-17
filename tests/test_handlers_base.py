@@ -228,3 +228,21 @@ def test_comando_comandos_dev(
         bot_mock.reply_to.assert_called_once()
         assert "1.x" in bot_mock.reply_to.call_args[0][1]
         assert "/debug" in bot_mock.reply_to.call_args[0][1]
+
+
+@patch("com.handlers.base.auth_required")
+@patch("com.handlers.base.safe_handler")
+def test_comando_app(mock_safe, mock_auth, bot_mock, mock_message):
+    mock_auth.return_value = lambda f: f
+    mock_safe.return_value = lambda f: f
+
+    register_base_handlers(bot_mock, None)
+    handler = bot_mock.registered_handlers["app"]
+    mock_message.text = "/app"
+
+    handler(mock_message)
+    bot_mock.reply_to.assert_called_once()
+    reply_text = bot_mock.reply_to.call_args[0][1]
+    assert "v0.0.8" in reply_text
+    assert "gamma-mobile-v0.0.8-release.apk" in reply_text
+
