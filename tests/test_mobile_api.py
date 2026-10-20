@@ -56,6 +56,7 @@ def test_dashboard_summary(client):
         "/api/v1/dashboard/summary", headers={"X-API-KEY": "test-secret-key"}
     )
     assert res.status_code == 200
+    assert "no-store" in res.headers.get("Cache-Control", "")
     data = res.get_json()
     assert "mes" in data
     assert "margen_libre" in data
@@ -80,10 +81,64 @@ def test_movimientos_crud(client):
     }
     res_post = client.post("/api/v1/movimientos", headers=headers, json=payload)
     assert res_post.status_code == 200
+    assert "no-store" in res_post.headers.get("Cache-Control", "")
     data = res_post.get_json()
     assert data["total"] == 110000
     assert data["iva"] == 10000
     assert data["neto"] == 100000
+    assert data["clasificacion_iva"] == "IVA 10%"
+
+    # POST (IVA 5%)
+    payload_5 = {
+        "proveedor_cliente": "Frutería Test",
+        "total": 105000,
+        "categoria": "Alimentación",
+        "tasa_iva": "5%",
+        "movimiento": "Gasto",
+        "comprobante": "Física Legal",
+    }
+    res_5 = client.post("/api/v1/movimientos", headers=headers, json=payload_5)
+    assert res_5.status_code == 200
+    data_5 = res_5.get_json()
+    assert data_5["total"] == 105000
+    assert data_5["iva"] == 5000
+    assert data_5["neto"] == 100000
+    assert data_5["clasificacion_iva"] == "IVA 5%"
+
+    # POST (Exento)
+    payload_exento = {
+        "proveedor_cliente": "Servicio Exento",
+        "total": 50000,
+        "categoria": "Varios",
+        "tasa_iva": "Exento",
+        "movimiento": "Gasto",
+        "comprobante": "No Legal",
+    }
+    res_ex = client.post("/api/v1/movimientos", headers=headers, json=payload_exento)
+    assert res_ex.status_code == 200
+    data_ex = res_ex.get_json()
+    assert data_ex["total"] == 50000
+    assert data_ex["iva"] == 0
+    assert data_ex["neto"] == 50000
+    assert data_ex["clasificacion_iva"] == "Exento"
+
+    # POST (Salario auto-sincronizado)
+    with unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.upsert_salario_presupuesto_base"
+    ) as mock_upsert:
+        payload_salario = {
+            "proveedor_cliente": "Empresa Pagadora",
+            "total": 6000000,
+            "categoria": "Salario",
+            "tasa_iva": "Exento",
+            "movimiento": "Ingreso",
+            "comprobante": "Virtual Legal",
+        }
+        res_sal = client.post(
+            "/api/v1/movimientos", headers=headers, json=payload_salario
+        )
+        assert res_sal.status_code == 200
+        mock_upsert.assert_called_once_with(6000000)
 
 
 def test_obligaciones_endpoints(client):
@@ -92,23 +147,91 @@ def test_obligaciones_endpoints(client):
     res = client.get("/api/v1/obligaciones", headers=headers)
     assert res.status_code == 200
 
-    # POST create
+    # POST create (Deuda Simulada con entidad y cuotas)
     res_create = client.post(
         "/api/v1/obligaciones",
         headers=headers,
-        json={"nombre": "Préstamo Auto", "monto_inicial": 5000000, "tipo": "Deuda"},
+        json={
+            "entidad": "Banco Atlas",
+            "nombre": "Préstamo Auto",
+            "monto_inicial": 5000000,
+            "cuotas_totales": 12,
+            "cuota_referencia_gs": 450000,
+            "estado": "Simulado",
+            "tipo": "Préstamo",
+        },
     )
     assert res_create.status_code == 201
-    ob_id = res_create.get_json()["ID_Obligacion"]
+    data_cr = res_create.get_json()
+    ob_id = data_cr["ID_Obligacion"]
+    assert data_cr["Estado"] == "Simulado"
+    assert data_cr["Entidad"] == "Banco Atlas"
+    assert data_cr["Cuotas_Totales"] == 12
 
-    # Simular
-    res_sim = client.post(
-        "/api/v1/obligaciones/simular",
-        headers=headers,
-        json={"monto": 12000000, "meses": 12},
-    )
-    assert res_sim.status_code == 200
-    assert "cuota_mensual" in res_sim.get_json()
+    # Simular con cálculo de margen de ataque
+    with unittest.mock.patch(
+        "logic.financiero.calcular_margen_de_ataque", return_value=3500000
+    ):
+        res_sim = client.post(
+            "/api/v1/obligaciones/simular",
+            headers=headers,
+            json={"monto": 12000000, "meses": 12},
+        )
+        assert res_sim.status_code == 200
+        data_sim = res_sim.get_json()
+        assert data_sim["cuota_mensual"] == 1000000
+        assert data_sim["margen_actual"] == 3500000
+        assert data_sim["nuevo_margen"] == 2500000
+        assert data_sim["diagnostico"] == "Viable"
+
+    # PUT (Aprobar simulación y actualizar saldo)
+    mock_ob = {
+        "ID_Obligacion": ob_id,
+        "Nombre": "Préstamo Auto",
+        "Monto_Inicial": 5000000,
+        "Saldo_Actual": 5000000,
+        "Estado": "Simulado",
+    }
+    with unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.get_obligacion_by_id",
+        side_effect=lambda oid: dict(mock_ob) if oid == ob_id else {},
+    ), unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.update_obligacion",
+        return_value=True,
+    ) as mock_upd, unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.delete_obligacion",
+        return_value=True,
+    ) as mock_del:
+        res_put = client.put(
+            f"/api/v1/obligaciones/{ob_id}",
+            headers=headers,
+            json={"estado": "Activo", "saldo_actual": 4500000},
+        )
+        assert res_put.status_code == 200
+        data_put = res_put.get_json()
+        assert data_put["Estado"] == "Activo"
+        assert data_put["Saldo_Actual"] == 4500000
+        mock_upd.assert_called_once()
+
+        # PUT inexistente -> 404
+        res_put_404 = client.put(
+            "/api/v1/obligaciones/inexistente-99",
+            headers=headers,
+            json={"estado": "Activo"},
+        )
+        assert res_put_404.status_code == 404
+
+        # DELETE obligación
+        res_del = client.delete(f"/api/v1/obligaciones/{ob_id}", headers=headers)
+        assert res_del.status_code == 200
+        assert res_del.get_json()["status"] == "deleted"
+        mock_del.assert_called_once_with(ob_id)
+
+        # DELETE inexistente -> 404
+        res_del_404 = client.delete(
+            "/api/v1/obligaciones/inexistente-99", headers=headers
+        )
+        assert res_del_404.status_code == 404
 
     # Abonar
     res_abono = client.post(
@@ -121,41 +244,175 @@ def test_obligaciones_endpoints(client):
 
 def test_avisos_endpoints(client):
     headers = {"X-API-KEY": "test-secret-key"}
-    # POST
-    res_post = client.post(
-        "/api/v1/avisos",
-        headers=headers,
-        json={
-            "titulo": "Test Aviso",
-            "fecha_evento": "20/10/2026 14:00",
-            "dias_restantes": 7,
-        },
-    )
-    assert res_post.status_code == 201
-    aviso_id = res_post.get_json()["id"]
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.guardar_aviso_calendar",
+        return_value="✅ *¡Aviso guardado en Google Calendar!*",
+    ) as mock_guardar, unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.eliminar_aviso_calendar",
+        return_value=True,
+    ) as mock_eliminar, unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.obtener_lista_avisos_calendar",
+        return_value=[
+            {
+                "id": "cal-999",
+                "titulo": "Reunión Sync",
+                "fecha_evento": "25/10/2026 10:00",
+            }
+        ],
+    ):
+        # 1. POST (Creación con repetición e hitos)
+        res_post = client.post(
+            "/api/v1/avisos",
+            headers=headers,
+            json={
+                "titulo": "Test Aviso",
+                "fecha_evento": "20/10/2026 14:00",
+                "repeticion": "MENSUAL",
+                "hitos_minutos": [1440, 180, 60],
+                "dias_restantes": 7,
+            },
+        )
+        assert res_post.status_code == 201
+        data_post = res_post.get_json()
+        aviso_id = data_post["id"]
+        assert data_post["repeticion"] == "MENSUAL"
+        assert data_post["hitos_minutos"] == [1440, 180, 60]
+        assert data_post["event_id"] == f"gcal-{aviso_id}"
+        mock_guardar.assert_called()
 
-    # GET
-    res_get = client.get("/api/v1/avisos", headers=headers)
-    assert res_get.status_code == 200
+        # 2. GET (Lectura y sincronización de Calendar)
+        res_get = client.get("/api/v1/avisos", headers=headers)
+        assert res_get.status_code == 200
+        titulos = [a["titulo"] for a in res_get.get_json()]
+        assert "Test Aviso" in titulos
+        assert "Reunión Sync" in titulos
 
-    # DELETE
-    res_del = client.delete(f"/api/v1/avisos/{aviso_id}", headers=headers)
-    assert res_del.status_code == 200
+        # 3. PUT (Actualización)
+        res_put = client.put(
+            f"/api/v1/avisos/{aviso_id}",
+            headers=headers,
+            json={
+                "titulo": "Test Aviso Modificado",
+                "repeticion": "ANUAL",
+            },
+        )
+        assert res_put.status_code == 200
+        data_put = res_put.get_json()
+        assert data_put["titulo"] == "Test Aviso Modificado"
+        assert data_put["repeticion"] == "ANUAL"
+
+        # 4. PUT inexistente -> 404
+        res_put_404 = client.put(
+            "/api/v1/avisos/inexistente-123",
+            headers=headers,
+            json={"titulo": "Nada"},
+        )
+        assert res_put_404.status_code == 404
+
+        # 5. DELETE
+        res_del = client.delete(f"/api/v1/avisos/{aviso_id}", headers=headers)
+        assert res_del.status_code == 200
+        mock_eliminar.assert_called_with(f"gcal-{aviso_id}")
 
 
 def test_asistencia_endpoints(client):
     headers = {"X-API-KEY": "test-secret-key"}
-    res_marcar = client.post(
-        "/api/v1/asistencia/marcar", headers=headers, json={"modo": "normal"}
-    )
-    assert res_marcar.status_code == 200
-    assert "Marcación laboral exitosa" in res_marcar.get_json()["mensaje"]
+    # Marcación laboral exitosa (Entrada)
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
+        return_value="✅ *Entrada* registrado a las 08:30.",
+    ):
+        res_marcar = client.post(
+            "/api/v1/asistencia/marcar",
+            headers=headers,
+            json={"modo": "normal"},
+        )
+        assert res_marcar.status_code == 200
+        data_marcar = res_marcar.get_json()
+        assert data_marcar["tipo"] == "entrada"
+        assert data_marcar["hora"] == "08:30"
+        assert "Entrada" in data_marcar["mensaje"]
+
+    # Marcación laboral exitosa (Salida)
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
+        return_value="✅ *Salida* registrado a las 17:00.",
+    ):
+        res_salida = client.post(
+            "/api/v1/asistencia/marcar",
+            headers=headers,
+            json={"modo": "directo"},
+        )
+        assert res_salida.status_code == 200
+        data_salida = res_salida.get_json()
+        assert data_salida["tipo"] == "salida"
+        assert data_salida["hora"] == "17:00"
+
+    # Marcación rechazada con error (❌ Límite alcanzado) -> HTTP 400
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
+        return_value="❌ Límite de filas alcanzado o error en fecha.",
+    ):
+        res_err = client.post(
+            "/api/v1/asistencia/marcar",
+            headers=headers,
+            json={"modo": "normal"},
+        )
+        assert res_err.status_code == 400
+        assert res_err.get_json()["tipo"] == "error"
+        assert "❌" in res_err.get_json()["mensaje"]
+
+    # Marcación con advertencia de almuerzo (⚠️ Ya hay registros) -> HTTP 409
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
+        return_value="⚠️ Ya hay registros de almuerzo en la planilla.\nUsá el marcado normal.",
+    ):
+        res_warn = client.post(
+            "/api/v1/asistencia/marcar",
+            headers=headers,
+            json={"modo": "directo"},
+        )
+        assert res_warn.status_code == 409
+        assert res_warn.get_json()["tipo"] == "error"
+        assert "⚠️" in res_warn.get_json()["mensaje"]
+
+    # Marcación informativa/bloqueada (ℹ️ Ya completaste todos los registros) -> HTTP 400
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
+        return_value="ℹ️ Ya completaste todos los registros of hoy.",
+    ):
+        res_info = client.post(
+            "/api/v1/asistencia/marcar",
+            headers=headers,
+            json={"modo": "normal"},
+        )
+        assert res_info.status_code == 400
+        assert res_info.get_json()["tipo"] == "error"
+
+    # Fallo en conexión a Google Sheets -> HTTP 502
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
+        side_effect=RuntimeError("Google Sheets Timeout"),
+    ):
+        res_502 = client.post(
+            "/api/v1/asistencia/marcar",
+            headers=headers,
+            json={"modo": "normal"},
+        )
+        assert res_502.status_code == 502
+        assert res_502.get_json()["error"]["code"] == "SERVICE_ERROR"
 
     # 1. Sin clase en curso: Debe rebotar con 400 Bad Request y mensaje explicativo (Fix TCK-004)
-    with unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}), \
-         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual", return_value=(None, None)):
+    with unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}
+    ), unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual",
+        return_value=(None, None),
+    ):
         res_materia_no_clase = client.post(
-            "/api/v1/asistencia/materia", headers=headers, json={"materia": "Mecatrónica"}
+            "/api/v1/asistencia/materia",
+            headers=headers,
+            json={"materia": "Mecatrónica"},
         )
         assert res_materia_no_clase.status_code == 400
         data_no_clase = res_materia_no_clase.get_json()
@@ -163,8 +420,12 @@ def test_asistencia_endpoints(client):
         assert "No hay clase en curso" in data_no_clase["mensaje"]
 
     # 2. Con clase en curso pero materia distinta (Mismatch): Debe rebotar con 400
-    with unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}), \
-         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual", return_value=("Base de Datos", "teoria")):
+    with unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}
+    ), unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual",
+        return_value=("Base de Datos", "teoria"),
+    ):
         res_materia_mismatch = client.post(
             "/api/v1/asistencia/materia", headers=headers, json={"materia": "Física"}
         )
@@ -174,11 +435,19 @@ def test_asistencia_endpoints(client):
         assert "Base de Datos" in data_mismatch["mensaje"]
 
     # 3. Con clase en curso y coincidencia exitosa: Debe registrar asistencia real (200 OK)
-    with unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}), \
-         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual", return_value=("Base de Datos", "teoria")), \
-         unittest.mock.patch("logic.logic.AgenteAsistenciaMaterias.marcar_asistencia", return_value="✅ Asistencia de *Base de Datos* (teoria) registrada exitosamente a las 18:00."):
+    with unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}
+    ), unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual",
+        return_value=("Base de Datos", "teoria"),
+    ), unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.marcar_asistencia",
+        return_value="✅ Asistencia de *Base de Datos* (teoria) registrada exitosamente a las 18:00.",
+    ):
         res_materia_ok = client.post(
-            "/api/v1/asistencia/materia", headers=headers, json={"materia": "Base de Datos"}
+            "/api/v1/asistencia/materia",
+            headers=headers,
+            json={"materia": "Base de Datos"},
         )
         assert res_materia_ok.status_code == 200
         data_ok = res_materia_ok.get_json()
@@ -200,7 +469,9 @@ def test_cierres_and_pdf(client):
     assert res_pdf.status_code == 200
     assert res_pdf.content_type == "application/pdf"
     assert res_pdf.data.startswith(b"%PDF-1.")
-    assert len(res_pdf.data) > 1000  # Documento ReportLab completo con fuentes y tabla, no stub de 65 bytes
+    assert (
+        len(res_pdf.data) > 1000
+    )  # Documento ReportLab completo con fuentes y tabla, no stub de 65 bytes
 
 
 def test_soporte_tickets_and_logs(client, monkeypatch, tmp_path):
@@ -213,7 +484,11 @@ def test_soporte_tickets_and_logs(client, monkeypatch, tmp_path):
     res_post = client.post(
         "/api/v1/soporte/tickets",
         headers=headers,
-        json={"asunto": "Fallo sincronización", "descripcion": "Prueba unitaria", "origen": "telegram"},
+        json={
+            "asunto": "Fallo sincronización",
+            "descripcion": "Prueba unitaria",
+            "origen": "telegram",
+        },
     )
     assert res_post.status_code == 201
     post_data = res_post.get_json()
@@ -256,9 +531,18 @@ def test_soporte_tickets_and_logs(client, monkeypatch, tmp_path):
     assert res_patch_404.status_code == 404
 
     # Logs
-    res_logs = client.get("/api/v1/sistema/logs", headers=headers)
+    res_logs = client.get("/api/v1/sistema/logs?limit=5", headers=headers)
     assert res_logs.status_code == 200
-    assert len(res_logs.get_json()) >= 1
+    assert "no-store" in res_logs.headers.get("Cache-Control", "")
+    logs_data = res_logs.get_json()
+    assert isinstance(logs_data, list)
+    assert len(logs_data) <= 5
+    if logs_data:
+        entry = logs_data[0]
+        assert "timestamp" in entry
+        assert "nivel" in entry
+        assert "mensaje" in entry
+        assert entry["nivel"] in ("INFO", "WARN", "ERROR")
 
 
 def test_contracts_parity_and_remediation(client):

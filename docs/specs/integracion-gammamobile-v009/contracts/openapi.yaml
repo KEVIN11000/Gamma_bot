@@ -1,0 +1,430 @@
+openapi: 3.0.3
+info:
+  title: Gamma Bot Mobile API (v0.0.9 Integration)
+  version: 1.17.0
+  description: Contratos OpenAPI de endpoints de backend adaptados a los requerimientos de GammaMobile v0.0.9.
+paths:
+  /api/v1/asistencia/marcar:
+    post:
+      summary: Registrar marcación laboral en Google Sheets
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                modo:
+                  type: string
+                  enum: [normal, directo]
+                  default: normal
+      responses:
+        '200':
+          description: Marcación laboral registrada exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tipo:
+                    type: string
+                    example: "entrada"
+                  hora:
+                    type: string
+                    example: "08:30"
+                  mensaje:
+                    type: string
+                    example: "Marcación laboral registrada exitosamente"
+        '400':
+          description: Validación fallida en marcación (duplicado, fuera de horario)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tipo:
+                    type: string
+                    example: "error"
+                  mensaje:
+                    type: string
+                    example: "❌ Ya registraste salida para el día de hoy"
+
+  /api/v1/dashboard/summary:
+    get:
+      summary: Resumen dinámico y reactivo del mes en curso
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Resumen financiero y métricas de ataque
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store, no-cache, must-revalidate"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mes:
+                    type: string
+                    example: "Octubre"
+                  ingresos:
+                    type: integer
+                  gastos:
+                    type: integer
+                  flujo_neto:
+                    type: integer
+                  margen_libre:
+                    type: integer
+                  saldo_acumulado:
+                    type: integer
+                  posicion_iva:
+                    type: integer
+                  es_debito_fiscal:
+                    type: boolean
+
+  /api/v1/avisos:
+    get:
+      summary: Listar avisos activos desde persistencia y Google Calendar
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Lista de avisos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Aviso'
+    post:
+      summary: Crear nuevo aviso en Calendar y persistencia local
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvisoCreate'
+      responses:
+        '201':
+          description: Aviso creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Aviso'
+
+  /api/v1/avisos/{id}:
+    put:
+      summary: Actualizar aviso existente en Calendar y persistencia
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvisoUpdate'
+      responses:
+        '200':
+          description: Aviso actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Aviso'
+        '404':
+          description: Aviso no encontrado
+    delete:
+      summary: Eliminar aviso de persistencia y de Google Calendar
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Aviso eliminado exitosamente
+
+  /api/v1/obligaciones:
+    post:
+      summary: Crear obligación o simulación en Google Sheets
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObligacionCreate'
+      responses:
+        '201':
+          description: Obligación registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obligacion'
+
+  /api/v1/obligaciones/{id}:
+    put:
+      summary: Actualizar estado o saldo de una obligación (aprobar simulación)
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObligacionUpdate'
+      responses:
+        '200':
+          description: Obligación actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obligacion'
+        '404':
+          description: Obligación no encontrada
+    delete:
+      summary: Eliminar registro de obligación de Google Sheets
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Obligación eliminada exitosamente
+        '404':
+          description: Obligación no encontrada
+
+  /api/v1/obligaciones/simular:
+    post:
+      summary: Simulación dinámica con cálculo real de margen libre
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [monto, meses]
+              properties:
+                monto:
+                  type: integer
+                meses:
+                  type: integer
+                concepto:
+                  type: string
+      responses:
+        '200':
+          description: Diagnóstico de viabilidad de simulación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cuota_mensual:
+                    type: integer
+                  margen_actual:
+                    type: integer
+                  nuevo_margen:
+                    type: integer
+                  diagnostico:
+                    type: string
+                    enum: [Viable, Ajustado, Riesgo]
+                  detalles:
+                    type: string
+
+  /api/v1/sistema/logs:
+    get:
+      summary: Obtener logs reales del servidor en orden cronológico inverso
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Lista de entradas de log
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    timestamp:
+                      type: string
+                      example: "20/10/2026 10:45:12"
+                    nivel:
+                      type: string
+                      example: "INFO"
+                    mensaje:
+                      type: string
+                      example: "Marcación laboral procesada para modo normal"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+  schemas:
+    Aviso:
+      type: object
+      properties:
+        id:
+          type: string
+        titulo:
+          type: string
+        fecha_evento:
+          type: string
+        repeticion:
+          type: string
+        hitos_minutos:
+          type: array
+          items:
+            type: integer
+    AvisoCreate:
+      type: object
+      required: [titulo, fecha_evento]
+      properties:
+        titulo:
+          type: string
+        fecha_evento:
+          type: string
+        repeticion:
+          type: string
+          default: "NINGUNA"
+        hitos_minutos:
+          type: array
+          items:
+            type: integer
+    AvisoUpdate:
+      type: object
+      properties:
+        titulo:
+          type: string
+        fecha_evento:
+          type: string
+        repeticion:
+          type: string
+        hitos_minutos:
+          type: array
+          items:
+            type: integer
+    Obligacion:
+      type: object
+      properties:
+        ID_Obligacion:
+          type: string
+        Entidad:
+          type: string
+        Nombre:
+          type: string
+        Tipo:
+          type: string
+        Monto_Inicial:
+          type: integer
+        Saldo_Actual:
+          type: integer
+        Estado:
+          type: string
+        Cuotas:
+          type: integer
+        Cuota_Referencia_Gs:
+          type: integer
+        Cuotas_Totales:
+          type: integer
+        Cuotas_Restantes:
+          type: integer
+        Dia_Vencimiento:
+          type: integer
+        Fecha_Inicio:
+          type: string
+        Observaciones:
+          type: string
+    ObligacionCreate:
+      type: object
+      required: [nombre, monto_inicial]
+      properties:
+        entidad:
+          type: string
+        nombre:
+          type: string
+        tipo:
+          type: string
+        monto_inicial:
+          type: integer
+        saldo_actual:
+          type: integer
+        cuotas_totales:
+          type: integer
+        cuotas_restantes:
+          type: integer
+        cuota_referencia_gs:
+          type: integer
+        dia_vencimiento:
+          type: integer
+        fecha_inicio:
+          type: string
+        estado:
+          type: string
+          default: "Activo"
+        observaciones:
+          type: string
+    ObligacionUpdate:
+      type: object
+      properties:
+        entidad:
+          type: string
+        nombre:
+          type: string
+        tipo:
+          type: string
+        monto_inicial:
+          type: integer
+        saldo_actual:
+          type: integer
+        cuotas_totales:
+          type: integer
+        cuotas_restantes:
+          type: integer
+        cuota_referencia_gs:
+          type: integer
+        dia_vencimiento:
+          type: integer
+        fecha_inicio:
+          type: string
+        estado:
+          type: string
+        observaciones:
+          type: string

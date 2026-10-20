@@ -261,6 +261,35 @@ class TestSheetsRepository(unittest.TestCase):
             mock_ws.append_row.assert_called_once()
             mock_upsert.assert_called_once_with(4800000)
 
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_delete_obligacion(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {"ID_Obligacion": "OBL-1", "Estado": "Activo"},
+            {"ID_Obligacion": "OBL-2", "Estado": "Simulado"},
+        ]
+        mock_get_sheet.return_value = mock_ws
+        res = self.repo.delete_obligacion("OBL-2")
+        self.assertTrue(res)
+        mock_ws.delete_rows.assert_called_once_with(3)  # row 3 = header + 2nd item
+
+        # Not found
+        res_false = self.repo.delete_obligacion("INEXISTENTE")
+        self.assertFalse(res_false)
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_update_obligacion_general(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {"ID_Obligacion": "OBL-1", "Estado": "Simulado", "Saldo_Actual": 1000}
+        ]
+        mock_get_sheet.return_value = mock_ws
+        res = self.repo.update_obligacion(
+            "OBL-1", {"Estado": "Activo", "Saldo_Actual": 800}
+        )
+        self.assertTrue(res)
+        self.assertEqual(mock_ws.update_cell.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

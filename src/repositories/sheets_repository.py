@@ -152,7 +152,8 @@ class SheetsRepository:
         ws = self._get_sheet("Obligaciones_Maestro")
         records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
         return [
-            r for r in records
+            r
+            for r in records
             if str(r.get("Estado", "")).strip().lower() in ("activo", "activa")
         ]
 
@@ -198,6 +199,29 @@ class SheetsRepository:
         ws = self._get_sheet("Obligaciones_Maestro")
         return self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
 
+    def delete_obligacion(self, id_obligacion: str) -> bool:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        for idx, r in enumerate(records, start=2):
+            if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
+                ws.delete_rows(idx)
+                return True
+        return False
+
+    def update_obligacion(self, id_obligacion: str, datos: dict) -> bool:
+        ws = self._get_sheet("Obligaciones_Maestro")
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        for idx, r in enumerate(records, start=2):
+            if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
+                keys_lower = [k.lower() for k in r.keys()]
+                for key, val in datos.items():
+                    k_lower = key.lower()
+                    if k_lower in keys_lower:
+                        col_idx = keys_lower.index(k_lower) + 1
+                        ws.update_cell(idx, col_idx, val)
+                return True
+        return False
+
     # --- Libro_Diario ---
     def insert_movimiento_diario(self, movimiento_dict: dict) -> None:
         ws = self._get_sheet("Libro_Diario")
@@ -206,25 +230,37 @@ class SheetsRepository:
         ws.append_row(row)
 
         try:
-            mov = str(
-                movimiento_dict.get(
-                    "Movimiento", movimiento_dict.get("tipo_movimiento", "")
-                )
-            ).lower().strip()
-            cat = str(
-                movimiento_dict.get(
-                    "Categoría",
+            mov = (
+                str(
                     movimiento_dict.get(
-                        "Categoria", movimiento_dict.get("categoria", "")
-                    ),
+                        "Movimiento", movimiento_dict.get("tipo_movimiento", "")
+                    )
                 )
-            ).lower().strip()
-            prov = str(
-                movimiento_dict.get(
-                    "Proveedor/Cliente",
-                    movimiento_dict.get("proveedor_cliente", ""),
+                .lower()
+                .strip()
+            )
+            cat = (
+                str(
+                    movimiento_dict.get(
+                        "Categoría",
+                        movimiento_dict.get(
+                            "Categoria", movimiento_dict.get("categoria", "")
+                        ),
+                    )
                 )
-            ).lower().strip()
+                .lower()
+                .strip()
+            )
+            prov = (
+                str(
+                    movimiento_dict.get(
+                        "Proveedor/Cliente",
+                        movimiento_dict.get("proveedor_cliente", ""),
+                    )
+                )
+                .lower()
+                .strip()
+            )
             if "ingreso" in mov and (
                 "salario" in cat
                 or "sueldo" in cat
@@ -236,9 +272,7 @@ class SheetsRepository:
                 monto = safe_int(
                     movimiento_dict.get(
                         "Total",
-                        movimiento_dict.get(
-                            "total", movimiento_dict.get("Neto", 0)
-                        ),
+                        movimiento_dict.get("total", movimiento_dict.get("Neto", 0)),
                     )
                 )
                 if monto > 0:

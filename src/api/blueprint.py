@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +16,11 @@ from api.security import require_api_key
 from api.schemas import (
     MovimientoCreate,
     ObligacionCreate,
+    ObligacionUpdate,
     AbonoRequest,
     SimulacionRequest,
     AvisoCreate,
+    AvisoUpdate,
     IAParseRequest,
     TicketCreate,
     TicketUpdate,
@@ -59,7 +63,10 @@ def health_check() -> Any:
                 "version_api": "1.0.0",
                 "latest_app_version": "0.0.8",
                 "latest_app_version_code": 45,
-                "download_url": "https://github.com/KEVIN11000/Gamma_Mobile/releases/download/v0.0.8/gamma-mobile-v0.0.8-release.apk",
+                "download_url": (
+                    "https://github.com/KEVIN11000/Gamma_Mobile/releases/"
+                    "download/v0.0.8/gamma-mobile-v0.0.8-release.apk"
+                ),
             }
         ),
         200,
@@ -73,7 +80,9 @@ def get_dashboard_summary() -> Any:
     try:
         from logic.financiero import AgenteFinanciero
 
-        spreadsheet_id = os.getenv("SPREADSHEET_ID", "dummy_sheet_id")
+        spreadsheet_id = (
+            os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+        )
         agente = AgenteFinanciero(spreadsheet_id=spreadsheet_id)
         balance = agente.obtener_balance() if hasattr(agente, "obtener_balance") else {}
 
@@ -85,9 +94,8 @@ def get_dashboard_summary() -> Any:
         # Cálculo de margen libre: presupuesto base (ingresos fijos - gastos fijos) menos cuotas activas
         try:
             from logic.financiero import calcular_margen_de_ataque
+
             margen_libre = calcular_margen_de_ataque()
-            if margen_libre == 0 and flujo_neto > 0:
-                margen_libre = max(0, flujo_neto - int(gastos * 0.1))
         except Exception as e_margen:
             logger.warning(f"Fallback cálculo margen libre: {e_margen}")
             margen_libre = max(0, flujo_neto - int(gastos * 0.2))
@@ -112,21 +120,24 @@ def get_dashboard_summary() -> Any:
         ]
         mes_nombre = meses_es[ahora.month - 1]
 
-        return (
-            jsonify(
-                {
-                    "mes": mes_nombre,
-                    "ingresos": ingresos,
-                    "gastos": gastos,
-                    "flujo_neto": flujo_neto,
-                    "margen_libre": margen_libre,
-                    "saldo_acumulado": saldo_acumulado,
-                    "posicion_iva": posicion_iva,
-                    "es_debito_fiscal": es_debito_fiscal,
-                }
-            ),
-            200,
+        response = jsonify(
+            {
+                "mes": mes_nombre,
+                "ingresos": ingresos,
+                "gastos": gastos,
+                "flujo_neto": flujo_neto,
+                "margen_libre": margen_libre,
+                "saldo_acumulado": saldo_acumulado,
+                "posicion_iva": posicion_iva,
+                "es_debito_fiscal": es_debito_fiscal,
+            }
         )
+        response.headers["Cache-Control"] = (
+            "no-store, no-cache, must-revalidate, max-age=0"
+        )
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response, 200
     except Exception as e:
         logger.error(f"Error en /dashboard/summary: {e}")
         return (
@@ -167,7 +178,9 @@ def get_movimientos() -> Any:
                     "proveedor_cliente": r[2],
                     "nro_factura": r[3],
                     "neto": safe_int(r[4]),
-                    "monto_gravado": safe_int(r[4]) if safe_int(r[4]) > 0 else safe_int(r[6]),
+                    "monto_gravado": (
+                        safe_int(r[4]) if safe_int(r[4]) > 0 else safe_int(r[6])
+                    ),
                     "iva": safe_int(r[5]),
                     "monto_iva": safe_int(r[5]),
                     "total": safe_int(r[6]),
@@ -205,12 +218,15 @@ def create_movimiento() -> Any:
     if tasa == "10%":
         monto_iva = round(total / 11)
         monto_gravado = total - monto_iva
+        clasificacion_iva = "IVA 10%"
     elif tasa == "5%":
         monto_iva = round(total / 21)
         monto_gravado = total - monto_iva
+        clasificacion_iva = "IVA 5%"
     else:
         monto_iva = 0
         monto_gravado = total
+        clasificacion_iva = "Exento"
 
     ahora = get_now_py()
     fecha = req_obj.fecha or ahora.strftime("%d/%m")
@@ -223,48 +239,66 @@ def create_movimiento() -> Any:
         ws = repo._get_sheet("Libro_Diario")
         if ws:
             nueva_fila = [
-                fecha,                         # 0 Fecha
-                req_obj.movimiento.value,      # 1 Movimiento
-                req_obj.proveedor_cliente,     # 2 Proveedor/Cliente
+                fecha,  # 0 Fecha
+                req_obj.movimiento.value,  # 1 Movimiento
+                req_obj.proveedor_cliente,  # 2 Proveedor/Cliente
                 req_obj.nro_factura or "S/N",  # 3 Nro Factura
-                str(monto_gravado),            # 4 Neto
-                str(monto_iva),                # 5 IVA
-                str(total),                    # 6 Total
-                req_obj.categoria,             # 7 Categoría
-                req_obj.comprobante.value,     # 8 Comprobante
-                "",                            # 9 Rastro/Foto
-                ahora.strftime("%m/%Y"),       # 10 Mes
-                "",                            # 11 ID_Obligacion
-                tasa,                          # 12 Tasa_IVA
-                str(monto_gravado),            # 13 Monto_Gravado
-                str(monto_iva),                # 14 Monto_IVA
-                "",                            # 15 Clasificacion_IVA
+                str(monto_gravado),  # 4 Neto
+                str(monto_iva),  # 5 IVA
+                str(total),  # 6 Total
+                req_obj.categoria,  # 7 Categoría
+                req_obj.comprobante.value,  # 8 Comprobante
+                req_obj.rastro_foto or "",  # 9 Rastro/Foto
+                ahora.strftime("%m/%Y"),  # 10 Mes
+                req_obj.id_obligacion or "",  # 11 ID_Obligacion
+                tasa,  # 12 Tasa_IVA
+                str(monto_gravado),  # 13 Monto_Gravado
+                str(monto_iva),  # 14 Monto_IVA
+                clasificacion_iva,  # 15 Clasificacion_IVA
             ]
             ws.append_row(nueva_fila)
+
+            # Auto-sincronización reactiva de salario a Presupuesto_Base
+            tipo_mov = req_obj.movimiento.value.lower()
+            cat = req_obj.categoria.lower()
+            prov = req_obj.proveedor_cliente.lower()
+            if "ingreso" in tipo_mov and (
+                "salario" in cat
+                or "sueldo" in cat
+                or "salario" in prov
+                or "sueldo" in prov
+            ):
+                try:
+                    repo.upsert_salario_presupuesto_base(total)
+                except Exception as e_sal:
+                    logger.warning(
+                        f"Error sincronizando salario en Presupuesto_Base: {e_sal}"
+                    )
     except Exception as e:
         logger.warning(f"Error escribiendo en Sheets (mock/offline mode): {e}")
 
-    return (
-        jsonify(
-            {
-                "fecha": fecha,
-                "tipo": req_obj.movimiento.value,
-                "movimiento": req_obj.movimiento.value,
-                "proveedor_cliente": req_obj.proveedor_cliente,
-                "nro_factura": req_obj.nro_factura,
-                "total": total,
-                "categoria": req_obj.categoria,
-                "comprobante": req_obj.comprobante.value,
-                "tasa_iva": tasa,
-                "neto": monto_gravado,
-                "iva": monto_iva,
-                "monto_gravado": monto_gravado,
-                "monto_iva": monto_iva,
-                "client_id": req_obj.client_id,
-            }
-        ),
-        200,
+    response = jsonify(
+        {
+            "fecha": fecha,
+            "tipo": req_obj.movimiento.value,
+            "movimiento": req_obj.movimiento.value,
+            "proveedor_cliente": req_obj.proveedor_cliente,
+            "nro_factura": req_obj.nro_factura,
+            "total": total,
+            "categoria": req_obj.categoria,
+            "comprobante": req_obj.comprobante.value,
+            "tasa_iva": tasa,
+            "neto": monto_gravado,
+            "iva": monto_iva,
+            "monto_gravado": monto_gravado,
+            "monto_iva": monto_iva,
+            "clasificacion_iva": clasificacion_iva,
+            "id_obligacion": req_obj.id_obligacion,
+            "client_id": req_obj.client_id,
+        }
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response, 200
 
 
 # ── 4. OCR e Inteligencia Artificial ────────────────────────────────────────
@@ -359,13 +393,17 @@ def interpretar_aviso_ia() -> Any:
                 f"Hoy es {ahora.strftime('%d/%m/%Y %H:%M')}.\n"
                 f"Extrae y devuelve un JSON estricto con:\n"
                 f"1. 'titulo': nombre breve y descriptivo del evento.\n"
-                f"2. 'fecha_evento': fecha y hora del evento en formato 'DD/MM/YYYY HH:MM'. Si el usuario menciona un día o fecha futura (ej. 'mañana', 'el 25', 'el viernes'), calcula la fecha correcta. Si no especifica hora, asume 09:00.\n"
+                "2. 'fecha_evento': fecha y hora del evento en formato 'DD/MM/YYYY HH:MM'. "
+                "Si el usuario menciona un día o fecha futura (ej. 'mañana', 'el 25', 'el viernes'), "
+                "calcula la fecha correcta. Si no especifica hora, asume 09:00.\n"
                 f"Texto: {texto}"
             )
             resp = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type="application/json"),
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                ),
             )
             parsed = json.loads(resp.text)
             titulo = parsed.get("titulo", titulo)
@@ -377,9 +415,14 @@ def interpretar_aviso_ia() -> Any:
     if not fecha_evento_str:
         import re
         from datetime import timedelta
+
         match_fecha = re.search(r"(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?", texto)
         match_hora = re.search(r"(\d{1,2}):(\d{2})", texto)
-        hora_str = f"{match_hora.group(1).zfill(2)}:{match_hora.group(2)}" if match_hora else "09:00"
+        hora_str = (
+            f"{match_hora.group(1).zfill(2)}:{match_hora.group(2)}"
+            if match_hora
+            else "09:00"
+        )
 
         if match_fecha:
             d = match_fecha.group(1).zfill(2)
@@ -403,6 +446,7 @@ def interpretar_aviso_ia() -> Any:
     dias_restantes = 1
     try:
         from datetime import datetime
+
         dt_evento = datetime.strptime(fecha_evento_str.split()[0], "%d/%m/%Y")
         dt_hoy = datetime(ahora.year, ahora.month, ahora.day)
         dias_restantes = max(0, (dt_evento - dt_hoy).days)
@@ -438,12 +482,19 @@ def get_obligaciones() -> Any:
                     "id": o.get("ID_Obligacion") or o.get("id", ""),
                     "nombre": o.get("Nombre") or o.get("nombre", ""),
                     "tipo": o.get("Tipo") or o.get("tipo", ""),
-                    "monto_inicial": safe_int(o.get("Monto_Inicial") or o.get("monto_inicial")),
-                    "saldo_actual": safe_int(o.get("Saldo_Actual") or o.get("saldo_actual")),
+                    "monto_inicial": safe_int(
+                        o.get("Monto_Inicial") or o.get("monto_inicial")
+                    ),
+                    "saldo_actual": safe_int(
+                        o.get("Saldo_Actual") or o.get("saldo_actual")
+                    ),
                     "estado": o.get("Estado") or o.get("estado", "Activo"),
-                    "cuota_referencia_gs": safe_int(o.get("Cuota_Referencia_Gs") or o.get("Cuotas")),
+                    "cuota_referencia_gs": safe_int(
+                        o.get("Cuota_Referencia_Gs") or o.get("Cuotas")
+                    ),
                     "fecha_inicio": o.get("Fecha_Inicio") or o.get("fecha_inicio", ""),
-                    "observaciones": o.get("Observaciones") or o.get("observaciones", ""),
+                    "observaciones": o.get("Observaciones")
+                    or o.get("observaciones", ""),
                 }
             )
         return jsonify(obligaciones), 200
@@ -465,15 +516,38 @@ def create_obligacion() -> Any:
         )
 
     id_nueva = f"OBL-{str(uuid.uuid4())[:6].upper()}"
+    cuotas_totales = req_obj.cuotas_totales or 1
+    cuotas_restantes = (
+        req_obj.cuotas_restantes
+        if req_obj.cuotas_restantes is not None
+        else cuotas_totales
+    )
+    cuota_ref = req_obj.cuota_referencia_gs or (
+        round(req_obj.monto_inicial / cuotas_totales) if cuotas_totales > 0 else 0
+    )
+    saldo_actual = (
+        req_obj.saldo_actual
+        if req_obj.saldo_actual is not None
+        else req_obj.monto_inicial
+    )
+    estado = req_obj.estado or "Activo"
+    fecha_inicio = req_obj.fecha_inicio or get_now_py().strftime("%d/%m/%Y")
+    entidad = req_obj.entidad or "General"
+
     nueva = {
         "ID_Obligacion": id_nueva,
         "Tipo": req_obj.tipo,
         "Nombre": req_obj.nombre,
+        "Entidad": entidad,
         "Monto_Inicial": req_obj.monto_inicial,
-        "Saldo_Actual": req_obj.monto_inicial,
-        "Estado": "Activo",
-        "Fecha_Inicio": get_now_py().strftime("%d/%m/%Y"),
-        "Cuotas": req_obj.cuota_referencia_gs,
+        "Saldo_Actual": saldo_actual,
+        "Estado": estado,
+        "Fecha_Inicio": fecha_inicio,
+        "Cuotas": cuota_ref,
+        "Cuota_Referencia_Gs": cuota_ref,
+        "Cuotas_Totales": cuotas_totales,
+        "Cuotas_Restantes": cuotas_restantes,
+        "Dia_Vencimiento": req_obj.dia_vencimiento or 0,
         "Observaciones": req_obj.observaciones or "",
     }
     try:
@@ -485,6 +559,128 @@ def create_obligacion() -> Any:
         logger.warning(f"Error persistiendo obligación: {e}")
 
     return jsonify(nueva), 201
+
+
+@mobile_api.route("/obligaciones/<obligacion_id>", methods=["PUT"])
+@require_api_key
+def update_obligacion(obligacion_id: str) -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = ObligacionUpdate(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        existente = repo.get_obligacion_by_id(obligacion_id)
+        if not existente:
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": "NOT_FOUND",
+                            "message": f"Obligación {obligacion_id} no encontrada",
+                        }
+                    }
+                ),
+                404,
+            )
+
+        update_dict: dict[str, Any] = {}
+        if req_obj.estado is not None:
+            update_dict["Estado"] = req_obj.estado
+        if req_obj.saldo_actual is not None:
+            update_dict["Saldo_Actual"] = req_obj.saldo_actual
+        if req_obj.cuotas_restantes is not None:
+            update_dict["Cuotas_Restantes"] = req_obj.cuotas_restantes
+        if req_obj.cuotas_totales is not None:
+            update_dict["Cuotas_Totales"] = req_obj.cuotas_totales
+        if req_obj.cuota_referencia_gs is not None:
+            update_dict["Cuota_Referencia_Gs"] = req_obj.cuota_referencia_gs
+            update_dict["Cuotas"] = req_obj.cuota_referencia_gs
+        if req_obj.dia_vencimiento is not None:
+            update_dict["Dia_Vencimiento"] = req_obj.dia_vencimiento
+        if req_obj.observaciones is not None:
+            update_dict["Observaciones"] = req_obj.observaciones
+        if req_obj.nombre is not None:
+            update_dict["Nombre"] = req_obj.nombre
+        if req_obj.tipo is not None:
+            update_dict["Tipo"] = req_obj.tipo
+        if req_obj.entidad is not None:
+            update_dict["Entidad"] = req_obj.entidad
+
+        repo.update_obligacion(obligacion_id, update_dict)
+        existente.update(update_dict)
+        return jsonify(existente), 200
+    except Exception as e:
+        logger.error(f"Error actualizando obligación {obligacion_id}: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error actualizando obligación: {str(e)}",
+                    }
+                }
+            ),
+            500,
+        )
+
+
+@mobile_api.route("/obligaciones/<obligacion_id>", methods=["DELETE"])
+@require_api_key
+def delete_obligacion(obligacion_id: str) -> Any:
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        existente = repo.get_obligacion_by_id(obligacion_id)
+        if not existente:
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": "NOT_FOUND",
+                            "message": f"Obligación {obligacion_id} no encontrada",
+                        }
+                    }
+                ),
+                404,
+            )
+
+        event_id = existente.get("Event_ID")
+        if event_id:
+            try:
+                from logic.logic import AgenteAutonomoHoras
+
+                spreadsheet_id = (
+                    os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+                )
+                agente_horas = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
+                agente_horas.eliminar_aviso_calendar(event_id)
+            except Exception as e_cal:
+                logger.warning(f"Error borrando evento Calendar de obligación: {e_cal}")
+
+        repo.delete_obligacion(obligacion_id)
+        return jsonify({"status": "deleted", "id": obligacion_id}), 200
+    except Exception as e:
+        logger.error(f"Error eliminando obligación {obligacion_id}: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error eliminando obligación: {str(e)}",
+                    }
+                }
+            ),
+            500,
+        )
 
 
 @mobile_api.route("/obligaciones/abonar", methods=["POST"])
@@ -544,7 +740,14 @@ def simular_obligacion() -> Any:
         )
 
     cuota = round(req_obj.monto / req_obj.meses)
-    margen_actual = 2000000
+    try:
+        from logic.financiero import calcular_margen_de_ataque
+
+        margen_actual = calcular_margen_de_ataque()
+    except Exception as e_m:
+        logger.warning(f"Fallback margen en simulación: {e_m}")
+        margen_actual = 2000000
+
     nuevo_margen = margen_actual - cuota
     diagnostico = (
         "Viable"
@@ -581,8 +784,12 @@ def get_avisos() -> Any:
     # 2. Avisos sincronizados desde Google Calendar
     try:
         from logic.logic import AgenteAutonomoHoras
-        agente_horas = AgenteAutonomoHoras()
-        eventos_calendar = agente_horas.obtener_avisos_calendar()
+
+        spreadsheet_id = (
+            os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+        )
+        agente_horas = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
+        eventos_calendar = agente_horas.obtener_lista_avisos_calendar()
         if eventos_calendar:
             titulos_existentes = {a.get("titulo") for a in avisos}
             for ev in eventos_calendar:
@@ -591,12 +798,17 @@ def get_avisos() -> Any:
                     avisos.append(
                         {
                             "id": str(ev.get("id", f"cal-{len(avisos)}")),
+                            "event_id": str(ev.get("id", "")),
                             "titulo": titulo,
                             "fecha_evento": ev.get("fecha_evento", ""),
+                            "repeticion": "NINGUNA",
+                            "hitos_minutos": [1440],
                         }
                     )
     except Exception as e_cal:
-        logger.warning(f"No se pudieron sincronizar eventos de Calendar en /avisos: {e_cal}")
+        logger.warning(
+            f"No se pudieron sincronizar eventos de Calendar en /avisos: {e_cal}"
+        )
 
     return jsonify(avisos), 200
 
@@ -613,10 +825,44 @@ def create_aviso() -> Any:
             400,
         )
 
+    aviso_id = str(uuid.uuid4())[:8]
+    event_id = ""
+
+    # Sincronización con Google Calendar
+    try:
+        from logic.logic import AgenteAutonomoHoras
+
+        spreadsheet_id = (
+            os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+        )
+        agente_horas = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
+
+        partes = req_obj.fecha_evento.strip().split()
+        fecha_str = partes[0]
+        hora_str = partes[1] if len(partes) > 1 else "09:00"
+
+        reminders = [
+            {"method": "popup", "minutes": m} for m in req_obj.hitos_minutos[:5]
+        ]
+        datos_evento = {
+            "titulo": req_obj.titulo,
+            "fecha": fecha_str,
+            "hora": hora_str,
+            "reminders": reminders,
+        }
+        res_cal = agente_horas.guardar_aviso_calendar(datos_evento)
+        if "✅" in str(res_cal):
+            event_id = f"gcal-{aviso_id}"
+    except Exception as e_cal:
+        logger.warning(f"Error sincronizando aviso en Calendar: {e_cal}")
+
     nuevo_aviso = {
-        "id": str(uuid.uuid4())[:8],
+        "id": aviso_id,
+        "event_id": event_id,
         "titulo": req_obj.titulo,
         "fecha_evento": req_obj.fecha_evento,
+        "repeticion": req_obj.repeticion,
+        "hitos_minutos": req_obj.hitos_minutos,
         "dias_restantes": req_obj.dias_restantes or 0,
         "alertas_disparadas": [],
     }
@@ -638,18 +884,126 @@ def create_aviso() -> Any:
     return jsonify(nuevo_aviso), 201
 
 
-@mobile_api.route("/avisos/<aviso_id>", methods=["DELETE"])
+@mobile_api.route("/avisos/<aviso_id>", methods=["PUT"])
 @require_api_key
-def delete_aviso(aviso_id: str) -> Any:
+def update_aviso(aviso_id: str) -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = AvisoUpdate(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    avisos = []
     if AVISOS_FILE.exists():
         try:
             with open(AVISOS_FILE, "r", encoding="utf-8") as f:
                 avisos = json.load(f)
+        except Exception:
+            avisos = []
+
+    target = None
+    for a in avisos:
+        if str(a.get("id")) == str(aviso_id):
+            target = a
+            break
+
+    if not target:
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "NOT_FOUND",
+                        "message": f"Aviso {aviso_id} no encontrado",
+                    }
+                }
+            ),
+            404,
+        )
+
+    if req_obj.titulo is not None:
+        target["titulo"] = req_obj.titulo
+    if req_obj.fecha_evento is not None:
+        target["fecha_evento"] = req_obj.fecha_evento
+    if req_obj.repeticion is not None:
+        target["repeticion"] = req_obj.repeticion
+    if req_obj.hitos_minutos is not None:
+        target["hitos_minutos"] = req_obj.hitos_minutos
+    if req_obj.dias_restantes is not None:
+        target["dias_restantes"] = req_obj.dias_restantes
+
+    # Sincronización en Google Calendar
+    try:
+        from logic.logic import AgenteAutonomoHoras
+
+        spreadsheet_id = (
+            os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+        )
+        agente_horas = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
+        if target.get("event_id"):
+            agente_horas.eliminar_aviso_calendar(target["event_id"])
+
+        partes = target["fecha_evento"].strip().split()
+        fecha_str = partes[0]
+        hora_str = partes[1] if len(partes) > 1 else "09:00"
+        reminders = [
+            {"method": "popup", "minutes": m}
+            for m in target.get("hitos_minutos", [1440])[:5]
+        ]
+        res_cal = agente_horas.guardar_aviso_calendar(
+            {
+                "titulo": target["titulo"],
+                "fecha": fecha_str,
+                "hora": hora_str,
+                "reminders": reminders,
+            }
+        )
+        if "✅" in str(res_cal):
+            target["event_id"] = f"gcal-{aviso_id}"
+    except Exception as e_cal:
+        logger.warning(f"Error actualizando aviso en Calendar: {e_cal}")
+
+    try:
+        with open(AVISOS_FILE, "w", encoding="utf-8") as f:
+            json.dump(avisos, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error guardando avisos actualizados: {e}")
+
+    return jsonify(target), 200
+
+
+@mobile_api.route("/avisos/<aviso_id>", methods=["DELETE"])
+@require_api_key
+def delete_aviso(aviso_id: str) -> Any:
+    event_id_to_delete = ""
+    if AVISOS_FILE.exists():
+        try:
+            with open(AVISOS_FILE, "r", encoding="utf-8") as f:
+                avisos = json.load(f)
+            for a in avisos:
+                if str(a.get("id")) == str(aviso_id):
+                    event_id_to_delete = a.get("event_id", "")
+                    break
             avisos = [a for a in avisos if str(a.get("id")) != str(aviso_id)]
             with open(AVISOS_FILE, "w", encoding="utf-8") as f:
                 json.dump(avisos, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error borrando aviso: {e}")
+
+    if event_id_to_delete:
+        try:
+            from logic.logic import AgenteAutonomoHoras
+
+            spreadsheet_id = (
+                os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+            )
+            agente_horas = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
+            agente_horas.eliminar_aviso_calendar(event_id_to_delete)
+        except Exception as e_cal:
+            logger.warning(f"Error eliminando evento de Calendar: {e_cal}")
+
     return jsonify({"status": "deleted"}), 200
 
 
@@ -659,17 +1013,66 @@ def delete_aviso(aviso_id: str) -> Any:
 def marcar_asistencia() -> Any:
     data = request.get_json(silent=True) or {}
     modo = data.get("modo", "normal")
-    ahora = get_now_py()
-    return (
-        jsonify(
-            {
-                "tipo": "entrada",
-                "hora": ahora.strftime("%H:%M"),
-                "mensaje": f"Marcación laboral exitosa en modo {modo}",
-            }
-        ),
-        200,
-    )
+    if modo not in ("normal", "directo"):
+        modo = "normal"
+
+    spreadsheet_id = os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+    if not spreadsheet_id:
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "CONFIG_ERROR",
+                        "message": "SPREADSHEET_ID no configurado",
+                    }
+                }
+            ),
+            500,
+        )
+
+    try:
+        from logic.logic import AgenteAutonomoHoras
+
+        agente = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
+        resultado = agente.ejecutar_marcado_para_bot(modo=modo)
+
+        if not isinstance(resultado, str):
+            resultado = str(resultado)
+
+        if resultado.startswith("❌"):
+            return jsonify({"tipo": "error", "mensaje": resultado}), 400
+        elif resultado.startswith("⚠️"):
+            return jsonify({"tipo": "error", "mensaje": resultado}), 409
+        elif resultado.startswith("ℹ️"):
+            return jsonify({"tipo": "error", "mensaje": resultado}), 400
+
+        tipo = "salida" if "salida" in resultado.lower() else "entrada"
+        match_hora = re.search(r"\b(\d{2}:\d{2})\b", resultado)
+        hora = match_hora.group(1) if match_hora else get_now_py().strftime("%H:%M")
+
+        return (
+            jsonify(
+                {
+                    "tipo": tipo,
+                    "hora": hora,
+                    "mensaje": resultado,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.error(f"Error en marcación de asistencia: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "SERVICE_ERROR",
+                        "message": f"Error conectando con planilla de asistencia: {str(e)}",
+                    }
+                }
+            ),
+            502,
+        )
 
 
 @mobile_api.route("/asistencia/materias", methods=["GET"])
@@ -678,6 +1081,7 @@ def get_materias() -> Any:
     materias: list[str] = []
     try:
         from logic.logic import AgenteAsistenciaMaterias
+
         agente = AgenteAsistenciaMaterias()
         horarios = agente.HORARIOS_MATERIAS
         if horarios:
@@ -779,9 +1183,7 @@ def generar_pdf_cierre(
     story = [
         Paragraph(titulo, e_titulo),
         Paragraph(subtitulo, e_sub),
-        Paragraph(
-            f"Emitido el: {ahora.strftime('%d/%m/%Y %H:%M:%S')} (PYST)", e_sub
-        ),
+        Paragraph(f"Emitido el: {ahora.strftime('%d/%m/%Y %H:%M:%S')} (PYST)", e_sub),
         HRFlowable(width="100%", thickness=2, color=AZUL, spaceAfter=14),
         Paragraph("Resumen Ejecutivo de Liquidación", e_seccion),
     ]
@@ -832,9 +1234,7 @@ def generar_pdf_cierre(
     )
     story.append(tabla)
     story.append(Spacer(1, 15))
-    story.append(
-        HRFlowable(width="100%", thickness=0.5, color=GRIS2, spaceAfter=8)
-    )
+    story.append(HRFlowable(width="100%", thickness=0.5, color=GRIS2, spaceAfter=8))
 
     e_pie = ParagraphStyle(
         "PieCierre",
@@ -995,7 +1395,9 @@ def ejecutar_cierre() -> Any:
         )
 
     desc_str = " (con descuento de seguro)" if con_desc and tipo == "horas" else ""
-    tipo_str = "contable (Libro Diario)" if tipo == "contable" else "laboral de asistencia"
+    tipo_str = (
+        "contable (Libro Diario)" if tipo == "contable" else "laboral de asistencia"
+    )
     return (
         jsonify(
             {
@@ -1129,17 +1531,32 @@ def update_ticket(ticket_id: str) -> Any:
     estados_validos = {"Abierto", "En proceso", "Cerrado"}
     if req_obj.estado not in estados_validos:
         return (
-            jsonify({
-                "error": {
-                    "code": "INVALID_STATE",
-                    "message": f"Estado '{req_obj.estado}' inválido. Debe ser uno de: {sorted(list(estados_validos))}",
+            jsonify(
+                {
+                    "error": {
+                        "code": "INVALID_STATE",
+                        "message": (
+                            f"Estado '{req_obj.estado}' inválido. "
+                            f"Debe ser uno de: {sorted(list(estados_validos))}"
+                        ),
+                    }
                 }
-            }),
+            ),
             400,
         )
 
     if not TICKETS_FILE.exists():
-        return jsonify({"error": {"code": "NOT_FOUND", "message": f"Ticket {ticket_id} no encontrado"}}), 404
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "NOT_FOUND",
+                        "message": f"Ticket {ticket_id} no encontrado",
+                    }
+                }
+            ),
+            404,
+        )
 
     try:
         with open(TICKETS_FILE, "r", encoding="utf-8") as f:
@@ -1154,7 +1571,17 @@ def update_ticket(ticket_id: str) -> Any:
             break
 
     if not target:
-        return jsonify({"error": {"code": "NOT_FOUND", "message": f"Ticket {ticket_id} no encontrado"}}), 404
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "NOT_FOUND",
+                        "message": f"Ticket {ticket_id} no encontrado",
+                    }
+                }
+            ),
+            404,
+        )
 
     target["estado"] = req_obj.estado
     if req_obj.resolucion is not None:
@@ -1189,23 +1616,80 @@ def update_ticket(ticket_id: str) -> Any:
 @mobile_api.route("/sistema/logs", methods=["GET"])
 @require_api_key
 def get_logs() -> Any:
-    return (
-        jsonify(
-            [
-                {
-                    "timestamp": get_now_py().strftime("%d/%m/%Y %H:%M:%S"),
-                    "nivel": "INFO",
-                    "mensaje": "Servidor backend Gamma operativo en WSGI.",
-                },
-                {
-                    "timestamp": get_now_py().strftime("%d/%m/%Y %H:%M:%S"),
-                    "nivel": "INFO",
-                    "mensaje": "Mobile API Blueprint v1.0.0 activo.",
-                },
-            ]
-        ),
-        200,
-    )
+    limit_str = request.args.get("limit", "20")
+    try:
+        limit = max(1, min(100, int(limit_str)))
+    except (ValueError, TypeError):
+        limit = 20
+
+    log_file = BASE_DIR / "gen_log.txt"
+    entries: list[dict[str, str]] = []
+
+    if log_file.exists():
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                lines = [line.strip() for line in f if line.strip()]
+
+            # Leer en orden cronológico inverso (más reciente primero)
+            for line in reversed(lines):
+                if len(entries) >= limit:
+                    break
+                match = re.match(
+                    r"^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]\s*(.*)$",
+                    line,
+                )
+                if match:
+                    ts_raw, msg = match.group(1), match.group(2)
+                    try:
+                        dt = datetime.strptime(ts_raw, "%Y-%m-%d %H:%M:%S")
+                        ts = dt.strftime("%d/%m/%Y %H:%M:%S")
+                    except Exception:
+                        ts = ts_raw
+                else:
+                    ts = get_now_py().strftime("%d/%m/%Y %H:%M:%S")
+                    msg = line
+
+                msg_lower = msg.lower()
+                if (
+                    "❌" in msg
+                    or "error" in msg_lower
+                    or "exception" in msg_lower
+                    or "fail" in msg_lower
+                ):
+                    nivel = "ERROR"
+                elif "⚠️" in msg or "warn" in msg_lower or "advertencia" in msg_lower:
+                    nivel = "WARN"
+                else:
+                    nivel = "INFO"
+
+                entries.append(
+                    {
+                        "timestamp": ts,
+                        "nivel": nivel,
+                        "mensaje": msg,
+                    }
+                )
+        except Exception as e:
+            logger.warning(f"Error leyendo logs desde {log_file}: {e}")
+
+    # Fallback estructurado si el archivo no existe o está vacío
+    if not entries:
+        entries = [
+            {
+                "timestamp": get_now_py().strftime("%d/%m/%Y %H:%M:%S"),
+                "nivel": "INFO",
+                "mensaje": "Servidor backend Gamma operativo en WSGI.",
+            },
+            {
+                "timestamp": get_now_py().strftime("%d/%m/%Y %H:%M:%S"),
+                "nivel": "INFO",
+                "mensaje": "Mobile API Blueprint v1.0.0 activo.",
+            },
+        ]
+
+    response = jsonify(entries)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response, 200
 
 
 # ── 9. Webhooks de GitHub ───────────────────────────────────────────────────
@@ -1219,7 +1703,9 @@ def github_webhook() -> Any:
     payload_bytes = request.get_data()
 
     if not GitHubWebhookService.verify_signature(payload_bytes, signature_header):
-        logger.warning("Intento de webhook de GitHub con firma HMAC inválida o ausente.")
+        logger.warning(
+            "Intento de webhook de GitHub con firma HMAC inválida o ausente."
+        )
         return (
             jsonify(
                 {
@@ -1266,7 +1752,11 @@ def github_webhook() -> Any:
                 if chat_id:
                     from flask_app import bot_instance
 
-                    if bot_instance and hasattr(bot_instance, "bot") and bot_instance.bot:
+                    if (
+                        bot_instance
+                        and hasattr(bot_instance, "bot")
+                        and bot_instance.bot
+                    ):
                         accion_emoji = (
                             "✅" if resultado.get("nuevo_estado") == "Cerrado" else "🔄"
                         )
@@ -1294,4 +1784,3 @@ def github_webhook() -> Any:
         ),
         200,
     )
-

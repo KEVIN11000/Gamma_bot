@@ -37,11 +37,33 @@ class MovimientoCreate(BaseModel):
 
 
 class ObligacionCreate(BaseModel):
+    entidad: Optional[str] = "General"
     tipo: str = "Deuda"
     nombre: str
     monto_inicial: int = Field(..., gt=0)
+    saldo_actual: Optional[int] = None
+    cuotas_totales: Optional[int] = 1
+    cuotas_restantes: Optional[int] = 1
     cuota_referencia_gs: Optional[int] = 0
+    dia_vencimiento: Optional[int] = 0
+    fecha_inicio: Optional[str] = None
+    estado: str = "Activo"
     observaciones: Optional[str] = ""
+
+
+class ObligacionUpdate(BaseModel):
+    entidad: Optional[str] = None
+    nombre: Optional[str] = None
+    tipo: Optional[str] = None
+    monto_inicial: Optional[int] = None
+    saldo_actual: Optional[int] = None
+    cuotas_totales: Optional[int] = None
+    cuotas_restantes: Optional[int] = None
+    cuota_referencia_gs: Optional[int] = None
+    dia_vencimiento: Optional[int] = None
+    fecha_inicio: Optional[str] = None
+    estado: Optional[str] = None
+    observaciones: Optional[str] = None
 
 
 class AbonoRequest(BaseModel):
@@ -61,6 +83,16 @@ class AvisoCreate(BaseModel):
     titulo: str
     fecha_evento: str  # DD/MM/AAAA HH:MM
     dias_restantes: Optional[int] = None
+    repeticion: str = "NINGUNA"
+    hitos_minutos: list[int] = Field(default_factory=lambda: [1440])
+
+
+class AvisoUpdate(BaseModel):
+    titulo: Optional[str] = None
+    fecha_evento: Optional[str] = None
+    dias_restantes: Optional[int] = None
+    repeticion: Optional[str] = None
+    hitos_minutos: Optional[list[int]] = None
 
 
 class IAParseRequest(BaseModel):
