@@ -234,17 +234,270 @@ def test_obligaciones_endpoints(client):
         assert res_del_404.status_code == 404
 
     # Abonar
-    res_abono = client.post(
-        "/api/v1/obligaciones/abonar",
-        headers=headers,
-        json={"id_obligacion": ob_id, "monto": 1000000},
-    )
-    assert res_abono.status_code == 200
-
-
-def test_avisos_endpoints(client):
-    headers = {"X-API-KEY": "test-secret-key"}
+    mock_ob_abono = {
+        "ID_Obligacion": ob_id,
+        "Nombre": "Préstamo Auto",
+        "Entidad": "Banco Atlas",
+        "Monto_Inicial": 5000000,
+        "Saldo_Actual": 4500000,
+        "Cuotas_Restantes": 10,
+        "Estado": "Activo",
+    }
     with unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.get_obligacion_by_id",
+        side_effect=lambda oid: dict(mock_ob_abono) if oid == ob_id else {},
+    ), unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.update_obligacion_saldo"
+    ) as mock_upd_saldo, unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.insert_movimiento_diario"
+    ) as mock_ins_mov:
+        res_abono = client.post(
+            "/api/v1/obligaciones/abonar",
+            headers=headers,
+            json={"id_obligacion": ob_id, "monto": 1000000},
+        )
+        assert res_abono.status_code == 200
+        data_abono = res_abono.get_json()
+        assert data_abono["status"] == "ok"
+        assert data_abono["saldo_actual"] == 3500000
+        assert data_abono["cuotas_restantes"] == 9
+        assert data_abono["egreso_registrado"] == 1000000
+        mock_upd_saldo.assert_called_once_with(
+            ob_id, 3500000, cuotas_restantes=9, nuevo_estado="Activo"
+        )
+        mock_ins_mov.assert_called_once()
+        mov_called = mock_ins_mov.call_args[0][0]
+        assert mov_called["Categoría"] == "Préstamos / Deudas"
+        assert mov_called["Total"] == 1000000
+        assert mov_called["Proveedor/Cliente"] == "Banco Atlas"
+        assert mov_called["ID_Obligacion"] == ob_id
+
+        # 404 si la obligación no existe
+        res_abono_404 = client.post(
+            "/api/v1/obligaciones/abonar",
+            headers=headers,
+            json={"id_obligacion": "INEXISTENTE-99", "monto": 500000},
+        )
+        assert res_abono_404.status_code == 404
+
+        # 400 si monto <= 0
+        res_abono_400 = client.post(
+            "/api/v1/obligaciones/abonar",
+            headers=headers,
+            json={"id_obligacion": ob_id, "monto": 0},
+        )
+        assert res_abono_400.status_code == 400
+
+
+def test_vencimientos_and_foco_endpoints(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    # 1. Sin auth -> 401
+    assert client.get("/api/v1/obligaciones/vencimientos").status_code == 401
+    assert client.get("/api/v1/obligaciones/foco").status_code == 401
+
+    # 2. Vencimientos con datos mockeados
+    mock_deudas = [
+        {
+            "ID_Obligacion": "DEU-01",
+            "Nombre": "Tarjeta Sudameris",
+            "Entidad": "Sudameris",
+            "Dia_Vencimiento": 5,
+            "Cuota_Referencia_Gs": 400000,
+            "Saldo_Actual": 1200000,
+            "Estado": "Activo",
+        },
+        {
+            "ID_Obligacion": "DEU-02",
+            "Nombre": "Préstamo Cooperativa",
+            "Entidad": "Coop San Cristóbal",
+            "Dia_Vencimiento": 25,
+            "Cuota_Referencia_Gs": 850000,
+            "Saldo_Actual": 5000000,
+            "Estado": "Activo",
+        },
+        {
+            "ID_Obligacion": "DEU-03",
+            "Nombre": "Deuda Pausada",
+            "Entidad": "Familiar",
+            "Dia_Vencimiento": 15,
+            "Cuota_Referencia_Gs": 300000,
+            "Saldo_Actual": 600000,
+            "Estado": "Pausado",
+        },
+    ]
+
+    with unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.get_todas_obligaciones",
+        return_value=mock_deudas,
+    ):
+        res_venc = client.get("/api/v1/obligaciones/vencimientos", headers=headers)
+        assert res_venc.status_code == 200
+        data_venc = res_venc.get_json()
+        assert "mes_actual" in data_venc
+        assert "dia_actual" in data_venc
+        assert "vencimientos" in data_venc
+        vencs = data_venc["vencimientos"]
+        # Debe excluir la deuda pausada DEU-03
+        assert len(vencs) == 2
+        assert vencs[0]["id"] == "DEU-01"
+        assert vencs[0]["entidad"] == "Sudameris"
+        assert vencs[0]["dia_vencimiento"] == 5
+        assert vencs[1]["id"] == "DEU-02"
+        assert vencs[1]["dia_vencimiento"] == 25
+        assert isinstance(vencs[0]["vencida"], bool)
+
+    # 3. Foco por defecto (prioridad) y por saldo
+    mock_proyeccion = {
+        "margen_ataque": 1500000,
+        "proyeccion": [
+            {
+                "id": "DEU-01",
+                "nombre": "Tarjeta Sudameris",
+                "saldo": 1200000,
+                "cuota": 400000,
+                "meses_cancelacion": 1,
+            },
+            {
+                "id": "DEU-02",
+                "nombre": "Préstamo Cooperativa",
+                "saldo": 5000000,
+                "cuota": 850000,
+                "meses_cancelacion": 5,
+            },
+        ],
+    }
+    with unittest.mock.patch(
+        "logic.financiero.proyectar_cola_deudas",
+        return_value=mock_proyeccion,
+    ) as mock_proy:
+        # Default -> criterio prioridad
+        res_foco = client.get("/api/v1/obligaciones/foco", headers=headers)
+        assert res_foco.status_code == 200
+        d_foco = res_foco.get_json()
+        assert d_foco["criterio"] == "prioridad"
+        assert d_foco["margen_ataque"] == 1500000
+        assert d_foco["deuda_foco"]["id"] == "DEU-01"
+        mock_proy.assert_called_with(criterio="prioridad")
+
+        # Criterio saldo
+        res_foco_saldo = client.get(
+            "/api/v1/obligaciones/foco?criterio=saldo", headers=headers
+        )
+        assert res_foco_saldo.status_code == 200
+        assert res_foco_saldo.get_json()["criterio"] == "saldo"
+        mock_proy.assert_called_with(criterio="saldo")
+
+        # Criterio no válido cae a prioridad
+        res_foco_invalid = client.get(
+            "/api/v1/obligaciones/foco?criterio=otro", headers=headers
+        )
+        assert res_foco_invalid.status_code == 200
+        assert res_foco_invalid.get_json()["criterio"] == "prioridad"
+        mock_proy.assert_called_with(criterio="prioridad")
+
+
+def test_proyectar_capacidad_endpoint(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    # 1. 401 sin API Key
+    res_no_auth = client.post("/api/v1/obligaciones/proyectar-capacidad", json={})
+    assert res_no_auth.status_code == 401
+
+    # 2. 200 con payload vacío / default
+    mock_res_default = {
+        "compromiso_total_mes": 1200000,
+        "fondo_disponible_mes": 5000000,
+        "capacidad_neta": 3800000,
+        "semaforo": "SUPERAVIT",
+        "dti_proyectado": 0.2,
+        "meses_ahorrados_por_abonos": {},
+    }
+    with unittest.mock.patch(
+        "logic.financiero.proyectar_capacidad_pago",
+        return_value=mock_res_default,
+    ) as mock_proy:
+        res_ok = client.post(
+            "/api/v1/obligaciones/proyectar-capacidad",
+            headers=headers,
+            json={},
+        )
+        assert res_ok.status_code == 200
+        data = res_ok.get_json()
+        assert data["semaforo"] == "SUPERAVIT"
+        assert data["compromiso_total_mes"] == 1200000
+        assert data["fondo_disponible_mes"] == 5000000
+        assert data["capacidad_neta"] == 3800000
+        assert data["dti_proyectado"] == 0.2
+        mock_proy.assert_called_once_with(
+            deudas_pausadas_simuladas=[],
+            abonos_extraordinarios={},
+            ajuste_ingreso_extra=0,
+        )
+
+    # 3. 200 con simulación What-If
+    mock_res_sim = {
+        "compromiso_total_mes": 800000,
+        "fondo_disponible_mes": 5500000,
+        "capacidad_neta": 4700000,
+        "semaforo": "SUPERAVIT",
+        "dti_proyectado": 0.1333,
+        "meses_ahorrados_por_abonos": {"DEU-01": 3},
+    }
+    with unittest.mock.patch(
+        "logic.financiero.proyectar_capacidad_pago",
+        return_value=mock_res_sim,
+    ) as mock_proy_sim:
+        payload = {
+            "deudas_pausadas_simuladas": ["DEU-02"],
+            "abonos_extraordinarios": {"DEU-01": 1500000},
+            "ajuste_ingreso_extra": 500000,
+        }
+        res_sim = client.post(
+            "/api/v1/obligaciones/proyectar-capacidad",
+            headers=headers,
+            json=payload,
+        )
+        assert res_sim.status_code == 200
+        data_sim = res_sim.get_json()
+        assert data_sim["compromiso_total_mes"] == 800000
+        assert data_sim["fondo_disponible_mes"] == 5500000
+        assert data_sim["meses_ahorrados_por_abonos"]["DEU-01"] == 3
+        mock_proy_sim.assert_called_once_with(
+            deudas_pausadas_simuladas=["DEU-02"],
+            abonos_extraordinarios={"DEU-01": 1500000},
+            ajuste_ingreso_extra=500000,
+        )
+
+    # 4. 400 en error de validación
+    res_val_err = client.post(
+        "/api/v1/obligaciones/proyectar-capacidad",
+        headers=headers,
+        json={"ajuste_ingreso_extra": "invalido_no_entero"},
+    )
+    assert res_val_err.status_code == 400
+    assert res_val_err.get_json()["error"]["code"] == "VALIDATION_ERROR"
+
+    # 5. 500 si falla el cálculo interno
+    with unittest.mock.patch(
+        "logic.financiero.proyectar_capacidad_pago",
+        side_effect=RuntimeError("Fallo inesperado de cálculo"),
+    ):
+        res_err = client.post(
+            "/api/v1/obligaciones/proyectar-capacidad",
+            headers=headers,
+            json={},
+        )
+        assert res_err.status_code == 500
+        assert res_err.get_json()["error"]["code"] == "INTERNAL_ERROR"
+
+
+def test_avisos_endpoints(client, tmp_path):
+    headers = {"X-API-KEY": "test-secret-key"}
+    fake_avisos = tmp_path / "avisos.json"
+    with unittest.mock.patch(
+        "api.blueprint.AVISOS_FILE", fake_avisos
+    ), unittest.mock.patch(
         "logic.logic.AgenteAutonomoHoras.guardar_aviso_calendar",
         return_value="✅ *¡Aviso guardado en Google Calendar!*",
     ) as mock_guardar, unittest.mock.patch(
@@ -402,6 +655,33 @@ def test_asistencia_endpoints(client):
         assert res_502.status_code == 502
         assert res_502.get_json()["error"]["code"] == "SERVICE_ERROR"
 
+    # Rate limiting 429 en marcar_asistencia
+    import gspread
+
+    mock_resp_429 = unittest.mock.MagicMock()
+    mock_resp_429.status_code = 429
+    mock_resp_429.json.return_value = {
+        "error": {
+            "code": 429,
+            "status": "RESOURCE_EXHAUSTED",
+            "message": "Quota exceeded",
+        }
+    }
+    api_error_429 = gspread.exceptions.APIError(mock_resp_429)
+
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
+        side_effect=api_error_429,
+    ):
+        res_429 = client.post(
+            "/api/v1/asistencia/marcar",
+            headers=headers,
+            json={"modo": "normal"},
+        )
+        assert res_429.status_code == 429
+        assert res_429.get_json()["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+        assert "60 segundos" in res_429.get_json()["error"]["message"]
+
     # 1. Sin clase en curso: Debe rebotar con 400 Bad Request y mensaje explicativo (Fix TCK-004)
     with unittest.mock.patch(
         "logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}
@@ -454,9 +734,103 @@ def test_asistencia_endpoints(client):
         assert data_ok["materia"] == "Base de Datos"
         assert "registrada exitosamente" in data_ok["mensaje"]
 
+    # Rate limiting 429 en marcar_materia
+    with unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.HORARIOS_MATERIAS", {"Base de Datos": {}}
+    ), unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.obtener_materia_actual",
+        return_value=("Base de Datos", "teoria"),
+    ), unittest.mock.patch(
+        "logic.logic.AgenteAsistenciaMaterias.marcar_asistencia",
+        side_effect=api_error_429,
+    ):
+        res_materia_429 = client.post(
+            "/api/v1/asistencia/materia",
+            headers=headers,
+            json={"materia": "Base de Datos"},
+        )
+        assert res_materia_429.status_code == 429
+        assert res_materia_429.get_json()["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+        assert "60 segundos" in res_materia_429.get_json()["error"]["message"]
+
+
+def test_autodeteccion_periodo_agente_horas(tmp_path):
+    from logic.logic import AgenteAutonomoHoras, get_now_py
+    import unittest.mock
+
+    meses_es = [
+        "Enero",
+        "Febrero",
+        "Marzo",
+        "Abril",
+        "Mayo",
+        "Junio",
+        "Julio",
+        "Agosto",
+        "Setiembre",
+        "Octubre",
+        "Noviembre",
+        "Diciembre",
+    ]
+    ahora = get_now_py()
+    nombre_esperado = f"{meses_es[ahora.month - 1]} {ahora.year}"
+
+    fake_base = tmp_path / "app_root"
+    fake_base.mkdir()
+
+    agente = AgenteAutonomoHoras(spreadsheet_id="dummy_id")
+    mock_wb = unittest.mock.MagicMock()
+    mock_ws = unittest.mock.MagicMock()
+    mock_wb.worksheet.return_value = mock_ws
+    agente._wb = mock_wb
+
+    with unittest.mock.patch("logic.logic.BASE_DIR", fake_base):
+        _ = agente.ws
+        # Verifica que intentó abrir la hoja del período actual dinámico, no 'Mayo 2026'
+        mock_wb.worksheet.assert_called_once_with(nombre_esperado)
+        # Verifica que periodo_actual.txt fue creado con el mes actual
+        txt_path = fake_base / "periodo_actual.txt"
+        assert txt_path.exists()
+        assert txt_path.read_text(encoding="utf-8") == nombre_esperado
+
 
 def test_cierres_and_pdf(client):
     headers = {"X-API-KEY": "test-secret-key"}
+
+    # 1. GET /cierres sin auth -> 401
+    res_no_auth = client.get("/api/v1/cierres")
+    assert res_no_auth.status_code == 401
+
+    # 2. GET /cierres con datos de Cierres_Historicos
+    mock_cierre_db = [
+        {
+            "ID_Cierre": "cierre_contable_octubre_2026",
+            "Mes": "Octubre",
+            "Anio": "2026",
+            "Total_Ingresos": 12000000,
+            "Total_Gastos": 7500000,
+            "Fecha_Cierre": "16/10/2026 11:10",
+        }
+    ]
+    with unittest.mock.patch(
+        "repositories.sheets_repository.SheetsRepository.get_todos_cierres_historicos",
+        return_value=mock_cierre_db,
+    ):
+        res_list = client.get("/api/v1/cierres", headers=headers)
+        assert res_list.status_code == 200
+        items = res_list.get_json()
+        assert len(items) >= 1
+        c = next(i for i in items if i["id"] == "cierre_contable_octubre_2026")
+        assert c["tipo"] == "contable"
+        assert c["periodo"] == "Octubre 2026"
+        assert c["total_monto"] == 12000000
+        assert "12.000.000" in c["resumen"]
+        assert "7.500.000" in c["resumen"]
+        assert (
+            c["pdf_url"] == "/api/v1/cierres/reportes/cierre_contable_octubre_2026.pdf"
+        )
+        assert isinstance(c["pdf_disponible"], bool)
+
     res_cierre = client.post(
         "/api/v1/cierres/ejecutar", headers=headers, json={"hoja": "Octubre 2026"}
     )
@@ -577,6 +951,10 @@ def test_contracts_parity_and_remediation(client):
         assert "nombre" in primera
         assert "monto_inicial" in primera
         assert "saldo_actual" in primera
+        assert "entidad" in primera
+        assert "cuotas_totales" in primera
+        assert "cuotas_restantes" in primera
+        assert "dia_vencimiento" in primera
 
     # 3. Interpretación de aviso con fecha futura
     res_aviso = client.post(

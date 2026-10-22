@@ -174,7 +174,7 @@ class AgenteAutonomoHoras:
 
     MONTO_POR_HORA = int(MONTO_POR_HORA_DEFAULT)
 
-    def __init__(self, spreadsheet_id: str, mes: str = "Mayo") -> None:
+    def __init__(self, spreadsheet_id: str, mes: str | None = None) -> None:
         """
         __init__ method/function.
 
@@ -240,7 +240,25 @@ class AgenteAutonomoHoras:
             # Ensure the directory exists
             path_txt.parent.mkdir(parents=True, exist_ok=True)
             if not path_txt.exists():
-                nombre_inicial = self.mes if self.mes else "Mayo 2026"
+                if self.mes:
+                    nombre_inicial = self.mes
+                else:
+                    meses_es = [
+                        "Enero",
+                        "Febrero",
+                        "Marzo",
+                        "Abril",
+                        "Mayo",
+                        "Junio",
+                        "Julio",
+                        "Agosto",
+                        "Setiembre",
+                        "Octubre",
+                        "Noviembre",
+                        "Diciembre",
+                    ]
+                    ahora = get_now_py()
+                    nombre_inicial = f"{meses_es[ahora.month - 1]} {ahora.year}"
                 path_txt.write_text(nombre_inicial, encoding="utf-8")
             nombre_hoja = path_txt.read_text(encoding="utf-8").strip()
 
@@ -427,7 +445,22 @@ class AgenteAutonomoHoras:
             with open(path_txt, "r", encoding="utf-8") as f:
                 hoja_actual = f.read().strip()
         else:
-            hoja_actual = "Mayo 2026"
+            meses_es = [
+                "Enero",
+                "Febrero",
+                "Marzo",
+                "Abril",
+                "Mayo",
+                "Junio",
+                "Julio",
+                "Agosto",
+                "Setiembre",
+                "Octubre",
+                "Noviembre",
+                "Diciembre",
+            ]
+            ahora = get_now_py()
+            hoja_actual = f"{meses_es[ahora.month - 1]} {ahora.year}"
 
         meses = [
             "Enero",

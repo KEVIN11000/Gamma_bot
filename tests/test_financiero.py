@@ -207,6 +207,19 @@ class TestFinancieroLogic(unittest.TestCase):
         self.assertEqual(margen, 0)
 
     @patch("logic.financiero.SheetsRepository")
+    def test_calcular_margen_de_ataque_excludes_pausadas(self, MockRepo):
+        repo_instance = MockRepo.return_value
+        repo_instance.obtener_presupuesto_base_completo.return_value = (10000, 3000)
+        repo_instance.get_obligaciones_activas.return_value = [
+            {"Cuota_Referencia_Gs": "2000", "Estado": "Activo"},
+            {"Cuota_Referencia_Gs": "1000", "Estado": "Pausado"},
+            {"Cuota_Referencia_Gs": "1500", "Estado": "Pausada"},
+        ]
+        margen = calcular_margen_de_ataque()
+        # 10000 - 3000 - 2000 (solo la activa, pausadas excluidas) = 5000
+        self.assertEqual(margen, 5000)
+
+    @patch("logic.financiero.SheetsRepository")
     @patch("logic.logic.get_now_py")
     def test_proyectar_cola_deudas(self, mock_get_now, MockRepo):
         import datetime
@@ -548,6 +561,120 @@ class TestFinancieroLogic(unittest.TestCase):
         res = agente.registrar_movimiento(datos)
         self.assertIn("✅", res)
         repo_instance.upsert_salario_presupuesto_base.assert_not_called()
+
+    @patch("logic.financiero.SheetsRepository")
+    def test_proyectar_capacidad_pago_scenarios(self, MockRepo):
+        from logic.financiero import proyectar_capacidad_pago
+
+        repo_inst = MockRepo.return_value
+        # 1. Escenario SUPERAVIT
+        repo_inst.obtener_presupuesto_base_completo.return_value = (10000000, 4000000)
+        repo_inst.obtener_balance.return_value = {"flujo_neto": 1000000}
+        repo_inst.get_todas_obligaciones.return_value = [
+            {
+                "ID_Obligacion": "DEU-01",
+                "Nombre": "Tarjeta",
+                "Estado": "Activo",
+                "Cuota_Referencia_Gs": 1500000,
+                "Saldo_Actual": 4500000,
+                "Cuotas_Restantes": 3,
+            }
+        ]
+
+        res = proyectar_capacidad_pago()
+        self.assertEqual(res["compromiso_total_mes"], 1500000)
+        self.assertEqual(res["fondo_disponible_mes"], 7000000)
+        self.assertEqual(res["capacidad_neta"], 5500000)
+        self.assertEqual(res["semaforo"], "SUPERAVIT")
+        self.assertEqual(res["dti_proyectado"], 0.15)
+
+        # 2. Escenario AJUSTADO (buffer < 15%)
+        # Fondo disponible: 2.000.000, Cuotas: 1.800.000 -> Capacidad: 200.000 (10%)
+        repo_inst.obtener_presupuesto_base_completo.return_value = (5000000, 3000000)
+        repo_inst.obtener_balance.return_value = {"flujo_neto": 0}
+        repo_inst.get_todas_obligaciones.return_value = [
+            {
+                "ID_Obligacion": "DEU-01",
+                "Nombre": "Crédito",
+                "Estado": "Activo",
+                "Cuota_Referencia_Gs": 1800000,
+                "Saldo_Actual": 1800000,
+                "Cuotas_Restantes": 1,
+            }
+        ]
+        res_ajustado = proyectar_capacidad_pago()
+        self.assertEqual(res_ajustado["semaforo"], "AJUSTADO")
+
+        # 3. Escenario DEFICIT (cuotas > fondo)
+        repo_inst.obtener_presupuesto_base_completo.return_value = (4000000, 3000000)
+        repo_inst.obtener_balance.return_value = {"flujo_neto": 0}
+        repo_inst.get_todas_obligaciones.return_value = [
+            {
+                "ID_Obligacion": "DEU-01",
+                "Nombre": "Crédito Alto",
+                "Estado": "Activo",
+                "Cuota_Referencia_Gs": 1500000,
+                "Saldo_Actual": 5000000,
+                "Cuotas_Restantes": 4,
+            }
+        ]
+        res_deficit = proyectar_capacidad_pago()
+        self.assertEqual(res_deficit["capacidad_neta"], -500000)
+        self.assertEqual(res_deficit["semaforo"], "DEFICIT")
+
+    @patch("logic.financiero.SheetsRepository")
+    def test_proyectar_capacidad_pago_what_if_simulations(self, MockRepo):
+        from logic.financiero import proyectar_capacidad_pago
+
+        repo_inst = MockRepo.return_value
+        repo_inst.obtener_presupuesto_base_completo.return_value = (8000000, 4000000)
+        repo_inst.obtener_balance.return_value = {"flujo_neto": 500000}
+        repo_inst.get_todas_obligaciones.return_value = [
+            {
+                "ID_Obligacion": "DEU-01",
+                "Nombre": "Préstamo Personal",
+                "Estado": "Activo",
+                "Cuota_Referencia_Gs": 500000,
+                "Saldo_Actual": 5000000,
+                "Cuotas_Restantes": 10,
+            },
+            {
+                "ID_Obligacion": "DEU-02",
+                "Nombre": "Tarjeta Banco",
+                "Estado": "Activo",
+                "Cuota_Referencia_Gs": 300000,
+                "Saldo_Actual": 1200000,
+                "Cuotas_Restantes": 4,
+            },
+            {
+                "ID_Obligacion": "DEU-03",
+                "Nombre": "Deuda Ya Pausada",
+                "Estado": "Pausado",
+                "Cuota_Referencia_Gs": 400000,
+                "Saldo_Actual": 1600000,
+                "Cuotas_Restantes": 4,
+            },
+        ]
+
+        # Sin overrides: compromiso = 500k + 300k = 800k (DEU-03 excluida por Pausado)
+        base = proyectar_capacidad_pago()
+        self.assertEqual(base["compromiso_total_mes"], 800000)
+        self.assertEqual(base["fondo_disponible_mes"], 4500000)
+
+        # Con simulación de pausar DEU-02, abono a DEU-01 y aumento de ingreso
+        sim = proyectar_capacidad_pago(
+            deudas_pausadas_simuladas=["DEU-02"],
+            abonos_extraordinarios={"DEU-01": 1500000, "DEU-99": 500000},
+            ajuste_ingreso_extra=1000000,
+        )
+        # Compromiso debe ser solo DEU-01 (500k)
+        self.assertEqual(sim["compromiso_total_mes"], 500000)
+        # Fondo disponible: 4.5M + 1M = 5.5M
+        self.assertEqual(sim["fondo_disponible_mes"], 5500000)
+        self.assertEqual(sim["capacidad_neta"], 5000000)
+        # Meses ahorrados: 1.5M // 500k = 3 meses para DEU-01; 0 para DEU-99 inexistente
+        self.assertEqual(sim["meses_ahorrados_por_abonos"]["DEU-01"], 3)
+        self.assertEqual(sim["meses_ahorrados_por_abonos"]["DEU-99"], 0)
 
 
 if __name__ == "__main__":

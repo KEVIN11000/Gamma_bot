@@ -33,3 +33,9 @@ tickets/
 scripts/vigia.py
 src/vigia_engine.py
 tests/test_vigia.py
+
+# Archivos y carpetas locales del entorno de desarrollo
+/repositories/
+/.specify/
+/rules/
+

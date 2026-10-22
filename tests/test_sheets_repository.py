@@ -1,22 +1,26 @@
 import unittest
-from repositories.sheets_repository import SheetsRepository
+from repositories.sheets_repository import InMemorySheetsCache, SheetsRepository
 import unittest.mock
 
 
 class TestSheetsRepository(unittest.TestCase):
     def setUp(self):
         self.repo = SheetsRepository()
+        self.repo.clear_cache()
 
     @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
     def test_insert_obligacion(self, mock_get_sheet):
         mock_ws = unittest.mock.MagicMock()
         mock_get_sheet.return_value = mock_ws
 
-        # Test that the mapping returns 15 columns
-        self.repo.insert_obligacion({"ID_Obligacion": "123"})
+        # Test that the mapping returns 16 columns and Entidad is at column D (index 3)
+        self.repo.insert_obligacion(
+            {"ID_Obligacion": "123", "Entidad": "Banco Familiar"}
+        )
         mock_ws.append_row.assert_called_once()
         called_args = mock_ws.append_row.call_args[0][0]
-        self.assertEqual(len(called_args), 15)
+        self.assertEqual(len(called_args), 16)
+        self.assertEqual(called_args[3], "Banco Familiar")
 
     @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
     def test_update_obligacion_estado(self, mock_get_sheet):
@@ -42,6 +46,8 @@ class TestSheetsRepository(unittest.TestCase):
         mock_ws.get_all_records.return_value = [
             {"ID_Obligacion": "123", "Estado": "Activo"},
             {"ID_Obligacion": "456", "Estado": "Simulado"},
+            {"ID_Obligacion": "789", "Estado": "Pausado"},
+            {"ID_Obligacion": "101", "Estado": "Pausada"},
         ]
         mock_get_sheet.return_value = mock_ws
         result = self.repo.get_obligaciones_activas()
@@ -289,6 +295,97 @@ class TestSheetsRepository(unittest.TestCase):
         )
         self.assertTrue(res)
         self.assertEqual(mock_ws.update_cell.call_count, 2)
+
+    def test_in_memory_sheets_cache_lifecycle(self):
+        cache = InMemorySheetsCache(default_ttl_seconds=10)
+        self.assertIsNone(cache.get("no_existe"))
+
+        cache.set("clave_1", {"dato": 123}, ttl_seconds=5)
+        self.assertEqual(cache.get("clave_1"), {"dato": 123})
+
+        # Test expiration
+        with unittest.mock.patch("time.time", return_value=1000.0):
+            cache.set("clave_temp", "valor", ttl_seconds=2)
+        with unittest.mock.patch("time.time", return_value=1003.0):
+            self.assertIsNone(cache.get("clave_temp"))
+
+        # Test invalidation by prefix
+        cache.set("balance_10_2026", {"ingresos": 100})
+        cache.set("balance_11_2026", {"ingresos": 200})
+        cache.set("movimientos_todos", [1, 2, 3])
+
+        cache.invalidate("balance_")
+        self.assertIsNone(cache.get("balance_10_2026"))
+        self.assertIsNone(cache.get("balance_11_2026"))
+        self.assertEqual(cache.get("movimientos_todos"), [1, 2, 3])
+
+        cache.clear()
+        self.assertIsNone(cache.get("movimientos_todos"))
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_sheets_repository_caching_and_invalidation(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {"Fecha": "01/10/2026", "Movimiento": "Ingreso", "Total": 1000}
+        ]
+        mock_get_sheet.return_value = mock_ws
+
+        # 1. get_all_movimientos uses cache
+        movs1 = self.repo.get_all_movimientos()
+        movs2 = self.repo.get_all_movimientos()
+        self.assertEqual(movs1, movs2)
+        # Should only call _get_sheet once due to caching
+        mock_get_sheet.assert_called_once_with("Libro_Diario")
+
+        # 2. insert_movimiento_diario invalidates movimientos_ and balance_
+        self.repo.cache.set("balance_10_2026", {"ingresos": 1000})
+        self.repo.insert_movimiento_diario(
+            {"Fecha": "02/10/2026", "Movimiento": "Egreso"}
+        )
+        self.assertIsNone(self.repo.cache.get("movimientos_todos"))
+        self.assertIsNone(self.repo.cache.get("balance_10_2026"))
+
+        # 3. get_todas_obligaciones uses cache
+        mock_ws.get_all_records.return_value = [
+            {"ID_Obligacion": "OBL-100", "Estado": "Activo"}
+        ]
+        mock_get_sheet.reset_mock()
+        ob1 = self.repo.get_todas_obligaciones()
+        ob2 = self.repo.get_todas_obligaciones()
+        self.assertEqual(ob1, ob2)
+        mock_get_sheet.assert_called_once_with("Obligaciones_Maestro")
+
+        # 4. mutating obligacion invalidates obligaciones_ and presupuesto_base
+        self.repo.cache.set("presupuesto_base", (5000000, 3000000))
+        self.repo.insert_obligacion({"ID_Obligacion": "OBL-101"})
+        self.assertIsNone(self.repo.cache.get("obligaciones_todas"))
+        self.assertIsNone(self.repo.cache.get("presupuesto_base"))
+
+    @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    def test_get_todos_cierres_historicos(self, mock_get_sheet):
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.get_all_records.return_value = [
+            {
+                "ID_Cierre": "cierre_01",
+                "Mes": "Setiembre",
+                "Anio": "2026",
+                "Total_Ingresos": 10000000,
+                "Total_Gastos": 6000000,
+            }
+        ]
+        mock_get_sheet.return_value = mock_ws
+
+        cierres1 = self.repo.get_todos_cierres_historicos()
+        cierres2 = self.repo.get_todos_cierres_historicos()
+        self.assertEqual(cierres1, cierres2)
+        self.assertEqual(len(cierres1), 1)
+        self.assertEqual(cierres1[0]["ID_Cierre"], "cierre_01")
+        # Cached: should only call _get_sheet once
+        mock_get_sheet.assert_called_once_with("Cierres_Historicos")
+
+        # Invalidate on insert_cierre_mensual
+        self.repo.insert_cierre_mensual({"ID_Cierre": "cierre_02"})
+        self.assertIsNone(self.repo.cache.get("cierres_historicos"))
 
 
 if __name__ == "__main__":

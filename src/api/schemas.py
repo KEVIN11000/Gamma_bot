@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Any, Optional
+from pydantic import BaseModel, Field, field_validator
 
 
 class TipoMovimiento(str, Enum):
@@ -77,6 +77,24 @@ class SimulacionRequest(BaseModel):
     monto: int = Field(..., gt=0)
     meses: int = Field(..., gt=0)
     concepto: Optional[str] = "Simulación General"
+
+
+class CapacidadPagoRequest(BaseModel):
+    deudas_pausadas_simuladas: list[str] = Field(default_factory=list)
+    abonos_extraordinarios: dict[str, int] = Field(default_factory=dict)
+    ajuste_ingreso_extra: int = 0
+
+    @field_validator("deudas_pausadas_simuladas", mode="before")
+    def _val_deudas_pausadas(cls, v: Any) -> list[str]:
+        return v if v is not None else []
+
+    @field_validator("abonos_extraordinarios", mode="before")
+    def _val_abonos(cls, v: Any) -> dict[str, int]:
+        return v if v is not None else {}
+
+    @field_validator("ajuste_ingreso_extra", mode="before")
+    def _val_ajuste(cls, v: Any) -> int:
+        return v if v is not None else 0
 
 
 class AvisoCreate(BaseModel):

@@ -325,6 +325,15 @@ class AgenteFinanciero:
             Exception: If there's an error reading from the sheet.
         """
         try:
+            from repositories.sheets_repository import _sheets_cache
+            from logic.logic import get_now_py
+
+            ahora = get_now_py()
+            cache_key = f"balance_{ahora.month}_{ahora.year}"
+            cached = _sheets_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
             registros = self.ws.get_all_values()[1:]  # Omitir encabezado
 
             saldo_inicial = 0
@@ -346,7 +355,11 @@ class AgenteFinanciero:
                     )
 
                 # IVA column: columna 14 (Monto_IVA) o columna 5 (IVA) o estimación por tasa
-                iva_raw = fila[14].strip() if len(fila) > 14 and fila[14].strip() else (fila[5].strip() if len(fila) > 5 else "")
+                iva_raw = (
+                    fila[14].strip()
+                    if len(fila) > 14 and fila[14].strip()
+                    else (fila[5].strip() if len(fila) > 5 else "")
+                )
                 iva_val = safe_int(iva_raw)
                 if iva_val == 0 and monto_val > 0:
                     tasa = fila[12].strip() if len(fila) > 12 else ""
@@ -358,10 +371,27 @@ class AgenteFinanciero:
                 if tipo in ("ingreso", "ingresos", "entrada", "venta"):
                     total_ingresos += monto_val
                     total_iva_debito += iva_val
-                elif tipo in ("egreso", "egresos", "gasto", "gastos", "salida", "compra", "pago"):
+                elif tipo in (
+                    "egreso",
+                    "egresos",
+                    "gasto",
+                    "gastos",
+                    "salida",
+                    "compra",
+                    "pago",
+                ):
                     total_gastos += monto_val
                     total_iva_credito += iva_val
-                elif any(k in tipo for k in ("saldo inicial", "saldo_inicial", "saldo acumulado", "saldo_acumulado", "apertura")):
+                elif any(
+                    k in tipo
+                    for k in (
+                        "saldo inicial",
+                        "saldo_inicial",
+                        "saldo acumulado",
+                        "saldo_acumulado",
+                        "apertura",
+                    )
+                ):
                     saldo_inicial += monto_val
 
             flujo_neto = saldo_inicial + total_ingresos - total_gastos
@@ -369,7 +399,7 @@ class AgenteFinanciero:
             es_debito_fiscal = posicion_iva_neta < 0
             posicion_iva = abs(posicion_iva_neta)
 
-            return {
+            resultado = {
                 "saldo_inicial": saldo_inicial,
                 "ingresos": total_ingresos,
                 "gastos": total_gastos,
@@ -379,6 +409,8 @@ class AgenteFinanciero:
                 "posicion_iva": posicion_iva,
                 "es_debito_fiscal": es_debito_fiscal,
             }
+            _sheets_cache.set(cache_key, resultado, ttl_seconds=180)
+            return resultado
         except Exception as e:
             logger.error(f"❌ Error al obtener balance: {e}")
             return {}
@@ -502,7 +534,11 @@ import uuid  # noqa: E402
 def calcular_margen_de_ataque() -> int:
     repo = SheetsRepository()
     ingresos_base, gastos_fijos = repo.obtener_presupuesto_base_completo()
-    deudas_activas = repo.get_obligaciones_activas()
+    deudas_activas = [
+        d
+        for d in repo.get_obligaciones_activas()
+        if str(d.get("Estado", "")).strip().lower() not in ("pausado", "pausada")
+    ]
 
     suma_cuotas = sum(safe_int(d.get("Cuota_Referencia_Gs", 0)) for d in deudas_activas)
 
@@ -518,7 +554,11 @@ def calcular_margen_de_ataque() -> int:
 
 def proyectar_cola_deudas(criterio="prioridad") -> dict:
     repo = SheetsRepository()
-    deudas = repo.get_obligaciones_activas()
+    deudas = [
+        d
+        for d in repo.get_obligaciones_activas()
+        if str(d.get("Estado", "")).strip().lower() not in ("pausado", "pausada")
+    ]
     margen_ataque = calcular_margen_de_ataque()
 
     from dateutil.relativedelta import relativedelta
@@ -629,22 +669,143 @@ def obtener_cronograma_vencimientos() -> dict:
 
     vencimientos = []
     for d in todas:
-        if str(d.get("Estado", "")).lower() == "activo":
+        estado = str(d.get("Estado", "")).strip().lower()
+        if estado in ("activo", "activa") and estado not in ("pausado", "pausada"):
             dia = safe_int(d.get("Dia_Vencimiento", 0))
             if dia > 0:
                 vencimientos.append(
                     {
-                        "id": d.get("ID_Obligacion", ""),
-                        "nombre": d.get("Nombre", ""),
+                        "id": str(d.get("ID_Obligacion", "")),
+                        "nombre": str(d.get("Nombre", "")),
+                        "entidad": str(d.get("Entidad") or d.get("entidad", "")),
                         "dia_vencimiento": dia,
                         "cuota": safe_int(d.get("Cuota_Referencia_Gs", 0)),
                         "saldo": safe_int(d.get("Saldo_Actual", 0)),
+                        "vencida": dia < hoy.day,
                     }
                 )
 
     vencimientos.sort(key=lambda x: x["dia_vencimiento"])
 
-    return {"mes_actual": hoy.month, "vencimientos": vencimientos}
+    return {
+        "mes_actual": hoy.month,
+        "dia_actual": hoy.day,
+        "vencimientos": vencimientos,
+    }
+
+
+def proyectar_capacidad_pago(
+    deudas_pausadas_simuladas: list[str] | None = None,
+    abonos_extraordinarios: dict[str, int] | None = None,
+    ajuste_ingreso_extra: int = 0,
+) -> dict:
+    """
+    Calcula la proyección de capacidad de pago mensual considerando:
+    - Cuotas activas comprometidas (excluyendo deudas pausadas y deudas pausadas simuladas)
+    - Fondo disponible (Saldo neto en caja + Ingresos base - Gastos fijos + Ajustes de ingresos extra)
+    - Capacidad neta resultante y semáforo de viabilidad (SUPERAVIT / AJUSTADO / DEFICIT)
+    - DTI proyectado (Deuda / Ingreso)
+    - Meses ahorrados por abonos extraordinarios simulados
+    """
+    import math
+
+    repo = SheetsRepository()
+    pausadas_sim = set(str(d).strip() for d in (deudas_pausadas_simuladas or []))
+    abonos_extra = abonos_extraordinarios or {}
+    ajuste_ingreso = safe_int(ajuste_ingreso_extra)
+
+    # 1. Presupuesto base
+    ingresos_base, gastos_fijos = repo.obtener_presupuesto_base_completo()
+
+    # 2. Saldo actual en caja
+    saldo_caja = 0
+    try:
+        bal = repo.obtener_balance()
+        saldo_caja = safe_int(bal.get("flujo_neto", 0)) if bal else 0
+    except Exception as e_bal:
+        logger.warning(f"Error obteniendo balance para proyector de capacidad: {e_bal}")
+        saldo_caja = 0
+
+    # 3. Obligaciones
+    todas = repo.get_todas_obligaciones()
+    todas_map = {str(d.get("ID_Obligacion", "")).strip(): d for d in todas}
+
+    compromiso_total_mes = 0
+    for d in todas:
+        oid = str(d.get("ID_Obligacion", "")).strip()
+        estado = str(d.get("Estado", "")).strip().lower()
+        if (
+            estado in ("activo", "activa")
+            and estado not in ("pausado", "pausada")
+            and oid not in pausadas_sim
+        ):
+            cuota = safe_int(d.get("Cuota_Referencia_Gs") or d.get("Cuotas", 0))
+            compromiso_total_mes += cuota
+
+    fondo_disponible_mes = saldo_caja + ingresos_base - gastos_fijos + ajuste_ingreso
+    capacidad_neta = fondo_disponible_mes - compromiso_total_mes
+
+    # 4. Semáforo
+    if compromiso_total_mes == 0:
+        semaforo = "SUPERAVIT" if fondo_disponible_mes >= 0 else "DEFICIT"
+    elif capacidad_neta < 0:
+        semaforo = "DEFICIT"
+    elif fondo_disponible_mes > 0 and (capacidad_neta / fondo_disponible_mes) < 0.15:
+        semaforo = "AJUSTADO"
+    else:
+        semaforo = "SUPERAVIT"
+
+    # 5. DTI proyectado
+    ingreso_total = ingresos_base + max(0, ajuste_ingreso)
+    if ingreso_total > 0:
+        dti_proyectado = round(compromiso_total_mes / ingreso_total, 4)
+    else:
+        dti_proyectado = 1.0 if compromiso_total_mes > 0 else 0.0
+
+    # 6. Meses ahorrados por abonos extraordinarios
+    meses_ahorrados_por_abonos: dict[str, int] = {}
+    for id_deuda, abono_val in abonos_extra.items():
+        id_str = str(id_deuda).strip()
+        abono = safe_int(abono_val)
+        if abono <= 0:
+            meses_ahorrados_por_abonos[id_str] = 0
+            continue
+        deuda = todas_map.get(id_str)
+        if not deuda:
+            meses_ahorrados_por_abonos[id_str] = 0
+            continue
+
+        saldo_actual = safe_int(deuda.get("Saldo_Actual", 0))
+        cuota = safe_int(deuda.get("Cuota_Referencia_Gs") or deuda.get("Cuotas", 0))
+        cuotas_restantes = safe_int(deuda.get("Cuotas_Restantes", 0))
+        if cuota <= 0 and cuotas_restantes > 0 and saldo_actual > 0:
+            cuota = max(1, round(saldo_actual / cuotas_restantes))
+
+        if saldo_actual <= 0:
+            meses_ahorrados_por_abonos[id_str] = 0
+        elif abono >= saldo_actual:
+            meses_ahorrados_por_abonos[id_str] = (
+                cuotas_restantes
+                if cuotas_restantes > 0
+                else (math.ceil(saldo_actual / cuota) if cuota > 0 else 1)
+            )
+        else:
+            if cuota > 0:
+                ahorro = int(abono // cuota)
+                if cuotas_restantes > 0:
+                    ahorro = min(cuotas_restantes, ahorro)
+                meses_ahorrados_por_abonos[id_str] = max(0, ahorro)
+            else:
+                meses_ahorrados_por_abonos[id_str] = 0
+
+    return {
+        "compromiso_total_mes": compromiso_total_mes,
+        "fondo_disponible_mes": fondo_disponible_mes,
+        "capacidad_neta": capacidad_neta,
+        "semaforo": semaforo,
+        "dti_proyectado": dti_proyectado,
+        "meses_ahorrados_por_abonos": meses_ahorrados_por_abonos,
+    }
 
 
 def create_debt(
@@ -670,6 +831,7 @@ def create_debt(
         "ID_Obligacion": debt_id,
         "Tipo": "Deuda",
         "Nombre": concept,
+        "Entidad": entity,
         "Monto_Inicial": total_amount,
         "Saldo_Actual": total_amount,
         "Estado": "Activo",
@@ -943,6 +1105,7 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
         "ID_Obligacion": project_id,
         "Tipo": "Proyecto",
         "Nombre": concept,
+        "Entidad": "Proyecto",
         "Monto_Inicial": monto,
         "Saldo_Actual": monto,
         "Estado": "Simulado",
@@ -951,6 +1114,10 @@ def simulate_project(monto: int, meses: int, concept: str = "") -> str:
         "Observaciones": "",
         "Cuotas": meses,
         "Event_ID": "",
+        "Dia_Vencimiento": 0,
+        "Cuotas_Totales": meses,
+        "Cuotas_Restantes": meses,
+        "Orden_Prioridad": 999,
     }
     repo.insert_obligacion(obligacion_dict)
 

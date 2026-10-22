@@ -19,6 +19,7 @@ from api.schemas import (
     ObligacionUpdate,
     AbonoRequest,
     SimulacionRequest,
+    CapacidadPagoRequest,
     AvisoCreate,
     AvisoUpdate,
     IAParseRequest,
@@ -482,6 +483,7 @@ def get_obligaciones() -> Any:
                     "id": o.get("ID_Obligacion") or o.get("id", ""),
                     "nombre": o.get("Nombre") or o.get("nombre", ""),
                     "tipo": o.get("Tipo") or o.get("tipo", ""),
+                    "entidad": o.get("Entidad") or o.get("entidad", ""),
                     "monto_inicial": safe_int(
                         o.get("Monto_Inicial") or o.get("monto_inicial")
                     ),
@@ -491,6 +493,15 @@ def get_obligaciones() -> Any:
                     "estado": o.get("Estado") or o.get("estado", "Activo"),
                     "cuota_referencia_gs": safe_int(
                         o.get("Cuota_Referencia_Gs") or o.get("Cuotas")
+                    ),
+                    "cuotas_totales": safe_int(
+                        o.get("Cuotas_Totales") or o.get("cuotas_totales", 1)
+                    ),
+                    "cuotas_restantes": safe_int(
+                        o.get("Cuotas_Restantes") or o.get("cuotas_restantes", 1)
+                    ),
+                    "dia_vencimiento": safe_int(
+                        o.get("Dia_Vencimiento") or o.get("dia_vencimiento", 0)
                     ),
                     "fecha_inicio": o.get("Fecha_Inicio") or o.get("fecha_inicio", ""),
                     "observaciones": o.get("Observaciones")
@@ -700,31 +711,85 @@ def abonar_obligacion() -> Any:
 
         repo = SheetsRepository()
         ob = repo.get_obligacion_by_id(req_obj.id_obligacion)
-        saldo_actual = safe_int(ob.get("Saldo_Actual", req_obj.monto))
+        if not ob:
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": "NOT_FOUND",
+                            "message": f"Obligación {req_obj.id_obligacion} no encontrada",
+                        }
+                    }
+                ),
+                404,
+            )
+
+        saldo_actual = safe_int(ob.get("Saldo_Actual", 0))
         nuevo_saldo = max(0, saldo_actual - req_obj.monto)
-        nuevo_estado = "Saldada" if nuevo_saldo == 0 else "Activo"
+        nuevo_estado = "Saldada" if nuevo_saldo == 0 else (ob.get("Estado") or "Activo")
         cuotas_restantes = safe_int(ob.get("Cuotas_Restantes", ob.get("Cuotas", 0)))
-        nuevas_cuotas = cuotas_restantes - 1 if cuotas_restantes > 0 else 0
+        nuevas_cuotas = max(0, cuotas_restantes - 1) if cuotas_restantes > 0 else 0
+
         repo.update_obligacion_saldo(
             req_obj.id_obligacion,
             nuevo_saldo,
             cuotas_restantes=nuevas_cuotas,
             nuevo_estado=nuevo_estado,
         )
+
+        # Asentar egreso contable en Libro_Diario
+        ahora = get_now_py()
+        fecha_hoy = ahora.strftime("%d/%m/%Y")
+        nombre_deuda = ob.get("Nombre", "Obligación")
+        entidad_deuda = ob.get("Entidad") or ob.get("entidad") or "Acreedor"
+        mes_str = f"{ahora.month:02d}/{ahora.year}"
+
+        mov_abono = {
+            "Fecha": fecha_hoy,
+            "Movimiento": "Egreso",
+            "Proveedor/Cliente": entidad_deuda,
+            "Nro Factura": getattr(req_obj, "nro_factura", "S/N") or "S/N",
+            "Neto": req_obj.monto,
+            "IVA": 0,
+            "Total": req_obj.monto,
+            "Categoría": "Préstamos / Deudas",
+            "Comprobante": "Abono Cuota",
+            "Rastro/Foto": f"Abono a {nombre_deuda}",
+            "Mes": mes_str,
+            "ID_Obligacion": req_obj.id_obligacion,
+            "Tasa_IVA": "Exento",
+            "Monto_Gravado": 0,
+            "Monto_IVA": 0,
+            "Clasificacion_IVA": "Exento",
+        }
+        repo.insert_movimiento_diario(mov_abono)
+
         return (
             jsonify(
                 {
                     "status": "ok",
                     "id_obligacion": req_obj.id_obligacion,
                     "saldo_actual": nuevo_saldo,
+                    "cuotas_restantes": nuevas_cuotas,
                     "estado": nuevo_estado,
+                    "egreso_registrado": req_obj.monto,
                 }
             ),
             200,
         )
     except Exception as e:
-        logger.warning(f"Error procesando abono: {e}")
-        return jsonify({"status": "ok", "saldo_actual": 0, "estado": "Saldada"}), 200
+        logger.error(f"Error procesando abono {req_obj.id_obligacion}: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error procesando abono: {str(e)}",
+                    }
+                }
+            ),
+            500,
+        )
 
 
 @mobile_api.route("/obligaciones/simular", methods=["POST"])
@@ -766,6 +831,105 @@ def simular_obligacion() -> Any:
         ),
         200,
     )
+
+
+@mobile_api.route("/obligaciones/vencimientos", methods=["GET"])
+@require_api_key
+def get_vencimientos() -> Any:
+    try:
+        from logic.financiero import obtener_cronograma_vencimientos
+
+        data = obtener_cronograma_vencimientos()
+        return jsonify(data), 200
+    except Exception as e:
+        logger.error(f"Error obteniendo cronograma de vencimientos: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error obteniendo cronograma de vencimientos: {str(e)}",
+                    }
+                }
+            ),
+            500,
+        )
+
+
+@mobile_api.route("/obligaciones/foco", methods=["GET"])
+@require_api_key
+def get_deuda_foco() -> Any:
+    criterio = request.args.get("criterio", "prioridad").strip().lower()
+    if criterio not in ("prioridad", "saldo"):
+        criterio = "prioridad"
+
+    try:
+        from logic.financiero import proyectar_cola_deudas
+
+        res = proyectar_cola_deudas(criterio=criterio)
+        proyeccion = res.get("proyeccion", [])
+        deuda_foco = proyeccion[0] if proyeccion else None
+
+        return (
+            jsonify(
+                {
+                    "criterio": criterio,
+                    "margen_ataque": res.get("margen_ataque", 0),
+                    "deuda_foco": deuda_foco,
+                    "proyeccion": proyeccion,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.error(f"Error calculando deuda foco: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error calculando deuda foco: {str(e)}",
+                    }
+                }
+            ),
+            500,
+        )
+
+
+@mobile_api.route("/obligaciones/proyectar-capacidad", methods=["POST"])
+@require_api_key
+def proyectar_capacidad() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        req_obj = CapacidadPagoRequest(**data)
+    except ValidationError as ve:
+        return (
+            jsonify({"error": {"code": "VALIDATION_ERROR", "detail": ve.errors()}}),
+            400,
+        )
+
+    try:
+        from logic.financiero import proyectar_capacidad_pago
+
+        resultado = proyectar_capacidad_pago(
+            deudas_pausadas_simuladas=req_obj.deudas_pausadas_simuladas,
+            abonos_extraordinarios=req_obj.abonos_extraordinarios,
+            ajuste_ingreso_extra=req_obj.ajuste_ingreso_extra,
+        )
+        return jsonify(resultado), 200
+    except Exception as e:
+        logger.error(f"Error proyectando capacidad de pago: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error proyectando capacidad de pago: {str(e)}",
+                    }
+                }
+            ),
+            500,
+        )
 
 
 @mobile_api.route("/avisos", methods=["GET"])
@@ -1061,6 +1225,25 @@ def marcar_asistencia() -> Any:
             200,
         )
     except Exception as e:
+        status_code = getattr(getattr(e, "response", None), "status_code", None)
+        if status_code == 429 or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+            logger.warning(
+                f"Google Sheets rate limit excedido en marcar_asistencia: {e}"
+            )
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "message": (
+                                "Servicio de Google Sheets saturado temporalmente. "
+                                "Espera 60 segundos antes de reintentar."
+                            ),
+                        }
+                    }
+                ),
+                429,
+            )
         logger.error(f"Error en marcación de asistencia: {e}")
         return (
             jsonify(
@@ -1341,6 +1524,23 @@ def marcar_materia() -> Any:
         )
 
     except Exception as e:
+        status_code = getattr(getattr(e, "response", None), "status_code", None)
+        if status_code == 429 or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+            logger.warning(f"Google Sheets rate limit excedido en marcar_materia: {e}")
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "message": (
+                                "Servicio de Google Sheets saturado temporalmente. "
+                                "Espera 60 segundos antes de reintentar."
+                            ),
+                        }
+                    }
+                ),
+                429,
+            )
         logger.error(f"Error procesando marcación de materia: {e}")
         msg = f"❌ Error interno al registrar materia: {str(e)}"
         return (
@@ -1348,6 +1548,131 @@ def marcar_materia() -> Any:
                 {
                     "error": {"code": "INTERNAL_ERROR", "message": msg},
                     "mensaje": msg,
+                }
+            ),
+            500,
+        )
+
+
+@mobile_api.route("/cierres", methods=["GET"])
+@require_api_key
+def get_historial_cierres() -> Any:
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        raw_cierres = repo.get_todos_cierres_historicos()
+
+        resultado: list[dict[str, Any]] = []
+        ids_contables: set[str] = set()
+
+        # 1. Cierres Contables desde Google Sheets
+        for r in raw_cierres:
+            mes = str(r.get("Mes", "")).strip()
+            anio = str(r.get("Anio", "")).strip()
+            periodo = (
+                f"{mes} {anio}".strip() if (mes or anio) else "Período Desconocido"
+            )
+
+            cierre_id = str(r.get("ID_Cierre") or "").strip()
+            if not cierre_id:
+                cierre_id = f"cierre_contable_{periodo.replace(' ', '_').lower()}"
+            ids_contables.add(cierre_id)
+
+            total_ingresos = safe_int(r.get("Total_Ingresos", 0))
+            total_gastos = safe_int(r.get("Total_Gastos", 0))
+            saldo_acumulado = safe_int(r.get("Saldo_Acumulado", 0))
+            fecha = str(r.get("Fecha_Cierre") or "").strip()
+
+            filename = f"cierre_contable_{periodo.replace(' ', '_').lower()}.pdf"
+            pdf_path = REPORTES_DIR / filename
+            pdf_disponible = pdf_path.exists()
+
+            resumen_partes = []
+            if total_ingresos > 0:
+                resumen_partes.append(
+                    f"Ingresos: ₲ {total_ingresos:,}".replace(",", ".")
+                )
+            if total_gastos > 0:
+                resumen_partes.append(f"Gastos: ₲ {total_gastos:,}".replace(",", "."))
+            if not resumen_partes:
+                resumen_partes.append(f"Saldo: ₲ {saldo_acumulado:,}".replace(",", "."))
+            resumen = " | ".join(resumen_partes)
+
+            resultado.append(
+                {
+                    "id": cierre_id,
+                    "tipo": "contable",
+                    "periodo": periodo,
+                    "fecha": fecha,
+                    "total_monto": total_ingresos or saldo_acumulado,
+                    "total_horas": 0.0,
+                    "resumen": resumen,
+                    "pdf_url": f"/api/v1/cierres/reportes/{filename}",
+                    "pdf_disponible": pdf_disponible,
+                }
+            )
+
+        # 2. Cierres Laborales y Contables adicionales en REPORTES_DIR
+        if REPORTES_DIR.exists():
+            for pdf_file in sorted(
+                REPORTES_DIR.glob("*.pdf"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            ):
+                stem = pdf_file.stem
+                if stem.startswith("cierre_laboral_"):
+                    partes = stem.replace("cierre_laboral_", "").split("_")
+                    periodo_lab = " ".join(p.capitalize() for p in partes)
+                    file_stat = pdf_file.stat()
+                    fecha_mod = datetime.fromtimestamp(file_stat.st_mtime).strftime(
+                        "%d/%m/%Y %H:%M"
+                    )
+                    resultado.append(
+                        {
+                            "id": stem,
+                            "tipo": "laboral",
+                            "periodo": periodo_lab,
+                            "fecha": fecha_mod,
+                            "total_monto": 0,
+                            "total_horas": 160.0,
+                            "resumen": f"Cierre laboral de horas para período {periodo_lab}",
+                            "pdf_url": f"/api/v1/cierres/reportes/{pdf_file.name}",
+                            "pdf_disponible": True,
+                        }
+                    )
+                elif stem.startswith("cierre_contable_") and stem not in ids_contables:
+                    partes = stem.replace("cierre_contable_", "").split("_")
+                    periodo_cont = " ".join(p.capitalize() for p in partes)
+                    file_stat = pdf_file.stat()
+                    fecha_mod = datetime.fromtimestamp(file_stat.st_mtime).strftime(
+                        "%d/%m/%Y %H:%M"
+                    )
+                    resultado.append(
+                        {
+                            "id": stem,
+                            "tipo": "contable",
+                            "periodo": periodo_cont,
+                            "fecha": fecha_mod,
+                            "total_monto": 0,
+                            "total_horas": 0.0,
+                            "resumen": f"Cierre contable para período {periodo_cont}",
+                            "pdf_url": f"/api/v1/cierres/reportes/{pdf_file.name}",
+                            "pdf_disponible": True,
+                        }
+                    )
+                    ids_contables.add(stem)
+
+        return jsonify(resultado), 200
+    except Exception as e:
+        logger.error(f"Error consultando historial de cierres: {e}")
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error al consultar historial de cierres: {str(e)}",
+                    }
                 }
             ),
             500,

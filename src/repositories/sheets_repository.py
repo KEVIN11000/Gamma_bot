@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from logic.constants import (
@@ -9,12 +10,47 @@ from logic.constants import (
     ENCABEZADOS_PRESUPUESTO_BASE,
 )
 
+
+class InMemorySheetsCache:
+    """Caché en memoria con TTL para mitigar cuotas de lectura de Google Sheets (HTTP 429)."""
+
+    def __init__(self, default_ttl_seconds: int = 180) -> None:
+        self._cache: dict[str, tuple[float, Any]] = {}
+        self._default_ttl: int = default_ttl_seconds
+
+    def get(self, key: str) -> Any | None:
+        if key in self._cache:
+            expires_at, value = self._cache[key]
+            if time.time() < expires_at:
+                return value
+            del self._cache[key]
+        return None
+
+    def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:
+        ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
+        self._cache[key] = (time.time() + ttl, value)
+
+    def invalidate(self, key_prefix_or_exact: str) -> None:
+        to_del = [k for k in self._cache if k.startswith(key_prefix_or_exact)]
+        for k in to_del:
+            self._cache.pop(k, None)
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+
+_sheets_cache = InMemorySheetsCache(default_ttl_seconds=180)
+
+
 # Simple repository that delegates to existing logic classes.
 # In a full refactor we would replace direct calls to AgenteFinanciero, etc.
 
 
 class SheetsRepository:
-    def __init__(self) -> None:
+    cache: InMemorySheetsCache = _sheets_cache
+
+    def __init__(self, cache: InMemorySheetsCache | None = None) -> None:
+        self.cache = cache or _sheets_cache
         # Lazy imports to avoid circular dependencies
         pass
 
@@ -30,6 +66,13 @@ class SheetsRepository:
         self._financiero = AgenteFinanciero(spreadsheet_id=spreadsheet_id)
         self._autonomo = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
         self._asistencia = AgenteAsistenciaMaterias()
+
+    def clear_cache(self) -> None:
+        self.cache.clear()
+
+    @classmethod
+    def clear_all_cache(cls) -> None:
+        _sheets_cache.clear()
 
     # Example method used by handlers (add more as needed)
     def add_gasto(self, data: dict) -> None:
@@ -124,8 +167,12 @@ class SheetsRepository:
     def insert_obligacion(self, obligacion_dict: dict) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
         headers = ENCABEZADOS_OBLIGACIONES_MAESTRO
-        row = [obligacion_dict.get(h, "") for h in headers]
+        row = [
+            obligacion_dict.get(h, obligacion_dict.get(h.lower(), "")) for h in headers
+        ]
         ws.append_row(row)
+        self.cache.invalidate("obligaciones_")
+        self.cache.invalidate("presupuesto_base")
 
     def update_obligacion_estado(self, id_obligacion: str, estado: str) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
@@ -138,23 +185,24 @@ class SheetsRepository:
                 )
                 if estado_idx > 0:
                     ws.update_cell(idx, estado_idx, estado)
+                    self.cache.invalidate("obligaciones_")
+                    self.cache.invalidate("presupuesto_base")
                 break
 
     def get_obligacion_by_id(self, id_obligacion: str) -> dict:
-        ws = self._get_sheet("Obligaciones_Maestro")
-        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        records = self.get_todas_obligaciones()
         for r in records:
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 return r
         return {}
 
     def get_obligaciones_activas(self) -> list[dict]:
-        ws = self._get_sheet("Obligaciones_Maestro")
-        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        records = self.get_todas_obligaciones()
         return [
             r
             for r in records
             if str(r.get("Estado", "")).strip().lower() in ("activo", "activa")
+            and str(r.get("Estado", "")).strip().lower() not in ("pausado", "pausada")
         ]
 
     def update_obligacion_saldo(
@@ -181,6 +229,8 @@ class SheetsRepository:
                     estado_idx = keys_lower.index("estado") + 1
                     ws.update_cell(idx, estado_idx, nuevo_estado)
                 break
+        self.cache.invalidate("obligaciones_")
+        self.cache.invalidate("presupuesto_base")
 
     def update_obligacion_prioridad(
         self, id_obligacion: str, orden_prioridad: int
@@ -194,10 +244,16 @@ class SheetsRepository:
                     prio_idx = keys_lower.index("orden_prioridad") + 1
                     ws.update_cell(idx, prio_idx, orden_prioridad)
                 break
+        self.cache.invalidate("obligaciones_")
 
     def get_todas_obligaciones(self) -> list[dict]:
+        cached = self.cache.get("obligaciones_todas")
+        if cached is not None:
+            return cached
         ws = self._get_sheet("Obligaciones_Maestro")
-        return self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        self.cache.set("obligaciones_todas", records, ttl_seconds=180)
+        return records
 
     def delete_obligacion(self, id_obligacion: str) -> bool:
         ws = self._get_sheet("Obligaciones_Maestro")
@@ -205,6 +261,8 @@ class SheetsRepository:
         for idx, r in enumerate(records, start=2):
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 ws.delete_rows(idx)
+                self.cache.invalidate("obligaciones_")
+                self.cache.invalidate("presupuesto_base")
                 return True
         return False
 
@@ -219,6 +277,8 @@ class SheetsRepository:
                     if k_lower in keys_lower:
                         col_idx = keys_lower.index(k_lower) + 1
                         ws.update_cell(idx, col_idx, val)
+                self.cache.invalidate("obligaciones_")
+                self.cache.invalidate("presupuesto_base")
                 return True
         return False
 
@@ -228,6 +288,8 @@ class SheetsRepository:
         headers = ENCABEZADOS_LIBRO_DIARIO
         row = [movimiento_dict.get(h, "") for h in headers]
         ws.append_row(row)
+        self.cache.invalidate("balance_")
+        self.cache.invalidate("movimientos_")
 
         try:
             mov = (
@@ -300,8 +362,13 @@ class SheetsRepository:
         return result
 
     def get_all_movimientos(self) -> list[dict]:
+        cached = self.cache.get("movimientos_todos")
+        if cached is not None:
+            return cached
         ws = self._get_sheet("Libro_Diario")
-        return self._get_records(ws, ENCABEZADOS_LIBRO_DIARIO)
+        records = self._get_records(ws, ENCABEZADOS_LIBRO_DIARIO)
+        self.cache.set("movimientos_todos", records, ttl_seconds=180)
+        return records
 
     def obtener_ultimo_salario_libro_diario(self) -> int:
         from logic.logic import safe_int
@@ -358,11 +425,21 @@ class SheetsRepository:
                 "Exento",
             ]
             ws.append_row(row)
+        self.cache.invalidate("balance_")
+        self.cache.invalidate("movimientos_")
 
     # --- Cierres_Historicos ---
-    def get_last_cierre_mensual(self) -> dict:
+    def get_todos_cierres_historicos(self) -> list[dict]:
+        cached = self.cache.get("cierres_historicos")
+        if cached is not None:
+            return cached
         ws = self._get_sheet("Cierres_Historicos")
         records = self._get_records(ws, ENCABEZADOS_CIERRES_HISTORICOS)
+        self.cache.set("cierres_historicos", records, ttl_seconds=180)
+        return records
+
+    def get_last_cierre_mensual(self) -> dict:
+        records = self.get_todos_cierres_historicos()
         if records:
             return records[-1]
         return {}
@@ -372,6 +449,7 @@ class SheetsRepository:
         headers = ENCABEZADOS_CIERRES_HISTORICOS
         row = [cierre_dict.get(h, "") for h in headers]
         ws.append_row(row)
+        self.cache.invalidate("cierres_")
 
     # --- Presupuesto_Base ---
     def get_presupuesto_base(self) -> dict:
@@ -382,6 +460,9 @@ class SheetsRepository:
         return {}
 
     def obtener_presupuesto_base_completo(self) -> tuple[int, int]:
+        cached = self.cache.get("presupuesto_base")
+        if cached is not None:
+            return cached
         from logic.logic import safe_int
 
         ws = self._get_sheet("Presupuesto_Base")
@@ -399,7 +480,9 @@ class SheetsRepository:
                 total_ingreso += monto
             elif "egreso" in tipo_flujo or "gasto" in tipo_flujo:
                 total_costos += monto
-        return total_ingreso, total_costos
+        res = (total_ingreso, total_costos)
+        self.cache.set("presupuesto_base", res, ttl_seconds=300)
+        return res
 
     def obtener_gastos_fijos(self) -> dict:
         from logic.logic import safe_int
@@ -446,6 +529,7 @@ class SheetsRepository:
                 except ValueError:
                     col_idx = 4
                 ws.update_cell(idx, col_idx, nuevo_monto)
+                self.cache.invalidate("presupuesto_base")
                 return True
         return False
 
@@ -456,6 +540,7 @@ class SheetsRepository:
         # "Tipo_Flujo", "Categoria", "Concepto", "Monto_Mensual_Gs", "Tipo_Ingreso_Gasto", "Observaciones"
         row = ["Gasto Fijo", categoria, concepto, monto, "Fijo", obs]
         ws.append_row(row)
+        self.cache.invalidate("presupuesto_base")
         return True
 
     def upsert_salario_presupuesto_base(self, nuevo_salario: int) -> bool:
@@ -482,6 +567,7 @@ class SheetsRepository:
                 except ValueError:
                     col_idx = 4
                 ws.update_cell(idx, col_idx, nuevo_salario)
+                self.cache.invalidate("presupuesto_base")
                 return True
 
         # Si no existe, insertar nueva fila con encabezados canónicos
@@ -494,4 +580,28 @@ class SheetsRepository:
             "Auto-sincronizado desde Libro Diario",
         ]
         ws.append_row(row)
+        self.cache.invalidate("presupuesto_base")
         return True
+
+    def obtener_balance(self, mes: str | None = None, anio: str | None = None) -> dict:
+        """Obtiene el balance contable del mes con caché en memoria (TTL 180s)."""
+        from logic.logic import get_now_py
+        import os
+
+        ahora = get_now_py()
+        m = str(mes) if mes else str(ahora.month)
+        y = str(anio) if anio else str(ahora.year)
+        cache_key = f"balance_{m}_{y}"
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        from logic.financiero import AgenteFinanciero
+
+        spreadsheet_id = (
+            os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+        )
+        agente = AgenteFinanciero(spreadsheet_id=spreadsheet_id)
+        res = agente.obtener_balance() if hasattr(agente, "obtener_balance") else {}
+        self.cache.set(cache_key, res, ttl_seconds=180)
+        return res

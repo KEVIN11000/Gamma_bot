@@ -123,19 +123,9 @@ class FakeWorkbook:
 
 
 # ── Encabezados reales del entorno de producción ─────────────────────────────
-HEADERS_OBLIGACIONES = [
-    "ID_Obligacion",
-    "Tipo",
-    "Nombre",
-    "Monto_Inicial",
-    "Saldo_Actual",
-    "Estado",
-    "Cuota_Referencia_Gs",
-    "Fecha_Inicio",
-    "Observaciones",
-    "Cuotas",
-    "Event_ID",
-]
+from logic.constants import ENCABEZADOS_OBLIGACIONES_MAESTRO  # noqa: E402
+
+HEADERS_OBLIGACIONES = ENCABEZADOS_OBLIGACIONES_MAESTRO
 HEADERS_LIBRO_DIARIO = [
     "Fecha",
     "Movimiento",
@@ -233,6 +223,7 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
         self.assertEqual(row["ID_Obligacion"], debt_id)
         self.assertEqual(row["Tipo"], "Deuda")
         self.assertEqual(row["Nombre"], "Préstamo personal")
+        self.assertEqual(row["Entidad"], "Banco Atlas")
         self.assertEqual(row["Monto_Inicial"], "12000000")
         self.assertEqual(row["Saldo_Actual"], "12000000")
         self.assertEqual(row["Estado"], "Activo")
@@ -340,6 +331,7 @@ class TestIntegrationFinanceDebt(unittest.TestCase):
             "ID_Obligacion",
             "Tipo",
             "Nombre",
+            "Entidad",
             "Monto_Inicial",
             "Saldo_Actual",
             "Estado",

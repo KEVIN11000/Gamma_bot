@@ -85,6 +85,7 @@ ENCABEZADOS_OBLIGACIONES_MAESTRO = [
     "ID_Obligacion",
     "Tipo",
     "Nombre",
+    "Entidad",
     "Monto_Inicial",
     "Saldo_Actual",
     "Estado",
