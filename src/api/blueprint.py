@@ -62,11 +62,11 @@ def health_check() -> Any:
                 "sheets": True,
                 "avisos": True,
                 "version_api": "1.0.0",
-                "latest_app_version": "0.0.8",
-                "latest_app_version_code": 45,
+                "latest_app_version": "0.0.10",
+                "latest_app_version_code": 62,
                 "download_url": (
                     "https://github.com/KEVIN11000/Gamma_Mobile/releases/"
-                    "download/v0.0.8/gamma-mobile-v0.0.8-release.apk"
+                    "download/v0.0.10/gamma-mobile-v0.0.10-release.apk"
                 ),
             }
         ),

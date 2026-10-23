@@ -243,6 +243,6 @@ def test_comando_app(mock_safe, mock_auth, bot_mock, mock_message):
     handler(mock_message)
     bot_mock.reply_to.assert_called_once()
     reply_text = bot_mock.reply_to.call_args[0][1]
-    assert "v0.0.8" in reply_text
-    assert "gamma-mobile-v0.0.8-release.apk" in reply_text
+    assert "v0.0.10" in reply_text
+    assert "gamma-mobile-v0.0.10-release.apk" in reply_text
 
