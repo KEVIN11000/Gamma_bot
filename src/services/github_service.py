@@ -140,7 +140,9 @@ class GitHubIssueSyncService:
                 patch_url, json=payload, headers=cls._headers(), timeout=5
             )
             if resp_patch.status_code == 200:
-                logger.info(f"Issue #{issue_number} sincronizado a estado '{gh_state}'.")
+                logger.info(
+                    f"Issue #{issue_number} sincronizado a estado '{gh_state}'."
+                )
                 return True
             else:
                 logger.warning(
@@ -148,7 +150,9 @@ class GitHubIssueSyncService:
                     f"HTTP {resp_patch.status_code}"
                 )
         except Exception as e:
-            logger.warning(f"Error no bloqueante al actualizar issue #{issue_number}: {e}")
+            logger.warning(
+                f"Error no bloqueante al actualizar issue #{issue_number}: {e}"
+            )
 
         return False
 
@@ -207,7 +211,9 @@ class GitHubWebhookService:
         state_reason = issue_data.get("state_reason") or "resuelto en GitHub"
 
         if not ticket_id:
-            logger.info(f"Webhook de GitHub ignorado: título '{title}' no contiene [TCK-XXX].")
+            logger.info(
+                f"Webhook de GitHub ignorado: título '{title}' no contiene [TCK-XXX]."
+            )
             return {
                 "status": "ignored",
                 "reason": f"No TCK identifier found in title '{title}'",
@@ -278,4 +284,3 @@ class GitHubWebhookService:
             "nuevo_estado": nuevo_estado,
             "issue_number": issue_number,
         }
-

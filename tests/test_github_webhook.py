@@ -3,7 +3,6 @@ import hmac
 import json
 import os
 import sys
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
@@ -79,7 +78,10 @@ def mock_tickets_db(tmp_path, monkeypatch):
 
 # ── Tests de Métodos Unitarios en GitHubWebhookService ──────────────────────
 def test_extract_ticket_id():
-    assert GitHubWebhookService.extract_ticket_id("[TCK-006] Despliegue worker") == "TCK-006"
+    assert (
+        GitHubWebhookService.extract_ticket_id("[TCK-006] Despliegue worker")
+        == "TCK-006"
+    )
     assert GitHubWebhookService.extract_ticket_id("Fix [tck-123] algo") == "TCK-123"
     assert GitHubWebhookService.extract_ticket_id("Bug sin etiqueta") is None
     assert GitHubWebhookService.extract_ticket_id(None) is None
@@ -90,9 +92,14 @@ def test_verify_signature_unit():
     sig = _generate_signature(payload, SECRET)
 
     assert GitHubWebhookService.verify_signature(payload, sig, SECRET) is True
-    assert GitHubWebhookService.verify_signature(payload, "sha256=badbad", SECRET) is False
+    assert (
+        GitHubWebhookService.verify_signature(payload, "sha256=badbad", SECRET) is False
+    )
     assert GitHubWebhookService.verify_signature(payload, None, SECRET) is False
-    assert GitHubWebhookService.verify_signature(payload, "invalid_prefix", SECRET) is False
+    assert (
+        GitHubWebhookService.verify_signature(payload, "invalid_prefix", SECRET)
+        is False
+    )
     # Modo permisivo si secret está vacío o no configurado
     assert GitHubWebhookService.verify_signature(payload, None, secret="") is True
     with patch.dict(os.environ, {}, clear=True):

@@ -11,7 +11,9 @@ from flask import request, jsonify
 def is_valid_api_key(provided_key: str | None) -> bool:
     if not provided_key:
         return False
-    expected_key = os.getenv("X_API_KEY") or os.getenv("GAMMA_MOBILE_API_KEY") or "dev-key"
+    expected_key = (
+        os.getenv("X_API_KEY") or os.getenv("GAMMA_MOBILE_API_KEY") or "dev-key"
+    )
     # Timing-attack resistant hash comparison
     h_provided = hashlib.sha256(provided_key.encode("utf-8")).digest()
     h_expected = hashlib.sha256(expected_key.encode("utf-8")).digest()
