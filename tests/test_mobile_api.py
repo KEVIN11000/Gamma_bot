@@ -991,8 +991,11 @@ def test_asistencia_materias_and_dual_cierre(client):
     assert data_cierre["tipo"] == "contable"
 
 
-def test_soporte_tickets_github_sync_dispatch(client):
+def test_soporte_tickets_github_sync_dispatch(client, monkeypatch, tmp_path):
     headers = {"X-API-KEY": "test-secret-key"}
+    fake_tickets = tmp_path / "tickets.json"
+    fake_tickets.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr("api.blueprint.TICKETS_FILE", fake_tickets)
 
     with unittest.mock.patch(
         "services.github_service.GitHubIssueSyncService.create_github_issue"

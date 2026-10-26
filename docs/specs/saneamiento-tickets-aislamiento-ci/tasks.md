@@ -14,7 +14,7 @@
   - **Acción:** Purgar las 72 entradas de prueba (`TCK-007` a `TCK-078`) generadas por pytest, conservando exclusivamente los 6 tickets canónicos resueltos (`TCK-001` a `TCK-006`) con indentación de 2 espacios y JSON válido.
   - **Criterio de Aceptación:** `python -m json.tool src/data/tickets.json` valida sin errores y `len(json.load(f)) == 6`.
 
-- [ ] **Tarea 2: Blindaje y aislamiento hermético en `tests/test_mobile_api.py`**
+- [x] **Tarea 2: Blindaje y aislamiento hermético en `tests/test_mobile_api.py`**
   - **Archivos:** `tests/test_mobile_api.py`
   - **Acción:** Modificar la firma de `test_soporte_tickets_github_sync_dispatch` para recibir los fixtures `monkeypatch` y `tmp_path`, inicializar un `fake_tickets` efímero en `tmp_path` y redirigir `api.blueprint.TICKETS_FILE` antes de ejecutar las llamadas POST y PATCH. Auditar y certificar que ninguna otra función de prueba en `tests/` llame a `/soporte/tickets` sin aislamiento de archivo.
   - **Criterio de Aceptación:** Ejecutar `uv run pytest tests/test_mobile_api.py` y confirmar que `git status src/data/tickets.json` permanece inalterado (working tree clean sobre ese archivo).
