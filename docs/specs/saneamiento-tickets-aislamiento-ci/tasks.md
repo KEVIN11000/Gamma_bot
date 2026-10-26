@@ -19,7 +19,7 @@
   - **Acción:** Modificar la firma de `test_soporte_tickets_github_sync_dispatch` para recibir los fixtures `monkeypatch` y `tmp_path`, inicializar un `fake_tickets` efímero en `tmp_path` y redirigir `api.blueprint.TICKETS_FILE` antes de ejecutar las llamadas POST y PATCH. Auditar y certificar que ninguna otra función de prueba en `tests/` llame a `/soporte/tickets` sin aislamiento de archivo.
   - **Criterio de Aceptación:** Ejecutar `uv run pytest tests/test_mobile_api.py` y confirmar que `git status src/data/tickets.json` permanece inalterado (working tree clean sobre ese archivo).
 
-- [ ] **Tarea 3: Auditoría y prueba de verificación de Telemetría Vigía**
+- [x] **Tarea 3: Auditoría y prueba de verificación de Telemetría Vigía**
   - **Archivos:** `src/com/core/telemetry.py`, `tests/test_mobile_api.py` (o suite dedicada si aplica)
   - **Acción:** Inspeccionar la implementación de `reportar_incidente_vigia()` para confirmar el cooldown de 30 minutos (1800s) por firma SHA-256 y la degradación silenciosa (`except Exception: return False`) ante fallas de red con la API de GitHub.
   - **Criterio de Aceptación:** Prueba empírica comprobando que un fallo en GitHub no levanta excepción no controlada hacia la API de soporte.

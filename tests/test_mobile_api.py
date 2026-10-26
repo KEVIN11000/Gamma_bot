@@ -1077,3 +1077,53 @@ def test_github_service_direct_unit_tests():
         )
         assert synced is True
         mock_patch.assert_called_once()
+
+
+def test_telemetria_vigia_cooldown_and_resilience():
+    from com.core.telemetry import (
+        reportar_incidente_vigia,
+        sanitizar_texto,
+        _COOLDOWN_REGISTRY,
+    )
+
+    # 1. Sanitización de credenciales
+    with unittest.mock.patch.dict(os.environ, {"TOKEN": "super_secret_telegram_token"}):
+        sanitized = sanitizar_texto(
+            "Error con token super_secret_telegram_token en ejecucion"
+        )
+        assert "[TOKEN_REDACTED]" in sanitized
+        assert "super_secret_telegram_token" not in sanitized
+
+    # 2. Sin token retorna False
+    with unittest.mock.patch.dict(os.environ, {}, clear=True):
+        assert (
+            reportar_incidente_vigia("Error Test", "Detalle", origen="servidor")
+            is False
+        )
+
+    # 3. Envío exitoso y registro en cooldown
+    _COOLDOWN_REGISTRY.clear()
+    with unittest.mock.patch.dict(
+        os.environ, {"GITHUB_TOKEN": "mock-token"}
+    ), unittest.mock.patch("requests.post") as mock_post:
+        mock_post.return_value.status_code = 201
+        res1 = reportar_incidente_vigia("Error Test", "Detalle", origen="servidor")
+        assert res1 is True
+        assert mock_post.call_count == 1
+
+        # Segundo llamado idéntico dentro de los 30 min (1800s) debe ser bloqueado por cooldown
+        res2 = reportar_incidente_vigia("Error Test", "Detalle", origen="servidor")
+        assert res2 is False
+        assert mock_post.call_count == 1  # No se disparó un nuevo request
+
+    # 4. Degradación resiliente ante excepción de red (fail-safe, no propaga)
+    _COOLDOWN_REGISTRY.clear()
+    with unittest.mock.patch.dict(
+        os.environ, {"GITHUB_TOKEN": "mock-token"}
+    ), unittest.mock.patch(
+        "requests.post", side_effect=Exception("Connection reset by peer")
+    ):
+        res_fail = reportar_incidente_vigia(
+            "Fallo de red", "Detalle", origen="servidor"
+        )
+        assert res_fail is False
