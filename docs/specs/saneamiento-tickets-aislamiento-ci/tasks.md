@@ -29,7 +29,7 @@
   - **Acción:** Verificar que `GET /api/v1/health` retorne status 200 con payload exacto: `status="ok"`, `version="1.18.0"`, `mobile_version="0.0.10"`, y `download_url="https://github.com/KEVIN11000/Gamma_Mobile/releases/latest"`.
   - **Criterio de Aceptación:** `test_mobile_api.py::test_health_check` pasa exitosamente y valida el formato exacto.
 
-- [ ] **Tarea 5: Certificación de Calidad Integral y Linters**
+- [x] **Tarea 5: Certificación de Calidad Integral y Linters**
   - **Archivos:** Todos los archivos intervenidos (`src/data/tickets.json`, `tests/test_mobile_api.py`, `src/api/blueprint.py`)
   - **Acción:** Ejecutar la suite completa `uv run pytest`, `uv run flake8` y `uv run black --check` sobre los módulos modificados.
   - **Criterio de Aceptación:** 201/201 tests pasando en verde, linters sin advertencias y working tree limpio de Git.
