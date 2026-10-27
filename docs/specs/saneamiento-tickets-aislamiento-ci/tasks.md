@@ -24,7 +24,7 @@
   - **Acción:** Inspeccionar la implementación de `reportar_incidente_vigia()` para confirmar el cooldown de 30 minutos (1800s) por firma SHA-256 y la degradación silenciosa (`except Exception: return False`) ante fallas de red con la API de GitHub.
   - **Criterio de Aceptación:** Prueba empírica comprobando que un fallo en GitHub no levanta excepción no controlada hacia la API de soporte.
 
-- [ ] **Tarea 4: Verificación contractual de endpoint `GET /api/v1/health`**
+- [x] **Tarea 4: Verificación contractual de endpoint `GET /api/v1/health`**
   - **Archivos:** `src/api/blueprint.py`, `tests/test_mobile_api.py`
   - **Acción:** Verificar que `GET /api/v1/health` retorne status 200 con payload exacto: `status="ok"`, `version="1.18.0"`, `mobile_version="0.0.10"`, y `download_url="https://github.com/KEVIN11000/Gamma_Mobile/releases/latest"`.
   - **Criterio de Aceptación:** `test_mobile_api.py::test_health_check` pasa exitosamente y valida el formato exacto.

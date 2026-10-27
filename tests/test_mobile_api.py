@@ -46,9 +46,16 @@ def test_health_with_key(client):
     assert res.status_code == 200
     data = res.get_json()
     assert data["status"] == "ok"
+    assert data["sheets_connected"] is True
+    assert data["calendar_connected"] is True
+    assert data["version"] == "1.18.0"
+    assert data["mobile_version"] == "0.0.10"
+    assert (
+        data["download_url"]
+        == "https://github.com/KEVIN11000/Gamma_Mobile/releases/latest"
+    )
     assert data["version_api"] == "1.0.0"
-    assert "latest_app_version" in data
-    assert "download_url" in data
+    assert data["latest_app_version"] == "0.0.10"
 
 
 def test_dashboard_summary(client):
