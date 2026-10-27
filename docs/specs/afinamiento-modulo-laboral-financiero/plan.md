@@ -145,7 +145,7 @@ Se implementará el servicio `ExcelReportService` en `src/services/excel_service
    - Fila R4: `por Horas` | `=B[R2]*B[R3]` (formato moneda `$#,##0`).
    - Fila R5: `IVA 10%` | `=REDONDEAR(B[R4]*0.1, 0)` (formato moneda `$#,##0`).
    - Fila R6: `INCLUIDO` | `=B[R4]+B[R5]` (formato moneda `$#,##0`).
-   - Fila Opcional (si aplica): `FACTURAD` / `Descuento` | Monto (formato moneda).
+   - Fila Opcional (si aplica): `SALDO ANTERIOR` / `Descuento` | Monto (formato moneda).
    - Fila Final: `FACTURA` | `=B[R6] +/- Ajuste` (fondo gris/negrita destacado, formato moneda `$#,##0`).
 
 ---

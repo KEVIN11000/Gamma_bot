@@ -11,7 +11,7 @@
 ## 1. Alcance y Objetivos
 
 Evolucionar el módulo de asistencia y horas de `Gamma_bot` para automatizar por completo la confección de la planilla de cobro laboral exactamente bajo el estándar requerido para la rendición de haberes, eliminando la necesidad de edición manual posterior:
-1. **Cuadro Resumen Estandarizado:** Estructurar la tabla de liquidación al pie de la planilla con: Total de horas del mes (`mes`), Tarifa horaria (`hora`), Monto total multiplicado (`por Horas`), IVA 10% calculado, Subtotal con IVA (`INCLUIDO`), Ajuste extraordinario o Descuento opcional (`FACTURAD` / `Descuento`, omitiendo la fila si el monto es cero), y Total a facturar (`FACTURA`).
+1. **Cuadro Resumen Estandarizado:** Estructurar la tabla de liquidación al pie de la planilla con: Total de horas del mes (`mes`), Tarifa horaria (`hora`), Monto total multiplicado (`por Horas`), IVA 10% calculado, Subtotal con IVA (`INCLUIDO`), Ajuste extraordinario o Descuento opcional (`SALDO ANTERIOR` / `Descuento`, omitiendo la fila si el monto es cero), y Total a facturar (`FACTURA`).
 2. **Generación Dual de Documentos:** Generar y entregar tanto la planilla de cálculo en formato Excel nativo (`.xlsx` con estilos, cuadrícula y fórmulas matemáticas activas) como el comprobante digital en formato PDF (ReportLab), además de reflejar el cuadro resumen al pie de la hoja en Google Sheets.
 3. **Motor de Analíticas Laborales MTD:** Computar el acumulado a la fecha (horas trabajadas y dinero devengado en el período en curso), junto con la métrica de horas perdidas (déficit acumulado respecto a la jornada estándar de 8 horas en días efectivamente trabajados) y horas extras acumuladas (> 8h).
 4. **Consulta Unificada de Períodos:** Exponer en qué período activo se encuentra el sistema de marcación laboral (`periodo_actual.txt` / Google Sheets) y el sistema contable (`Libro_Diario` / `Cierres_Historicos`).
@@ -31,12 +31,12 @@ Evolucionar el módulo de asistencia y horas de `Gamma_bot` para automatizar por
   5. Calcula `IVA 10% = por Horas * 0.10` (ej. `$156,998`).
   6. Calcula `INCLUIDO = por Horas + IVA 10%` (ej. `$1,726,983`).
   7. **Condición de Ajuste / Descuento:**
-     - Si se especifica un monto adicional a favor (deuda previa o reintegro), se incluye la fila `FACTURAD` sumando al total.
+     - Si se especifica un monto adicional a favor (deuda previa o reintegro), se incluye la fila `SALDO ANTERIOR` sumando al total.
      - Si se especifica un descuento (adelanto o deducción), se incluye la fila `Descuento` restando al total.
      - **Si el valor es 0 o no se suministra, la fila se omite completamente** tanto en Excel como en PDF y Google Sheets.
   8. Totaliza `FACTURA`:
      - Sin ajuste/descuento: `FACTURA = INCLUIDO`.
-     - Con ajuste: `FACTURA = INCLUIDO + FACTURAD`.
+     - Con ajuste: `FACTURA = INCLUIDO + SALDO ANTERIOR`.
      - Con descuento: `FACTURA = INCLUIDO - Descuento`.
 
 ### UC-2: Generación y Entrega Dual (.xlsx y .pdf)

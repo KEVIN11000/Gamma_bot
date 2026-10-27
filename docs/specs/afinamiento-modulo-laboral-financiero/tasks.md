@@ -16,7 +16,7 @@
 
 - [ ] **Tarea 2: Refactorizar cuadro resumen y soporte de ajuste/descuento en `AgenteAutonomoHoras`**
   - **Archivos:** `src/logic/logic.py`, `tests/test_asistencia_service.py`
-  - **Acción:** Actualizar `AgenteAutonomoHoras.preparar_datos_reporte` para calcular y estructurar la liquidación según el nuevo estándar: `mes`, `hora`, `por Horas`, `IVA 10%`, `INCLUIDO`, y fila opcional `FACTURAD` / `Descuento` (solo si el monto es distinto de 0), finalizando con `FACTURA`. Agregar método `escribir_cuadro_resumen_en_sheet()` para plasmar este resumen en las celdas inferiores de la hoja activa de Google Sheets.
+  - **Acción:** Actualizar `AgenteAutonomoHoras.preparar_datos_reporte` para calcular y estructurar la liquidación según el nuevo estándar: `mes`, `hora`, `por Horas`, `IVA 10%`, `INCLUIDO`, y fila opcional `SALDO ANTERIOR` / `Descuento` (solo si el monto es distinto de 0), finalizando con `FACTURA`. Agregar método `escribir_cuadro_resumen_en_sheet()` para plasmar este resumen en las celdas inferiores de la hoja activa de Google Sheets.
   - **Criterio de Aceptación:** Prueba unitaria comprobando que `preparar_datos_reporte(descuento=0)` omite la fila intermedia y que con `descuento > 0` o `ajuste > 0` calcula la factura total correcta.
 
 - [ ] **Tarea 3: Actualizar diseño de cuadro resumen en `PDFService`**
