@@ -9,7 +9,7 @@
 
 ### Tareas Atómicas de Ejecución
 
-- [ ] **Tarea 1: Implementar generador de planillas Excel nativas (`ExcelReportService`) con `openpyxl`**
+- [x] **Tarea 1: Implementar generador de planillas Excel nativas (`ExcelReportService`) con `openpyxl`**
   - **Archivos:** `src/services/excel_service.py`, `tests/test_excel_service.py`
   - **Acción:** Crear la clase `ExcelReportService` que construya el libro `.xlsx` respetando el diseño exacto: título de cabecera con mes y año, tabla de marcaciones diarias (A-G), formatos numéricos centrados y cuadro resumen de dos columnas (`Resumen` / `Cantidades`) con fórmulas dinámicas de suma, porcentaje e IVA, omitiendo la fila de ajuste si es 0. Añadir `openpyxl>=3.1.0` a `requirements.txt`.
   - **Criterio de Aceptación:** `pytest tests/test_excel_service.py` valida que el archivo `.xlsx` generado se abre correctamente, contiene las fórmulas esperadas y los estilos de celda.
