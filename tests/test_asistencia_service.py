@@ -331,3 +331,78 @@ def test_generar_y_enviar_reporte_por_hoja(
     mock_bot.send_message.assert_called_with(
         mock_message.chat.id, "Mensaje de pdf error"
     )
+
+
+def test_agente_horas_preparar_datos_reporte_y_cuadro_resumen():
+    from logic.logic import AgenteAutonomoHoras
+
+    agente = AgenteAutonomoHoras("test_spreadsheet_id")
+    mock_wb = MagicMock()
+    mock_hoja = MagicMock()
+    mock_hoja.title = "Octubre 2026"
+    mock_hoja.get_all_values.return_value = [
+        [
+            "Día",
+            "Fecha",
+            "Hora entrada",
+            "Salgo almuerzo",
+            "Vuelta almuerzo",
+            "Hora salida",
+            "Horas",
+        ],
+        ["Martes", "29/09/2026", "09:10", "12:47", "13:16", "17:05", "7.43"],
+        ["Jueves", "01/10/2026", "08:30", "12:19", "12:59", "17:05", "7.92"],
+        ["Lunes", "05/10/2026", "08:50", "12:19", "13:22", "17:05", "7.23"],
+    ]
+    mock_wb.worksheets.return_value = [mock_hoja]
+    mock_wb.worksheet.return_value = mock_hoja
+    agente._wb = mock_wb
+    agente._ws = mock_hoja
+
+    # Caso 1: Sin saldo anterior ni descuento
+    reporte, error = agente.preparar_datos_reporte(
+        descuento=0, saldo_anterior=0, incluir_iva=True
+    )
+    assert error is None
+    conceptos = [c[0] for c in reporte.lineas_resumen]
+    assert conceptos == [
+        "mes",
+        "hora",
+        "por Horas",
+        "IVA 10%",
+        "INCLUIDO",
+        "FACTURA",
+    ]
+    assert "SALDO ANTERIOR" not in conceptos
+    assert "Descuento" not in conceptos
+    assert reporte.resumen_calculado["mes"] == 22.6
+
+    # Caso 2: Con SALDO ANTERIOR (> 0)
+    rep_saldo, _ = agente.preparar_datos_reporte(
+        descuento=0, saldo_anterior=177364, incluir_iva=True
+    )
+    conceptos_saldo = [c[0] for c in rep_saldo.lineas_resumen]
+    assert "SALDO ANTERIOR" in conceptos_saldo
+    assert rep_saldo.resumen_calculado["saldo_anterior"] == 177364
+    assert (
+        rep_saldo.resumen_calculado["factura"]
+        == rep_saldo.resumen_calculado["incluido"] + 177364
+    )
+
+    # Caso 3: Con Descuento (> 0)
+    rep_desc, _ = agente.preparar_datos_reporte(
+        descuento=50000, saldo_anterior=0, incluir_iva=True
+    )
+    conceptos_desc = [c[0] for c in rep_desc.lineas_resumen]
+    assert "Descuento" in conceptos_desc
+    assert rep_desc.resumen_calculado["descuento"] == 50000
+    assert (
+        rep_desc.resumen_calculado["factura"]
+        == rep_desc.resumen_calculado["incluido"] - 50000
+    )
+
+    # Caso 4: Escritura en Sheet
+    ok, msg = agente.escribir_cuadro_resumen_en_sheet(saldo_anterior=177364)
+    assert ok is True
+    assert "Cuadro resumen escrito" in msg
+    mock_hoja.update.assert_called_once()

@@ -560,20 +560,17 @@ class AgenteAutonomoHoras:
         except (ValueError, IndexError):
             return 0.0
 
-    def preparar_datos_reporte(self, nombre_hoja=None, descuento=0, incluir_iva=False):
-        """
-        preparar_datos_reporte method/function.
+    def preparar_datos_reporte(
+        self,
+        nombre_hoja=None,
+        descuento=0,
+        incluir_iva=True,
+        saldo_anterior=0,
+    ):
+        """Prepara los datos estructurados para compilar los reportes laboral en PDF y Excel.
 
-        Args:
-            nombre_hoja: Description for nombre_hoja.
-            descuento: Description for descuento.
-            incluir_iva: Si se debe incluir IVA en el reporte.
-
-        Returns:
-            Description of the return value.
-
-        Raises:
-            Exception: Description of the exception.
+        Calcula el cuadro resumen con: mes, hora, por Horas, IVA 10%, INCLUIDO,
+        y opcionalmente SALDO ANTERIOR o Descuento si es distinto de cero, finalizando en FACTURA.
         """
         from logic.pdf_service import DatosReporte
 
@@ -595,7 +592,14 @@ class AgenteAutonomoHoras:
 
         headers = datos[0]
         filas_raw = datos[1:]
-        filas_datos = [f for f in filas_raw if any(c.strip() for c in f)]
+        # Filtrar filas de datos excluyendo filas del cuadro resumen previo si existieran
+        filas_datos = [
+            f
+            for f in filas_raw
+            if any(c.strip() for c in f)
+            and f[0].strip().lower() != "resumen"
+            and f[0].strip().lower() != "mes"
+        ]
 
         col_horas = next(
             (i for i, h in enumerate(headers) if "horas" in h.lower()), None
@@ -608,56 +612,45 @@ class AgenteAutonomoHoras:
             for f in filas_datos
             if col_horas < len(f)
         )
-        h_enteras = int(total_decimal)
-        m_resto = int(round((total_decimal - h_enteras) * 60))
-        total_str = f"{h_enteras}h {m_resto:02d}m"
+        total_decimal_redondeado = round(total_decimal, 1)
 
-        monto_por_hora = float(os.getenv("MONTO_POR_HORA", MONTO_POR_HORA_DEFAULT))
-        salario_base = total_decimal * monto_por_hora
+        monto_por_hora = int(float(os.getenv("MONTO_POR_HORA", MONTO_POR_HORA_DEFAULT)))
+        monto_por_horas = int(round(total_decimal * monto_por_hora))
 
         if incluir_iva:
-            # En Paraguay, para *agregar* el IVA (10%) a un monto base, se multiplica por 0.10.
-            # Se divide por 11 únicamente para *extraer* el IVA de un monto que ya lo tiene incluido.
-            monto_iva = salario_base * 0.10
-            salario_bruto = salario_base + monto_iva
+            monto_iva = int(round(monto_por_horas * 0.10))
+            subtotal_incluido = monto_por_horas + monto_iva
         else:
             monto_iva = 0
-            salario_bruto = salario_base
+            subtotal_incluido = monto_por_horas
 
-        salario_neto = salario_bruto - float(descuento)
+        monto_saldo_anterior = int(round(float(saldo_anterior or 0)))
+        monto_descuento = int(round(float(descuento or 0)))
 
-        def gs(n):
-            """
-            gs method/function.
+        if monto_saldo_anterior > 0:
+            total_factura = subtotal_incluido + monto_saldo_anterior
+        elif monto_descuento > 0:
+            total_factura = subtotal_incluido - monto_descuento
+        else:
+            total_factura = subtotal_incluido
 
-            Args:
-                n: Description for n.
-
-            Returns:
-                Description of the return value.
-
-            Raises:
-                Exception: Description of the exception.
-            """
-            return f"Gs. {int(n):,}".replace(",", ".")
+        def fmt_m(val: int | float) -> str:
+            return f"${int(round(val)):,}"
 
         resumen_data = [
-            ["Total horas trabajadas", total_str],
-            ["Monto por hora", gs(monto_por_hora)],
+            ["mes", f"{total_decimal_redondeado:.1f}"],
+            ["hora", fmt_m(monto_por_hora)],
+            ["por Horas", fmt_m(monto_por_horas)],
+            ["IVA 10%", fmt_m(monto_iva)],
+            ["INCLUIDO", fmt_m(subtotal_incluido)],
         ]
 
-        if incluir_iva:
-            resumen_data.append(["Salario base", gs(salario_base)])
-            resumen_data.append(["IVA (10%)", gs(monto_iva)])
-            resumen_data.append(["Salario bruto", gs(salario_bruto)])
-        else:
-            resumen_data.append(["Salario bruto", gs(salario_bruto)])
+        if monto_saldo_anterior > 0:
+            resumen_data.append(["SALDO ANTERIOR", fmt_m(monto_saldo_anterior)])
+        elif monto_descuento > 0:
+            resumen_data.append(["Descuento", f"-{fmt_m(monto_descuento)}"])
 
-        if descuento > 0:
-            resumen_data.append(["Descuentos aplicados", f"- {gs(descuento)}"])
-            resumen_data.append(["Salario neto a cobrar", gs(salario_neto)])
-        else:
-            resumen_data.append(["Salario del mes", gs(salario_neto)])
+        resumen_data.append(["FACTURA", fmt_m(total_factura)])
 
         nombre_archivo = (
             f"reporte_horas_{nombre_periodo.replace(' ', '_').replace('/', '-')}.pdf"
@@ -671,7 +664,120 @@ class AgenteAutonomoHoras:
             lineas_resumen=resumen_data,
             nombre_archivo=nombre_archivo,
         )
+        # Inyectar metadatos enriquecidos para generación de Excel y analíticas
+        reporte.resumen_calculado = {
+            "mes": total_decimal_redondeado,
+            "hora": monto_por_hora,
+            "por_horas": monto_por_horas,
+            "iva_10": monto_iva,
+            "incluido": subtotal_incluido,
+            "saldo_anterior": monto_saldo_anterior,
+            "descuento": monto_descuento,
+            "factura": total_factura,
+        }
         return reporte, None
+
+    def escribir_cuadro_resumen_en_sheet(
+        self,
+        nombre_hoja=None,
+        saldo_anterior=0,
+        descuento=0,
+        incluir_iva=True,
+    ):
+        """Escribe el cuadro resumen de dos columnas al pie de la hoja en Google Sheets."""
+        try:
+            if nombre_hoja:
+                hoja = self.wb.worksheet(nombre_hoja)
+            else:
+                hoja = self.ws
+
+            datos = hoja.get_all_values()
+            if not datos:
+                return False, "❌ La hoja está vacía."
+
+            ultima_fila = len(datos)
+            for idx in range(len(datos) - 1, -1, -1):
+                fila_vals = datos[idx]
+                if len(fila_vals) > 0 and fila_vals[0].strip().lower() == "resumen":
+                    ultima_fila = idx
+                    break
+                elif any(c.strip() for c in fila_vals):
+                    ultima_fila = idx + 1
+                    break
+
+            headers = datos[0]
+            col_horas = next(
+                (i for i, h in enumerate(headers) if "horas" in h.lower()), 6
+            )
+
+            filas_datos = [
+                f
+                for f in datos[1:ultima_fila]
+                if any(c.strip() for c in f)
+                and f[0].strip().lower() != "resumen"
+                and f[0].strip().lower() != "mes"
+            ]
+
+            total_decimal = sum(
+                self._parsear_horas_a_decimal(f[col_horas])
+                for f in filas_datos
+                if col_horas < len(f)
+            )
+            total_decimal_redondeado = round(total_decimal, 1)
+
+            monto_por_hora = int(
+                float(os.getenv("MONTO_POR_HORA", MONTO_POR_HORA_DEFAULT))
+            )
+            monto_por_horas = int(round(total_decimal * monto_por_hora))
+            monto_iva = int(round(monto_por_horas * 0.10)) if incluir_iva else 0
+            subtotal_incluido = monto_por_horas + monto_iva
+
+            monto_saldo_anterior = int(round(float(saldo_anterior or 0)))
+            monto_descuento = int(round(float(descuento or 0)))
+
+            if monto_saldo_anterior > 0:
+                total_factura = subtotal_incluido + monto_saldo_anterior
+            elif monto_descuento > 0:
+                total_factura = subtotal_incluido - monto_descuento
+            else:
+                total_factura = subtotal_incluido
+
+            def fmt_m(val: int | float) -> str:
+                return f"${int(round(val)):,}"
+
+            filas_resumen = [
+                ["Resumen", "Cantidades"],
+                ["mes", f"{total_decimal_redondeado:.1f}"],
+                ["hora", fmt_m(monto_por_hora)],
+                ["por Horas", fmt_m(monto_por_horas)],
+                ["IVA 10%", fmt_m(monto_iva)],
+                ["INCLUIDO", fmt_m(subtotal_incluido)],
+            ]
+
+            if monto_saldo_anterior > 0:
+                filas_resumen.append(["SALDO ANTERIOR", fmt_m(monto_saldo_anterior)])
+            elif monto_descuento > 0:
+                filas_resumen.append(["Descuento", f"-{fmt_m(monto_descuento)}"])
+
+            filas_resumen.append(["FACTURA", fmt_m(total_factura)])
+
+            fila_inicio = (
+                ultima_fila + 2 if ultima_fila == len(datos) else ultima_fila + 1
+            )
+            fila_fin = fila_inicio + len(filas_resumen) - 1
+
+            hoja.update(
+                f"A{fila_inicio}:B{fila_fin}",
+                filas_resumen,
+                value_input_option="USER_ENTERED",
+            )
+            return (
+                True,
+                f"✅ Cuadro resumen escrito en A{fila_inicio}:B{fila_fin}",
+            )
+        except Exception as e:
+            logger.error(f"Error escribiendo cuadro resumen en sheet: {e}")
+            return False, f"❌ Error escribiendo resumen en Google Sheets: {e}"
 
     def guardar_aviso_calendar(self, datos_evento: dict) -> str:
         """
