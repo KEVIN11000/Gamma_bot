@@ -48,7 +48,7 @@
   - **Acción:** Registrar handlers para `/horas` (resumen MTD, dinero acumulado, horas perdidas y extras) y `/periodo` (período laboral y contable). Actualizar el flujo de `/reporte` para enviar ambos archivos adjuntos (PDF y Excel `.xlsx`) al usuario.
   - **Criterio de Aceptación:** Pruebas unitarias de handlers simulando invocación de `/horas`, `/periodo` y entrega de reportes.
 
-- [ ] **Tarea 8: Certificación de Calidad Integral, Linters y Git Clean**
+- [x] **Tarea 8: Certificación de Calidad Integral, Linters y Git Clean**
   - **Archivos:** Todos los módulos modificados del proyecto.
   - **Acción:** Ejecutar `uv run pytest` sobre la suite completa de pruebas, validar `uv run flake8` y `uv run black --check` con 0 advertencias, y comprobar inmutabilidad de datos productivos.
   - **Criterio de Aceptación:** 100% de tests pasando en verde, linters limpios y working tree limpio de Git.

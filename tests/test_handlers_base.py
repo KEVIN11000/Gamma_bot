@@ -37,9 +37,11 @@ def test_registrar_comandos_menu_prod(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 24
+    assert len(commands_called) == 26
     command_names = [c.command for c in commands_called]
     assert "debug" not in command_names
+    assert "horas" in command_names
+    assert "periodo" in command_names
     assert "soporte" in command_names
     assert "cancelar" in command_names
     assert "fijos" in command_names
@@ -55,9 +57,11 @@ def test_registrar_comandos_menu_dev(bot_mock):
     _registrar_comandos_menu(bot_mock)
     bot_mock.set_my_commands.assert_called_once()
     commands_called = bot_mock.set_my_commands.call_args[0][0]
-    assert len(commands_called) == 25
+    assert len(commands_called) == 27
     command_names = [c.command for c in commands_called]
     assert "debug" in command_names
+    assert "horas" in command_names
+    assert "periodo" in command_names
     assert "soporte" in command_names
     assert "app" in command_names
 
@@ -245,4 +249,3 @@ def test_comando_app(mock_safe, mock_auth, bot_mock, mock_message):
     reply_text = bot_mock.reply_to.call_args[0][1]
     assert "v0.0.10" in reply_text
     assert "gamma-mobile-v0.0.10-release.apk" in reply_text
-
