@@ -599,3 +599,39 @@ def test_obtener_estado_periodos_desde_movimientos_y_agentes(tmp_path):
     assert res_fin["periodo_laboral"] == "Octubre 2026"
     assert res_fin["periodo_contable"] == "Octubre 2026"
     assert res_fin["sincronizados"] is True
+
+
+@patch("services.asistencia_service.open", create=True)
+@patch("services.asistencia_service.ExcelReportService")
+@patch("services.asistencia_service.PDFService")
+def test_generar_y_enviar_reporte_dual_pdf_y_excel(
+    mock_pdf_service,
+    mock_excel_service,
+    mock_open_file,
+    mock_bot,
+    mock_gamma_app,
+    mock_message,
+):
+    mock_gamma_app.agente_excel.preparar_datos_reporte.return_value = (
+        MagicMock(),
+        None,
+    )
+    mock_pdf_service.generar_reporte_generico.return_value = (
+        "/fake/path/reporte.pdf",
+        "PDF OK",
+    )
+    mock_excel_inst = MagicMock()
+    mock_excel_inst.generar_reporte_horas.return_value = "/fake/path/reporte.xlsx"
+    mock_excel_service.return_value = mock_excel_inst
+
+    generar_y_enviar_reporte_por_hoja(
+        mock_bot,
+        mock_gamma_app,
+        mock_message,
+        "Octubre 2026",
+        descuento=0,
+        incluir_iva=True,
+    )
+
+    # Verifica que send_document fue llamado dos veces (uno para PDF y otro para Excel)
+    assert mock_bot.send_document.call_count == 2

@@ -43,7 +43,7 @@
     - `GET /api/v1/asistencia/reporte/pdf` (descarga binaria de `.pdf`)
   - **Criterio de Aceptación:** Pruebas de integración en `test_mobile_api.py` para los 4 endpoints retornando 200 OK y payloads estructurados/archivos válidos.
 
-- [ ] **Tarea 7: Integrar comandos `/horas` y `/periodo`, y entrega dual en Telegram**
+- [x] **Tarea 7: Integrar comandos `/horas` y `/periodo`, y entrega dual en Telegram**
   - **Archivos:** `src/com/handlers/asistencia.py`, `src/services/asistencia_service.py`, `src/com/handlers/base.py`, `tests/test_handlers_asistencia.py`
   - **Acción:** Registrar handlers para `/horas` (resumen MTD, dinero acumulado, horas perdidas y extras) y `/periodo` (período laboral y contable). Actualizar el flujo de `/reporte` para enviar ambos archivos adjuntos (PDF y Excel `.xlsx`) al usuario.
   - **Criterio de Aceptación:** Pruebas unitarias de handlers simulando invocación de `/horas`, `/periodo` y entrega de reportes.

@@ -34,7 +34,9 @@ def _registrar_comandos_menu(bot: TeleBot) -> Any:
         BotCommand("simular", "Simular el impacto financiero de un proyecto."),
         BotCommand("marcar", "Registrar entrada/salida general."),
         BotCommand("marcar_materia", "Registrar asistencia a materias."),
-        BotCommand("reporte", "Generar reporte PDF de un período anterior."),
+        BotCommand("horas", "Ver analíticas de horas MTD, perdidas y acumulado."),
+        BotCommand("periodo", "Ver estado de períodos laboral y contable."),
+        BotCommand("reporte", "Generar planilla Excel y PDF de horas."),
         BotCommand("aviso", "Agendar un hito o recordatorio con IA."),
         BotCommand("avisos", "Ver lista de avisos activos."),
         BotCommand("cierre", "Ejecutar cierre de período de marcaciones."),
@@ -222,9 +224,13 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
                 "Marcar Materia", callback_data="accion:marcar_materia"
             ),
         )
+        kb.row(
+            InlineKeyboardButton("📊 Analíticas Horas", callback_data="accion:horas"),
+            InlineKeyboardButton("🗓️ Período Activo", callback_data="accion:periodo"),
+        )
         kb.row(InlineKeyboardButton("Cierre Periodo", callback_data="accion:cierre"))
         kb.row(
-            InlineKeyboardButton("Generar Reporte PDF", callback_data="accion:reporte")
+            InlineKeyboardButton("Planilla Excel / PDF", callback_data="accion:reporte")
         )
         kb.row(InlineKeyboardButton("🔙 Volver", callback_data="menu:raiz"))
         return kb
@@ -314,8 +320,10 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
             "*Asistencia & Horarios:*\n"
             "▶️ /marcar — Registrar entrada/salida general\n"
             "📚 /marcar\\_materia — Registrar asistencia a materias\n"
+            "🕒 /horas — Ver analíticas de horas MTD, perdidas y acumulado\n"
+            "🗓️ /periodo — Ver estado de períodos laboral y contable\n"
             "🔒 /cierre — Ejecutar cierre de período de marcaciones\n"
-            "📄 /reporte — Generar reporte PDF de período anterior\n\n"
+            "📄 /reporte — Generar planilla Excel (.xlsx) y PDF de horas\n\n"
             "*Avisos & Agenda:*\n"
             "✍️ /aviso — Agendar hito o recordatorio con IA\n"
             "📱 /app — Descargar la app Android Gamma Mobile\n"

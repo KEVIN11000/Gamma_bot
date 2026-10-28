@@ -11,6 +11,7 @@ else:
 from com.core.security import verificar_usuario_manual
 from logic.logic import EstadoGestor
 from logic.pdf_service import PDFService
+from services.excel_service import ExcelReportService
 
 
 def iniciar_flujo_reporte_horas(
@@ -176,7 +177,7 @@ def generar_y_enviar_reporte(
         Exception: Description of the exception.
     """
     bot.send_message(
-        message_obj.chat.id, "📄 Procesando datos y armando PDF de horas..."
+        message_obj.chat.id, "📄 Procesando datos y armando reportes (PDF y Excel)..."
     )
 
     datos, error = gamma_app.agente_excel.preparar_datos_reporte(
@@ -187,17 +188,31 @@ def generar_y_enviar_reporte(
         return
 
     ruta_pdf, msg_pdf = PDFService.generar_reporte_generico(datos)
+    excel_service = ExcelReportService()
+    try:
+        ruta_xlsx = excel_service.generar_reporte_horas(datos)
+    except Exception:
+        ruta_xlsx = None
 
     if ruta_pdf:
         with open(ruta_pdf, "rb") as f:
             bot.send_document(
                 message_obj.chat.id,
                 f,
-                caption=f"📊 {msg_pdf}",
+                caption=f"📄 {msg_pdf}",
                 visible_file_name=Path(ruta_pdf).name,
             )
     else:
         bot.send_message(message_obj.chat.id, msg_pdf)
+
+    if ruta_xlsx:
+        with open(ruta_xlsx, "rb") as f_x:
+            bot.send_document(
+                message_obj.chat.id,
+                f_x,
+                caption="📊 Planilla Excel (.xlsx) generada",
+                visible_file_name=Path(ruta_xlsx).name,
+            )
 
 
 def capturar_descuento_reporte(
@@ -275,7 +290,7 @@ def generar_y_enviar_reporte_por_hoja(
         Exception: Description of the exception.
     """
     bot.send_message(
-        message_obj.chat.id, "📄 Procesando datos y armando PDF de horas..."
+        message_obj.chat.id, "📄 Procesando datos y armando reportes (PDF y Excel)..."
     )
 
     datos, error = gamma_app.agente_excel.preparar_datos_reporte(
@@ -286,14 +301,111 @@ def generar_y_enviar_reporte_por_hoja(
         return
 
     ruta_pdf, msg_pdf = PDFService.generar_reporte_generico(datos)
+    excel_service = ExcelReportService()
+    try:
+        ruta_xlsx = excel_service.generar_reporte_horas(datos)
+    except Exception:
+        ruta_xlsx = None
 
     if ruta_pdf:
         with open(ruta_pdf, "rb") as f:
             bot.send_document(
                 message_obj.chat.id,
                 f,
-                caption=f"📊 {msg_pdf}",
+                caption=f"📄 {msg_pdf}",
                 visible_file_name=Path(ruta_pdf).name,
             )
     else:
         bot.send_message(message_obj.chat.id, msg_pdf)
+
+    if ruta_xlsx:
+        with open(ruta_xlsx, "rb") as f_x:
+            bot.send_document(
+                message_obj.chat.id,
+                f_x,
+                caption="📊 Planilla Excel (.xlsx) generada",
+                visible_file_name=Path(ruta_xlsx).name,
+            )
+
+
+def procesar_comando_horas(
+    bot: TeleBot,
+    gamma_app: "GammaApp",
+    message: Message,
+) -> None:
+    """Procesa el comando /horas para consultar métricas MTD y analíticas laborales."""
+    bot.send_chat_action(message.chat.id, "typing")
+    analiticas, error = (
+        gamma_app.agente_excel.calcular_analiticas_asistencia()
+        if hasattr(gamma_app, "agente_excel")
+        else (None, "Módulo de horas no inicializado.")
+    )
+
+    if error:
+        bot.reply_to(message, str(error))
+        return
+
+    periodo = analiticas["periodo"]
+    horas_fmt = analiticas["total_horas_formato"]
+    horas_dec = analiticas["total_horas_decimal"]
+    dias = analiticas["dias_trabajados"]
+    prom = analiticas["promedio_horas_por_dia"]
+    salario = f"{analiticas['salario_acumulado_gs']:,}".replace(",", ".")
+    tarifa = f"{analiticas['monto_por_hora']:,}".replace(",", ".")
+    perdidas_fmt = analiticas["horas_perdidas_formato"]
+    perdidas_dec = analiticas["horas_perdidas_decimal"]
+    extras_fmt = analiticas["horas_extras_formato"]
+    extras_dec = analiticas["horas_extras_decimal"]
+    neto_fmt = analiticas["balance_neto_formato"]
+    neto_dec = analiticas["balance_neto_decimal"]
+
+    icono_balance = "✅" if neto_dec >= 0 else "⚠️"
+
+    texto = (
+        f"📊 *Analíticas de Asistencia MTD — {periodo}*\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🕒 *Horas Trabajadas:* `{horas_fmt}` ({horas_dec:.2f}h)\n"
+        f"📅 *Días Trabajados:* {dias} (Promedio: `{prom:.2f}h/día`)\n"
+        f"💰 *Salario Acumulado:* `₲ {salario}` (Tarifa: `₲ {tarifa}/h`)\n\n"
+        f"⏳ *Horas Perdidas (< 8h):* `{perdidas_fmt}` ({perdidas_dec:.2f}h)\n"
+        f"🚀 *Horas Extras (> 8h):* `{extras_fmt}` ({extras_dec:.2f}h)\n"
+        f"{icono_balance} *Balance Neto:* `{neto_fmt}` ({neto_dec:.2f}h)"
+    )
+    bot.reply_to(message, texto, parse_mode="Markdown")
+
+
+def procesar_comando_periodo(
+    bot: TeleBot,
+    gamma_app: "GammaApp",
+    message: Message,
+) -> None:
+    """Procesa el comando /periodo para consultar el estado de sincronización entre marcación y contabilidad."""
+    bot.send_chat_action(message.chat.id, "typing")
+    from logic.logic import obtener_estado_periodos
+
+    repo = getattr(gamma_app, "repo", None)
+    estado = obtener_estado_periodos(repo=repo)
+
+    periodo_lab = estado["periodo_laboral"]
+    periodo_cont = estado["periodo_contable"]
+    sinc = estado["sincronizados"]
+
+    estado_str = "✅ *Sincronizados*" if sinc else "⚠️ *Desincronizados*"
+    aviso_sinc = (
+        ""
+        if sinc
+        else (
+            "\n\n💡 *Aviso:* Los períodos no coinciden. Ejecutá el cierre"
+            " correspondiente para alinearlos."
+        )
+    )
+
+    texto = (
+        "🗓️ *Estado de Períodos Activos*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🕒 *Período Laboral:* `{periodo_lab}`\n"
+        f"📚 *Período Contable:* `{periodo_cont}`\n"
+        f"🔄 *Estado:* {estado_str}"
+        f"{aviso_sinc}"
+    )
+    bot.reply_to(message, texto, parse_mode="Markdown")

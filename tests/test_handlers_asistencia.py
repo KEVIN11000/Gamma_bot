@@ -339,3 +339,55 @@ def test_cierre_mensual_no_interceptado_por_asistencia(registered_handlers):
             assert (
                 False
             ), "asistencia callback handler interceptó cierre_mensual_manual erróneamente"
+
+
+def test_comando_horas_handler(registered_handlers, mock_bot, mock_gamma_app):
+    mock_gamma_app.agente_excel.calcular_analiticas_asistencia.return_value = (
+        {
+            "periodo": "Octubre 2026",
+            "monto_por_hora": 14634,
+            "dias_trabajados": 15,
+            "total_horas_decimal": 115.5,
+            "total_horas_formato": "115h 30m",
+            "salario_acumulado_gs": 1690227,
+            "horas_perdidas_decimal": 4.5,
+            "horas_extras_decimal": 2.0,
+            "balance_neto_decimal": -2.5,
+            "horas_perdidas_formato": "4h 30m",
+            "horas_extras_formato": "2h 00m",
+            "balance_neto_formato": "-2h 30m",
+            "promedio_horas_por_dia": 7.7,
+        },
+        None,
+    )
+
+    msg = create_message("/horas")
+    handler = registered_handlers["cmd_horas"]
+    handler(msg)
+
+    mock_bot.reply_to.assert_called_once()
+    reply_text = mock_bot.reply_to.call_args[0][1]
+    assert "Octubre 2026" in reply_text
+    assert "115h 30m" in reply_text
+    assert "4h 30m" in reply_text
+    assert "2h 00m" in reply_text
+    assert "-2h 30m" in reply_text
+    assert "1.690.227" in reply_text
+
+
+def test_comando_periodo_handler(registered_handlers, mock_bot, mock_gamma_app):
+    with patch("logic.logic.obtener_estado_periodos") as mock_periodos:
+        mock_periodos.return_value = {
+            "periodo_laboral": "Octubre 2026",
+            "periodo_contable": "Octubre 2026",
+            "sincronizados": True,
+        }
+
+        msg = create_message("/periodo")
+        handler = registered_handlers["cmd_periodo"]
+        handler(msg)
+
+        mock_bot.reply_to.assert_called_once()
+        reply_text = mock_bot.reply_to.call_args[0][1]
+        assert "Octubre 2026" in reply_text
+        assert "Sincronizados" in reply_text

@@ -22,6 +22,8 @@ from services.asistencia_service import (  # noqa: F401
     generar_y_enviar_reporte,
     capturar_descuento_reporte,
     generar_y_enviar_reporte_por_hoja,
+    procesar_comando_horas,
+    procesar_comando_periodo,
 )
 
 from app_queue.worker import enqueue
@@ -31,6 +33,18 @@ logger = setup_logger("asistencia_handler")
 
 
 def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
+
+    @bot.message_handler(commands=["horas"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_horas(message):
+        procesar_comando_horas(bot, gamma_app, message)
+
+    @bot.message_handler(commands=["periodo"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_periodo(message):
+        procesar_comando_periodo(bot, gamma_app, message)
 
     @bot.message_handler(commands=["marcar"])
     @auth_required(bot)
