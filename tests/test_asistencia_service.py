@@ -406,3 +406,116 @@ def test_agente_horas_preparar_datos_reporte_y_cuadro_resumen():
     assert ok is True
     assert "Cuadro resumen escrito" in msg
     mock_hoja.update.assert_called_once()
+
+
+def test_formatear_horas_decimal():
+    from logic.logic import AgenteAutonomoHoras
+
+    assert AgenteAutonomoHoras.formatear_horas_decimal(107.3) == "107h 18m"
+    assert AgenteAutonomoHoras.formatear_horas_decimal(8.0) == "8h 00m"
+    assert AgenteAutonomoHoras.formatear_horas_decimal(0.0) == "0h 00m"
+    assert AgenteAutonomoHoras.formatear_horas_decimal(-1.42) == "-1h 25m"
+    assert AgenteAutonomoHoras.formatear_horas_decimal(0.08) == "0h 05m"
+    assert AgenteAutonomoHoras.formatear_horas_decimal(-0.001) == "0h 00m"
+    assert AgenteAutonomoHoras.formatear_horas_decimal(1.9999) == "2h 00m"
+
+
+def test_calcular_analiticas_asistencia_metrica_exacta(monkeypatch):
+    from logic.logic import AgenteAutonomoHoras
+
+    monkeypatch.setenv("MONTO_POR_HORA", "14634")
+    agente = AgenteAutonomoHoras("test_spreadsheet_id")
+    mock_hoja = MagicMock()
+    mock_hoja.title = "Octubre 2026"
+
+    # Filas con:
+    # - Día 1: 7.5h (déficit 0.5h)
+    # - Día 2: 9.0h (superávit 1.0h)
+    # - Día 3: 8.0h (exacto, 0 déficit, 0 superávit)
+    # - Día 4: 6.0h (déficit 2.0h)
+    # - Día 5: 0.0h / libre (no cuenta como trabajado, no genera déficit)
+    # - Fila resumen residual previa (debe ser ignorada)
+    mock_hoja.get_all_values.return_value = [
+        [
+            "Día",
+            "Fecha",
+            "Hora entrada",
+            "Salgo almuerzo",
+            "Vuelta almuerzo",
+            "Hora salida",
+            "Horas",
+        ],
+        ["Lunes", "01/10/2026", "08:30", "12:00", "13:00", "17:00", "7.50"],
+        ["Martes", "02/10/2026", "08:00", "12:00", "13:00", "18:00", "9.00"],
+        ["Miércoles", "03/10/2026", "08:00", "12:00", "13:00", "17:00", "8.00"],
+        ["Jueves", "04/10/2026", "09:00", "12:00", "13:00", "16:00", "6.00"],
+        ["Viernes", "05/10/2026", "", "", "", "", "0"],
+        ["Resumen", "Cantidades", "", "", "", "", ""],
+        ["mes", "30.5", "", "", "", "", ""],
+        ["FACTURA", "$446,337", "", "", "", "", ""],
+    ]
+
+    mock_wb = MagicMock()
+    mock_wb.worksheet.return_value = mock_hoja
+    agente._wb = mock_wb
+    agente._ws = mock_hoja
+
+    analiticas, error = agente.calcular_analiticas_asistencia()
+    assert error is None
+    assert analiticas is not None
+
+    # Verificaciones matemáticas exactas:
+    # Total horas: 7.5 + 9.0 + 8.0 + 6.0 = 30.5
+    # Días trabajados: 4 (el día 5 con 0 horas se ignora)
+    assert analiticas["periodo"] == "Octubre 2026"
+    assert analiticas["dias_trabajados"] == 4
+    assert analiticas["total_horas_decimal"] == 30.5
+    assert analiticas["total_horas_formato"] == "30h 30m"
+
+    # Déficit esperado:
+    # Día 1: 8.0 - 7.5 = 0.5
+    # Día 4: 8.0 - 6.0 = 2.0
+    # Total perdidas = 2.5
+    assert analiticas["horas_perdidas_decimal"] == 2.5
+    assert analiticas["horas_perdidas_formato"] == "2h 30m"
+
+    # Superávit esperado:
+    # Día 2: 9.0 - 8.0 = 1.0
+    # Total extras = 1.0
+    assert analiticas["horas_extras_decimal"] == 1.0
+    assert analiticas["horas_extras_formato"] == "1h 00m"
+
+    # Balance neto: 30.5 - (4 * 8.0) = 30.5 - 32.0 = -1.5h
+    assert analiticas["balance_neto_decimal"] == -1.5
+    assert analiticas["balance_neto_formato"] == "-1h 30m"
+
+    # Promedio por día: 30.5 / 4 = 7.625 -> 7.62
+    assert analiticas["promedio_horas_por_dia"] == 7.62
+
+    # Salario acumulado: round(30.5 * 14634) = 446337
+    assert analiticas["salario_acumulado_gs"] == 446337
+
+
+def test_calcular_analiticas_asistencia_errores_y_vacio():
+    from logic.logic import AgenteAutonomoHoras
+
+    agente = AgenteAutonomoHoras("test_spreadsheet_id")
+    mock_hoja = MagicMock()
+    mock_hoja.title = "Noviembre 2026"
+
+    # Hoja vacía
+    mock_hoja.get_all_values.return_value = []
+    mock_wb = MagicMock()
+    mock_wb.worksheet.return_value = mock_hoja
+    agente._wb = mock_wb
+    agente._ws = mock_hoja
+
+    res, err = agente.calcular_analiticas_asistencia("Noviembre 2026")
+    assert res is None
+    assert "vacía" in err
+
+    # Hoja sin columna horas
+    mock_hoja.get_all_values.return_value = [["Col1", "Col2"]]
+    res, err = agente.calcular_analiticas_asistencia("Noviembre 2026")
+    assert res is None
+    assert "columna de horas" in err

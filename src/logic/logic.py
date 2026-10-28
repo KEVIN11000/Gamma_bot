@@ -779,6 +779,126 @@ class AgenteAutonomoHoras:
             logger.error(f"Error escribiendo cuadro resumen en sheet: {e}")
             return False, f"❌ Error escribiendo resumen en Google Sheets: {e}"
 
+    @staticmethod
+    def formatear_horas_decimal(decimal_val: float) -> str:
+        """Convierte un valor decimal de horas a formato legible 'Xh Ym'.
+
+        Args:
+            decimal_val: Cantidad de horas en formato decimal (positivo o negativo).
+
+        Returns:
+            str: Representación legible ej. '107h 18m', '-1h 25m' o '0h 00m'.
+        """
+        es_negativo = decimal_val < 0
+        val_abs = abs(decimal_val)
+        horas = int(val_abs)
+        minutos = int(round((val_abs - horas) * 60))
+        if minutos >= 60:
+            horas += 1
+            minutos = 0
+        if horas == 0 and minutos == 0:
+            return "0h 00m"
+        signo = "-" if es_negativo else ""
+        return f"{signo}{horas}h {minutos:02d}m"
+
+    def calcular_analiticas_asistencia(self, nombre_hoja: str | None = None):
+        """Calcula métricas analíticas de asistencia laboral para el período activo o especificado.
+
+        Procesa las jornadas con horas registradas (> 0):
+        - Horas perdidas (< 8h estándar por jornada laboral trabajada)
+        - Horas extras (> 8h estándar)
+        - Balance neto (total horas - días trabajados * 8h)
+        - Total acumulado MTD (horas y dinero devengado)
+
+        Args:
+            nombre_hoja: Nombre de la hoja/período a analizar. Si es None, usa la hoja activa.
+
+        Returns:
+            tuple[dict | None, str | None]: (analiticas_dict, error_msg)
+        """
+        try:
+            if nombre_hoja:
+                hoja = self.wb.worksheet(nombre_hoja)
+            else:
+                hoja = self.ws
+        except Exception as e:
+            logger.error(f"Error accediendo a la hoja de horas: {e}")
+            return None, f"❌ No se pudo acceder a la hoja de horas: {e}"
+
+        nombre_periodo = hoja.title
+        datos = hoja.get_all_values()
+        if not datos or len(datos) < 1:
+            return None, "❌ La hoja de horas está vacía."
+
+        headers = datos[0]
+        col_horas = next(
+            (i for i, h in enumerate(headers) if "horas" in h.lower()), None
+        )
+        if col_horas is None:
+            return None, "❌ No se encontró la columna de horas en los encabezados."
+
+        filas_raw = datos[1:]
+        conceptos_excluidos = {
+            "resumen",
+            "mes",
+            "hora",
+            "por horas",
+            "iva 10%",
+            "incluido",
+            "saldo anterior",
+            "descuento",
+            "factura",
+        }
+        filas_datos = [
+            f
+            for f in filas_raw
+            if any(c.strip() for c in f)
+            and f[0].strip().lower() not in conceptos_excluidos
+        ]
+
+        jornadas_horas: list[float] = []
+        for f in filas_datos:
+            if col_horas < len(f):
+                val_h = self._parsear_horas_a_decimal(f[col_horas])
+                if val_h > 0.0:
+                    jornadas_horas.append(val_h)
+
+        dias_trabajados = len(jornadas_horas)
+        total_horas = sum(jornadas_horas)
+
+        horas_perdidas = 0.0
+        horas_extras = 0.0
+        for h in jornadas_horas:
+            if h < 8.0:
+                horas_perdidas += 8.0 - h
+            elif h > 8.0:
+                horas_extras += h - 8.0
+
+        balance_neto = total_horas - (dias_trabajados * 8.0)
+        promedio_dia = (
+            round(total_horas / dias_trabajados, 2) if dias_trabajados > 0 else 0.0
+        )
+
+        monto_por_hora = int(float(os.getenv("MONTO_POR_HORA", MONTO_POR_HORA_DEFAULT)))
+        salario_acumulado_gs = int(round(total_horas * monto_por_hora))
+
+        analiticas = {
+            "periodo": nombre_periodo,
+            "monto_por_hora": monto_por_hora,
+            "dias_trabajados": dias_trabajados,
+            "total_horas_decimal": round(total_horas, 2),
+            "total_horas_formato": self.formatear_horas_decimal(total_horas),
+            "salario_acumulado_gs": salario_acumulado_gs,
+            "horas_perdidas_decimal": round(horas_perdidas, 2),
+            "horas_extras_decimal": round(horas_extras, 2),
+            "balance_neto_decimal": round(balance_neto, 2),
+            "horas_perdidas_formato": self.formatear_horas_decimal(horas_perdidas),
+            "horas_extras_formato": self.formatear_horas_decimal(horas_extras),
+            "balance_neto_formato": self.formatear_horas_decimal(balance_neto),
+            "promedio_horas_por_dia": promedio_dia,
+        }
+        return analiticas, None
+
     def guardar_aviso_calendar(self, datos_evento: dict) -> str:
         """
         Guarda el aviso interpretado por Gemini directamente en Google Calendar.

@@ -24,7 +24,7 @@
   - **Acción:** Adaptar `generar_reporte_generico` para renderizar la tabla resumen al pie con el nuevo diseño y formato monetario (`$` con separadores de miles y decimales exactos), manteniendo alineación sobria y jerarquía visual de factura final.
   - **Criterio de Aceptación:** Prueba unitaria validando generación de PDF sin excepciones y presencia de los conceptos `mes`, `hora`, `por Horas`, `IVA 10%`, `INCLUIDO`, `FACTURA`.
 
-- [ ] **Tarea 4: Implementar motor de analíticas de asistencia laboral (Horas Perdidas, Horas Extras y MTD)**
+- [x] **Tarea 4: Implementar motor de analíticas de asistencia laboral (Horas Perdidas, Horas Extras y MTD)**
   - **Archivos:** `src/logic/logic.py`, `tests/test_asistencia_service.py`
   - **Acción:** Crear método `calcular_analiticas_asistencia(nombre_hoja=None)` en `AgenteAutonomoHoras` que procese las jornadas con horas > 0 del período activo: calcule horas perdidas (< 8h), horas extras (> 8h), balance neto, total de horas MTD y dinero devengado acumulado.
   - **Criterio de Aceptación:** Prueba unitaria con conjunto de datos de prueba (incluyendo días < 8h, > 8h y vacíos) validando cálculos matemáticos exactos.
