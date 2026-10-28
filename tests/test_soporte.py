@@ -1,5 +1,6 @@
 """Tests unitarios para el comando /soporte y flujo interactivo en Telegram."""
 
+from typing import Any
 import unittest
 from unittest.mock import MagicMock, patch
 import os
@@ -19,9 +20,9 @@ class TestSoporteHandler(unittest.TestCase):
     def setUp(self) -> None:
         self.bot = MagicMock()
         self.gamma_app = MagicMock()
-        self.handlers = {}
-        self.callback_handlers = []
-        self.msg_func_handlers = []
+        self.handlers: dict[str, Any] = {}
+        self.callback_handlers: list[Any] = []
+        self.msg_func_handlers: list[Any] = []
 
         os.environ["CHAT_ID"] = "12345"
 

@@ -65,7 +65,7 @@ def health_check() -> Any:
                 "sheets_connected": True,
                 "calendar_connected": True,
                 "avisos": True,
-                "version": "1.18.1",
+                "version": "1.18.2",
                 "version_api": "1.0.0",
                 "mobile_version": "0.0.10",
                 "latest_app_version": "0.0.10",

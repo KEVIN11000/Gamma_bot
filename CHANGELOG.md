@@ -5,6 +5,14 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [1.18.2] - 2026-10-28
+
+### Corregido
+* **Robustez de Tipado Estático y Paridad CI Ubuntu/Linux:**
+  * Reforzada la guarda de tipos en `asistencia_service.py` (`procesar_comando_horas`) para estrechar `Optional[Dict[str, Any]]` y garantizar indexación segura ante `mypy`.
+  * Anotación explícita de tipos (`dict[str, Any]`, `list[Any]`) en fixtures de `tests/test_soporte.py`.
+  * Verificación y pase en verde del 100% de los chequeos de `mypy --no-site-packages` en 70 archivos sin errores.
+
 ## [1.18.1] - 2026-10-28
 
 ### Añadido

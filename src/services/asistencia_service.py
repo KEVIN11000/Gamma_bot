@@ -341,8 +341,8 @@ def procesar_comando_horas(
         else (None, "Módulo de horas no inicializado.")
     )
 
-    if error:
-        bot.reply_to(message, str(error))
+    if error or not analiticas:
+        bot.reply_to(message, str(error or "Módulo de horas no disponible."))
         return
 
     periodo = analiticas["periodo"]
