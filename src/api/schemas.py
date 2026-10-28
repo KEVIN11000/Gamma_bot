@@ -140,3 +140,36 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     estado: str
     resolucion: Optional[str] = None
+
+
+class PeriodosResponse(BaseModel):
+    periodo_laboral: str
+    periodo_contable: str
+    sincronizados: bool
+
+
+class AnaliticasHorasResponse(BaseModel):
+    periodo: str
+    monto_por_hora: int
+    dias_trabajados: int
+    total_horas_decimal: float
+    total_horas_formato: str
+    salario_acumulado_gs: int
+    horas_perdidas_decimal: float
+    horas_extras_decimal: float
+    balance_neto_decimal: float
+    horas_perdidas_formato: str
+    horas_extras_formato: str
+    balance_neto_formato: str
+    promedio_horas_por_dia: float
+
+
+class CuadroResumenHoras(BaseModel):
+    mes_horas: float
+    hora_tarifa: int
+    por_horas: int
+    iva_10: int
+    incluido: int
+    tipo_ajuste: Optional[str] = None
+    monto_ajuste: int = 0
+    factura_total: int

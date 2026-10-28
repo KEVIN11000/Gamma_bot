@@ -1134,3 +1134,98 @@ def test_telemetria_vigia_cooldown_and_resilience():
             "Fallo de red", "Detalle", origen="servidor"
         )
         assert res_fail is False
+
+
+def test_asistencia_periodos_y_analiticas_endpoints(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    # 1. GET /asistencia/periodos
+    with unittest.mock.patch("logic.logic.obtener_estado_periodos") as mock_periodos:
+        mock_periodos.return_value = {
+            "periodo_laboral": "Octubre 2026",
+            "periodo_contable": "Octubre 2026",
+            "sincronizados": True,
+        }
+        res_periodos = client.get("/api/v1/asistencia/periodos", headers=headers)
+        assert res_periodos.status_code == 200
+        data_periodos = res_periodos.get_json()
+        assert data_periodos["periodo_laboral"] == "Octubre 2026"
+        assert data_periodos["periodo_contable"] == "Octubre 2026"
+        assert data_periodos["sincronizados"] is True
+
+    # 2. GET /asistencia/analiticas
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.calcular_analiticas_asistencia"
+    ) as mock_analiticas:
+        mock_analiticas.return_value = (
+            {
+                "periodo": "Octubre 2026",
+                "monto_por_hora": 14634,
+                "dias_trabajados": 20,
+                "total_horas_decimal": 160.0,
+                "total_horas_formato": "160h 00m",
+                "salario_acumulado_gs": 2341440,
+                "horas_perdidas_decimal": 2.5,
+                "horas_extras_decimal": 1.0,
+                "balance_neto_decimal": -1.5,
+                "horas_perdidas_formato": "2h 30m",
+                "horas_extras_formato": "1h 00m",
+                "balance_neto_formato": "-1h 30m",
+                "promedio_horas_por_dia": 8.0,
+            },
+            None,
+        )
+        res_analiticas = client.get(
+            "/api/v1/asistencia/analiticas?hoja=Octubre%202026", headers=headers
+        )
+        assert res_analiticas.status_code == 200
+        data_analiticas = res_analiticas.get_json()
+        assert data_analiticas["periodo"] == "Octubre 2026"
+        assert data_analiticas["dias_trabajados"] == 20
+        assert data_analiticas["total_horas_decimal"] == 160.0
+        assert data_analiticas["horas_perdidas_formato"] == "2h 30m"
+        assert data_analiticas["balance_neto_formato"] == "-1h 30m"
+
+
+def test_asistencia_descarga_reportes_excel_y_pdf(client, tmp_path):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    fake_excel = tmp_path / "reporte_horas_test.xlsx"
+    fake_excel.write_bytes(b"fake_xlsx_binary_content")
+
+    fake_pdf = tmp_path / "reporte_horas_test.pdf"
+    fake_pdf.write_bytes(b"%PDF-1.4 fake_pdf_binary_content")
+
+    mock_datos_reporte = unittest.mock.MagicMock()
+
+    with unittest.mock.patch(
+        "logic.logic.AgenteAutonomoHoras.preparar_datos_reporte",
+        return_value=(mock_datos_reporte, None),
+    ):
+        # 1. GET /asistencia/reporte/excel
+        with unittest.mock.patch(
+            "services.excel_service.ExcelReportService.generar_reporte_horas",
+            return_value=str(fake_excel),
+        ):
+            res_excel = client.get(
+                "/api/v1/asistencia/reporte/excel?saldo_anterior=100000",
+                headers=headers,
+            )
+            assert res_excel.status_code == 200
+            assert (
+                res_excel.content_type
+                == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            assert res_excel.data == b"fake_xlsx_binary_content"
+
+        # 2. GET /asistencia/reporte/pdf
+        with unittest.mock.patch(
+            "logic.pdf_service.PDFService.generar_reporte_generico",
+            return_value=str(fake_pdf),
+        ):
+            res_pdf = client.get(
+                "/api/v1/asistencia/reporte/pdf?descuento=50000", headers=headers
+            )
+            assert res_pdf.status_code == 200
+            assert "application/pdf" in res_pdf.content_type
+            assert res_pdf.data == b"%PDF-1.4 fake_pdf_binary_content"

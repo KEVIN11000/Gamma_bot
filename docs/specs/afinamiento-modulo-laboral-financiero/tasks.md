@@ -34,7 +34,7 @@
   - **Acción:** Implementar función unificada `obtener_estado_periodos()` que consulte el período laboral de `periodo_actual.txt` (con fallback de timezone paraguayo UTC-3) y el período contable en curso del `Libro_Diario` / `Cierres_Historicos`, evaluando si están sincronizados.
   - **Criterio de Aceptación:** Prueba unitaria verificando que retorna diccionario con `periodo_laboral`, `periodo_contable` y flag booleano `sincronizados`.
 
-- [ ] **Tarea 6: Exponer endpoints REST en `api/blueprint.py` para GammaMobile**
+- [x] **Tarea 6: Exponer endpoints REST en `api/blueprint.py` para GammaMobile**
   - **Archivos:** `src/api/blueprint.py`, `src/api/schemas.py`, `tests/test_mobile_api.py`
   - **Acción:** Declarar DTOs Pydantic y registrar los endpoints:
     - `GET /api/v1/asistencia/periodos`

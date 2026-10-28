@@ -283,9 +283,10 @@ class AgenteAutonomoHoras:
 
     MONTO_POR_HORA = int(MONTO_POR_HORA_DEFAULT)
 
-    def __init__(self, spreadsheet_id: str, mes: str | None = None) -> None:
-        """
-        __init__ method/function.
+    def __init__(
+        self, spreadsheet_id: str | None = None, mes: str | None = None
+    ) -> None:
+        """__init__ method/function.
 
         Args:
             spreadsheet_id: Description for spreadsheet_id.
@@ -298,7 +299,7 @@ class AgenteAutonomoHoras:
             Exception: Description of the exception.
         """
         self.mes = mes
-        self.spreadsheet_id = spreadsheet_id
+        self.spreadsheet_id = spreadsheet_id or os.getenv("SPREADSHEET_ID", "")
         self._wb = None
         self._ws = None
 

@@ -47,16 +47,40 @@ class ExcelReportService:
     FORMATO_MONEDA = '"$"#,##0'
     FORMATO_HORAS = "0.00"
 
+    def __init__(self, output_dir: Path | str | None = None) -> None:
+        self.output_dir = Path(output_dir) if output_dir else REPORTES_DIR
+
+    def generar_reporte_horas(self, datos: DatosPlanillaHoras | Any) -> str:
+        """Genera la planilla Excel y retorna la ruta absoluta del archivo generado."""
+        if not isinstance(datos, DatosPlanillaHoras):
+            resumen = getattr(datos, "resumen_calculado", {}) or {}
+            datos = DatosPlanillaHoras(
+                periodo=getattr(datos, "subtitulo", "")
+                or getattr(datos, "periodo", ""),
+                nombre_titular=getattr(datos, "nombre_titular", "KEVIN PERALTA"),
+                encabezados=getattr(datos, "encabezados", []),
+                filas=getattr(datos, "filas", []),
+                monto_por_hora=resumen.get("hora", 14634),
+                saldo_anterior=resumen.get("saldo_anterior", 0),
+                descuento=resumen.get("descuento", 0),
+                nombre_archivo=getattr(datos, "nombre_archivo", None),
+            )
+        ruta, msg = self.generar_reporte_horas_excel(datos, output_dir=self.output_dir)
+        if not ruta:
+            raise RuntimeError(f"Error generando reporte Excel: {msg}")
+        return ruta
+
     @classmethod
     def generar_reporte_horas_excel(
-        cls, datos: DatosPlanillaHoras
+        cls, datos: DatosPlanillaHoras, output_dir: Path | str | None = None
     ) -> tuple[Optional[str], str]:
         """Genera un archivo .xlsx estilizado con fórmulas y cuadro resumen.
 
         Retorna (ruta_archivo_xlsx, mensaje_estado).
         """
         try:
-            REPORTES_DIR.mkdir(parents=True, exist_ok=True)
+            target_dir = Path(output_dir) if output_dir else REPORTES_DIR
+            target_dir.mkdir(parents=True, exist_ok=True)
 
             wb = openpyxl.Workbook()
             ws = wb.active
@@ -338,7 +362,7 @@ class ExcelReportService:
             sufijo_id = uuid.uuid4().hex[:6]
             stem = Path(nombre_sano).stem
             nombre_final = f"{stem}_{sufijo_id}.xlsx"
-            ruta_salida = REPORTES_DIR / nombre_final
+            ruta_salida = target_dir / nombre_final
 
             wb.save(ruta_salida)
             logger.info(f"✅ Planilla Excel generada exitosamente en {ruta_salida}")

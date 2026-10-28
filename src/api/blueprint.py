@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, request, send_file, send_from_directory
 from pydantic import ValidationError
 
 from api.security import require_api_key
@@ -25,6 +25,8 @@ from api.schemas import (
     IAParseRequest,
     TicketCreate,
     TicketUpdate,
+    PeriodosResponse,
+    AnaliticasHorasResponse,
 )
 from logger_config import setup_logger
 from logic.logic import get_now_py, safe_int
@@ -1557,6 +1559,147 @@ def marcar_materia() -> Any:
                     "mensaje": msg,
                 }
             ),
+            500,
+        )
+
+
+# ── Asistencia: Analíticas, Períodos y Reportes Descargables ───────────────
+@mobile_api.route("/asistencia/periodos", methods=["GET"])
+@require_api_key
+def get_asistencia_periodos() -> Any:
+    """Retorna el estado de períodos laboral y contable, indicando si están sincronizados."""
+    try:
+        from logic.logic import obtener_estado_periodos
+
+        estado = obtener_estado_periodos()
+        dto = PeriodosResponse(**estado)
+        return jsonify(dto.model_dump()), 200
+    except Exception as e:
+        logger.error(f"Error obteniendo períodos de asistencia: {e}")
+        return (
+            jsonify({"error": {"code": "INTERNAL_ERROR", "message": str(e)}}),
+            500,
+        )
+
+
+@mobile_api.route("/asistencia/analiticas", methods=["GET"])
+@require_api_key
+def get_asistencia_analiticas() -> Any:
+    """Retorna analíticas laborales MTD: horas perdidas, horas extras, balance neto y acumulado."""
+    try:
+        hoja = request.args.get("hoja")
+        from logic.logic import AgenteAutonomoHoras
+
+        agente = AgenteAutonomoHoras()
+        analiticas, error = agente.calcular_analiticas_asistencia(nombre_hoja=hoja)
+        if error:
+            return (
+                jsonify({"error": {"code": "ANALITICAS_ERROR", "message": str(error)}}),
+                400,
+            )
+
+        dto = AnaliticasHorasResponse(**analiticas)
+        return jsonify(dto.model_dump()), 200
+    except Exception as e:
+        logger.error(f"Error calculando analíticas de asistencia: {e}")
+        return (
+            jsonify({"error": {"code": "INTERNAL_ERROR", "message": str(e)}}),
+            500,
+        )
+
+
+@mobile_api.route("/asistencia/reporte/excel", methods=["GET"])
+@require_api_key
+def descargar_reporte_excel() -> Any:
+    """Genera y descarga la planilla nativa Excel (.xlsx) con el formato oficial."""
+    try:
+        hoja = request.args.get("hoja")
+        descuento = float(request.args.get("descuento", 0) or 0)
+        saldo_anterior = float(request.args.get("saldo_anterior", 0) or 0)
+        incluir_iva = request.args.get("incluir_iva", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+
+        from logic.logic import AgenteAutonomoHoras
+        from services.excel_service import ExcelReportService
+
+        agente = AgenteAutonomoHoras()
+        datos, error = agente.preparar_datos_reporte(
+            nombre_hoja=hoja,
+            descuento=descuento,
+            saldo_anterior=saldo_anterior,
+            incluir_iva=incluir_iva,
+        )
+        if error:
+            return (
+                jsonify({"error": {"code": "REPORTE_ERROR", "message": str(error)}}),
+                400,
+            )
+
+        excel_service = ExcelReportService(output_dir=REPORTES_DIR)
+        ruta_archivo = excel_service.generar_reporte_horas(datos)
+
+        return send_file(
+            ruta_archivo,
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            as_attachment=True,
+            download_name=os.path.basename(ruta_archivo),
+        )
+    except Exception as e:
+        logger.error(f"Error generando reporte Excel de asistencia: {e}")
+        return (
+            jsonify({"error": {"code": "INTERNAL_ERROR", "message": str(e)}}),
+            500,
+        )
+
+
+@mobile_api.route("/asistencia/reporte/pdf", methods=["GET"])
+@require_api_key
+def descargar_reporte_pdf_asistencia() -> Any:
+    """Genera y descarga el reporte PDF de horas con cuadro resumen oficial."""
+    try:
+        hoja = request.args.get("hoja")
+        descuento = float(request.args.get("descuento", 0) or 0)
+        saldo_anterior = float(request.args.get("saldo_anterior", 0) or 0)
+        incluir_iva = request.args.get("incluir_iva", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+
+        from logic.logic import AgenteAutonomoHoras
+        from logic.pdf_service import PDFService
+
+        agente = AgenteAutonomoHoras()
+        datos, error = agente.preparar_datos_reporte(
+            nombre_hoja=hoja,
+            descuento=descuento,
+            saldo_anterior=saldo_anterior,
+            incluir_iva=incluir_iva,
+        )
+        if error:
+            return (
+                jsonify({"error": {"code": "REPORTE_ERROR", "message": str(error)}}),
+                400,
+            )
+
+        pdf_service = PDFService()
+        ruta_archivo = pdf_service.generar_reporte_generico(datos)
+
+        return send_file(
+            ruta_archivo,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=os.path.basename(ruta_archivo),
+        )
+    except Exception as e:
+        logger.error(f"Error generando reporte PDF de asistencia: {e}")
+        return (
+            jsonify({"error": {"code": "INTERNAL_ERROR", "message": str(e)}}),
             500,
         )
 
