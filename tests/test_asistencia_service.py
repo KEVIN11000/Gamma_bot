@@ -519,3 +519,83 @@ def test_calcular_analiticas_asistencia_errores_y_vacio():
     res, err = agente.calcular_analiticas_asistencia("Noviembre 2026")
     assert res is None
     assert "columna de horas" in err
+
+
+def test_obtener_estado_periodos_sincronizados(tmp_path):
+    from logic.logic import obtener_estado_periodos
+
+    txt_file = tmp_path / "periodo_actual.txt"
+    txt_file.write_text("Octubre 2026", encoding="utf-8")
+
+    mock_repo = MagicMock()
+    mock_repo.get_last_cierre_mensual.return_value = {
+        "Mes": "09",
+        "Anio": "2026",
+    }
+
+    res = obtener_estado_periodos(repo=mock_repo, base_path=tmp_path)
+    assert res["periodo_laboral"] == "Octubre 2026"
+    assert res["periodo_contable"] == "Octubre 2026"
+    assert res["sincronizados"] is True
+
+
+def test_obtener_estado_periodos_desincronizados(tmp_path):
+    from logic.logic import obtener_estado_periodos
+
+    txt_file = tmp_path / "periodo_actual.txt"
+    txt_file.write_text("Noviembre 2026", encoding="utf-8")
+
+    mock_repo = MagicMock()
+    mock_repo.get_last_cierre_mensual.return_value = {
+        "Mes": "09",
+        "Anio": "2026",
+    }
+
+    res = obtener_estado_periodos(repo=mock_repo, base_path=tmp_path)
+    assert res["periodo_laboral"] == "Noviembre 2026"
+    assert res["periodo_contable"] == "Octubre 2026"
+    assert res["sincronizados"] is False
+
+
+def test_obtener_estado_periodos_normalizacion_septiembre(tmp_path):
+    from logic.logic import obtener_estado_periodos
+
+    txt_file = tmp_path / "periodo_actual.txt"
+    txt_file.write_text("Septiembre 2026", encoding="utf-8")
+
+    mock_repo = MagicMock()
+    mock_repo.get_last_cierre_mensual.return_value = {
+        "Mes": "08",
+        "Anio": "2026",
+    }
+
+    res = obtener_estado_periodos(repo=mock_repo, base_path=tmp_path)
+    assert res["periodo_laboral"] == "Septiembre 2026"
+    assert res["periodo_contable"] == "Setiembre 2026"
+    assert res["sincronizados"] is True
+
+
+def test_obtener_estado_periodos_desde_movimientos_y_agentes(tmp_path):
+    from logic.logic import AgenteAutonomoHoras
+    from logic.financiero import AgenteFinanciero
+
+    txt_file = tmp_path / "periodo_actual.txt"
+    txt_file.write_text("Octubre 2026", encoding="utf-8")
+
+    mock_repo = MagicMock()
+    mock_repo.get_last_cierre_mensual.return_value = {}
+    mock_repo.get_all_movimientos.return_value = [
+        {"Fecha": "15/10/2026", "Mes": "10/2026"}
+    ]
+
+    agente_horas = AgenteAutonomoHoras("test_spreadsheet_id")
+    res_horas = agente_horas.obtener_estado_periodos(repo=mock_repo, base_path=tmp_path)
+    assert res_horas["periodo_laboral"] == "Octubre 2026"
+    assert res_horas["periodo_contable"] == "Octubre 2026"
+    assert res_horas["sincronizados"] is True
+
+    agente_fin = AgenteFinanciero("test_spreadsheet_id")
+    res_fin = agente_fin.obtener_estado_periodos(repo=mock_repo, base_path=tmp_path)
+    assert res_fin["periodo_laboral"] == "Octubre 2026"
+    assert res_fin["periodo_contable"] == "Octubre 2026"
+    assert res_fin["sincronizados"] is True

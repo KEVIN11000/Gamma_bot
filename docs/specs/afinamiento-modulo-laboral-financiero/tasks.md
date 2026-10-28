@@ -29,7 +29,7 @@
   - **Acción:** Crear método `calcular_analiticas_asistencia(nombre_hoja=None)` en `AgenteAutonomoHoras` que procese las jornadas con horas > 0 del período activo: calcule horas perdidas (< 8h), horas extras (> 8h), balance neto, total de horas MTD y dinero devengado acumulado.
   - **Criterio de Aceptación:** Prueba unitaria con conjunto de datos de prueba (incluyendo días < 8h, > 8h y vacíos) validando cálculos matemáticos exactos.
 
-- [ ] **Tarea 5: Implementar función de consulta de períodos activos (Laboral y Contable)**
+- [x] **Tarea 5: Implementar función de consulta de períodos activos (Laboral y Contable)**
   - **Archivos:** `src/logic/logic.py`, `src/logic/financiero.py`, `tests/test_asistencia_service.py`
   - **Acción:** Implementar función unificada `obtener_estado_periodos()` que consulte el período laboral de `periodo_actual.txt` (con fallback de timezone paraguayo UTC-3) y el período contable en curso del `Libro_Diario` / `Cierres_Historicos`, evaluando si están sincronizados.
   - **Criterio de Aceptación:** Prueba unitaria verificando que retorna diccionario con `periodo_laboral`, `periodo_contable` y flag booleano `sincronizados`.

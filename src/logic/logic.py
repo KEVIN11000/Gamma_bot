@@ -24,6 +24,7 @@ from logic.constants import (  # noqa: E402
     ENCABEZADOS_HORAS,
     ENCABEZADOS_MATERIAS,
     MAX_AVISOS_CALENDAR,
+    MESES_ES,
     MONTO_POR_HORA_DEFAULT,
     TIMEZONE,
 )
@@ -86,6 +87,114 @@ def sanitize_input(value: str) -> str:
     if isinstance(value, str) and value.startswith("="):
         return "'" + value
     return value
+
+
+def obtener_estado_periodos(repo=None, base_path: Path | None = None) -> dict:
+    """Consulta y consolida el período activo en asistencia laboral y contabilidad.
+
+    - Período Laboral: Leído de 'periodo_actual.txt' (con fallback a mes calendario vigente en UTC-3).
+    - Período Contable: Deducido del último cierre en 'Cierres_Historicos', movimientos de 'Libro_Diario',
+      o mes calendario vigente en UTC-3.
+    - Sincronizados: Booleano que indica si ambos períodos coinciden.
+
+    Returns:
+        dict: {'periodo_laboral': str, 'periodo_contable': str, 'sincronizados': bool}
+    """
+    ahora = get_now_py()
+    mes_actual_cal = f"{MESES_ES[ahora.month - 1]} {ahora.year}"
+
+    if base_path is None:
+        base_path = BASE_DIR
+
+    # 1. Período Laboral
+    path_txt = base_path / "periodo_actual.txt"
+    if path_txt.exists():
+        try:
+            contenido = path_txt.read_text(encoding="utf-8").strip()
+            periodo_laboral = contenido if contenido else mes_actual_cal
+        except Exception:
+            periodo_laboral = mes_actual_cal
+    else:
+        periodo_laboral = mes_actual_cal
+
+    # 2. Período Contable
+    periodo_contable = None
+    if repo is None:
+        try:
+            from repositories.sheets_repository import SheetsRepository
+
+            repo = SheetsRepository()
+        except Exception as e:
+            logger.warning(
+                f"No se pudo instanciar SheetsRepository para periodo contable: {e}"
+            )
+            repo = None
+
+    if repo is not None:
+        try:
+            last_cierre = repo.get_last_cierre_mensual()
+            if last_cierre and last_cierre.get("Mes") and last_cierre.get("Anio"):
+                mes_cierre = safe_int(last_cierre.get("Mes"))
+                anio_cierre = safe_int(last_cierre.get("Anio"))
+                if 1 <= mes_cierre <= 12 and anio_cierre > 2000:
+                    if mes_cierre == 12:
+                        mes_activo = 1
+                        anio_activo = anio_cierre + 1
+                    else:
+                        mes_activo = mes_cierre + 1
+                        anio_activo = anio_cierre
+                    periodo_contable = f"{MESES_ES[mes_activo - 1]} {anio_activo}"
+        except Exception as e:
+            logger.warning(
+                f"Error obteniendo periodo contable desde Cierres_Historicos: {e}"
+            )
+
+        if not periodo_contable:
+            try:
+                movimientos = repo.get_all_movimientos()
+                if movimientos:
+                    for m in reversed(movimientos):
+                        mes_val = str(m.get("Mes", "")).strip()
+                        if "/" in mes_val:
+                            partes = mes_val.split("/")
+                            m_num = safe_int(partes[0])
+                            a_num = safe_int(partes[1])
+                            if 1 <= m_num <= 12 and a_num > 2000:
+                                periodo_contable = f"{MESES_ES[m_num - 1]} {a_num}"
+                                break
+                        elif any(
+                            nom.lower() in mes_val.lower() for nom in MESES_ES
+                        ) and any(c.isdigit() for c in mes_val):
+                            periodo_contable = mes_val
+                            break
+
+                        fecha_val = str(m.get("Fecha", "")).strip()
+                        if "/" in fecha_val:
+                            f_partes = fecha_val.split("/")
+                            if len(f_partes) == 3:
+                                m_num = safe_int(f_partes[1])
+                                a_num = safe_int(f_partes[2])
+                                if 1 <= m_num <= 12 and a_num > 2000:
+                                    periodo_contable = f"{MESES_ES[m_num - 1]} {a_num}"
+                                    break
+            except Exception as e:
+                logger.warning(
+                    f"Error obteniendo periodo contable desde Libro_Diario: {e}"
+                )
+
+    if not periodo_contable:
+        periodo_contable = mes_actual_cal
+
+    def _normalizar(p: str) -> str:
+        return p.strip().lower().replace("septiembre", "setiembre")
+
+    sincronizados = _normalizar(periodo_laboral) == _normalizar(periodo_contable)
+
+    return {
+        "periodo_laboral": periodo_laboral,
+        "periodo_contable": periodo_contable,
+        "sincronizados": sincronizados,
+    }
 
 
 class ConexionSheets:
@@ -898,6 +1007,10 @@ class AgenteAutonomoHoras:
             "promedio_horas_por_dia": promedio_dia,
         }
         return analiticas, None
+
+    def obtener_estado_periodos(self, repo=None, base_path: Path | None = None) -> dict:
+        """Consulta el estado consolidado de períodos laboral y contable."""
+        return obtener_estado_periodos(repo=repo, base_path=base_path)
 
     def guardar_aviso_calendar(self, datos_evento: dict) -> str:
         """

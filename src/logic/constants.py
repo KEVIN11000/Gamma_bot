@@ -35,6 +35,22 @@ DIAS_LIMITE_AVISOS = 30
 DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 DIA_LIBRE = "Domingo"
 
+# Months in Spanish (Paraguay UTC-3 standard)
+MESES_ES = [
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Setiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
+]
+
 # Sheet headers
 ENCABEZADOS_HORAS = [
     "Dia",

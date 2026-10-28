@@ -1,6 +1,7 @@
 from __future__ import annotations  # noqa: E402
 
 import os  # noqa: E402
+from pathlib import Path  # noqa: E402
 import re  # noqa: E402
 import time  # noqa: E402
 
@@ -14,7 +15,12 @@ from logic.constants import (  # noqa: F401  # noqa: E402
     TIPO_INGRESO,
     TIPO_EGRESO,
 )
-from logic.logic import ConexionSheets, safe_int, get_now_py  # noqa: E402
+from logic.logic import (  # noqa: E402
+    ConexionSheets,
+    safe_int,
+    get_now_py,
+    obtener_estado_periodos,
+)
 
 logger = setup_logger("financiero")
 
@@ -51,6 +57,10 @@ class AgenteFinanciero:
         self._wb = None
         self._libro_wb = None
         self._ws = None
+
+    def obtener_estado_periodos(self, repo=None, base_path: Path | None = None) -> dict:
+        """Consulta el estado consolidado de períodos laboral y contable."""
+        return obtener_estado_periodos(repo=repo, base_path=base_path)
 
     @property
     def cliente(self):
