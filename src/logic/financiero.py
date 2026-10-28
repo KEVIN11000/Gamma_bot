@@ -1037,7 +1037,7 @@ def execute_monthly_closing(month: int, year: int) -> str:
     drive_id = DriveService.upload_backup(backup_path)
     if not drive_id:
         raise RuntimeError(
-            f"Fallo al generar el backup en Google Drive para el período {month}/{year}. "
+            f"Fallo al generar el backup en Google Drive (o contingencia local) para el período {month}/{year}. "
             "El cierre mensual fue abortado sin modificar Libro Diario."
         )
 

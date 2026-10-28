@@ -13,6 +13,10 @@ __pycache__/
 .pytest_cache/
 reportes/
 *.pdf
+backups/
+data/backups/
+src/data/backups/
+backup_*.csv
 code_review*
 task.md
 agency-agents/

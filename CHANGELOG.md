@@ -5,6 +5,14 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [1.18.3] - 2026-10-28
+
+### Corregido
+* **Resiliencia en Cierre Contable y Backup de Contingencia (`DriveService`):**
+  * Implementada la subida de backups a Google Drive v3 con credenciales de servicio y liberación adecuada de descriptores de archivo en entornos Windows.
+  * Añadido fallback determinista a almacenamiento local seguro (`src/data/backups/`) cuando la API de Google Drive no está disponible o falla la red, evitando la interrupción indebida de `/cierre_mensual` y garantizando la persistencia del archivo CSV.
+  * Corregida la ruta duplicada `UNIFIED_TICKETS_FILE` en `src/com/handlers/soporte.py` (`BASE_DIR / "data" / "tickets.json"`), resolviendo la excepción `FileNotFoundError: /src/src/data/tickets.json`.
+
 ## [1.18.2] - 2026-10-28
 
 ### Corregido

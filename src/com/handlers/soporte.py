@@ -29,7 +29,7 @@ from logger_config import setup_logger
 logger = setup_logger("soporte_handler")
 BASE_DIR = Path(__file__).resolve().parents[2]
 FALLBACK_TICKETS_FILE = BASE_DIR / "incidentes_telegram.json"
-UNIFIED_TICKETS_FILE = BASE_DIR / "src" / "data" / "tickets.json"
+UNIFIED_TICKETS_FILE = BASE_DIR / "data" / "tickets.json"
 
 
 def _guardar_ticket_fallback(ticket_data: Dict[str, Any]) -> None:
@@ -72,6 +72,7 @@ def _guardar_ticket_fallback(ticket_data: Dict[str, Any]) -> None:
             "resolucion": None,
         }
         app_tickets.insert(0, app_ticket)
+        UNIFIED_TICKETS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(UNIFIED_TICKETS_FILE, "w", encoding="utf-8") as f_u:
             json.dump(app_tickets, f_u, ensure_ascii=False, indent=2)
     except Exception as e_sync:

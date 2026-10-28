@@ -137,6 +137,16 @@ class TestSoporteHandler(unittest.TestCase):
 
         self.assertIsNone(get_state(12345))
 
+    def test_unified_tickets_file_path(self) -> None:
+        from com.handlers.soporte import UNIFIED_TICKETS_FILE
+
+        self.assertFalse(
+            "src/src" in UNIFIED_TICKETS_FILE.as_posix()
+            or "src\\src" in str(UNIFIED_TICKETS_FILE),
+            f"Ruta duplicada detectada: {UNIFIED_TICKETS_FILE}",
+        )
+        self.assertEqual(UNIFIED_TICKETS_FILE.name, "tickets.json")
+
 
 if __name__ == "__main__":
     unittest.main()

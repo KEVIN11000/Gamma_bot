@@ -513,6 +513,29 @@ class TestFinancieroLogic(unittest.TestCase):
         repo_instance.insert_cierre_mensual.assert_not_called()
         repo_instance.reset_libro_diario_con_saldo_inicial.assert_not_called()
 
+    @patch("logic.financiero.SheetsRepository")
+    @patch("logic.financiero.DriveService")
+    @patch("logic.financiero.get_now_py")
+    @patch("builtins.open", new_callable=unittest.mock.mock_open)
+    def test_execute_monthly_closing_with_local_fallback(
+        self, mock_open, mock_get_now, MockDrive, MockRepo
+    ):
+        repo_instance = MockRepo.return_value
+        repo_instance.get_movimientos_mes.return_value = []
+        repo_instance.get_last_cierre_mensual.return_value = None
+        # Simular fallback local de backup
+        MockDrive.upload_backup.return_value = "local:backup_2026_9.csv"
+
+        drive_id = execute_monthly_closing(9, 2026)
+
+        self.assertEqual(drive_id, "local:backup_2026_9.csv")
+        repo_instance.insert_cierre_mensual.assert_called_once()
+        cierre_guardado = repo_instance.insert_cierre_mensual.call_args[0][0]
+        self.assertEqual(
+            cierre_guardado["Archivo_Backup_Drive"], "local:backup_2026_9.csv"
+        )
+        repo_instance.reset_libro_diario_con_saldo_inicial.assert_called_once()
+
     @patch("repositories.sheets_repository.SheetsRepository")
     def test_registrar_movimiento_auto_sync_salario(self, MockRepo):
         from logic.financiero import AgenteFinanciero

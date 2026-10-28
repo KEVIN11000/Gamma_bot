@@ -19,6 +19,43 @@ class TestServices(unittest.TestCase):
         result = DriveService.upload_backup("/path/to/file.csv")
         self.assertEqual(result, "")
 
+    def test_drive_upload_backup_fallback_local(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+            f.write("Fecha,Concepto,Total\n01/10/2026,Prueba,1000\n")
+            temp_path = f.name
+        try:
+            with unittest.mock.patch.object(
+                DriveService, "_get_drive_client", return_value=None
+            ):
+                result = DriveService.upload_backup(temp_path)
+                self.assertTrue(result.startswith("local:"))
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_drive_upload_backup_mock_drive_success(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+            f.write("Fecha,Concepto,Total\n01/10/2026,Prueba,1000\n")
+            temp_path = f.name
+        try:
+            mock_client = unittest.mock.MagicMock()
+            mock_files = mock_client.files.return_value
+            mock_create = mock_files.create.return_value
+            mock_create.execute.return_value = {"id": "mock_drive_id_999"}
+
+            with unittest.mock.patch.object(
+                DriveService, "_get_drive_client", return_value=mock_client
+            ):
+                result = DriveService.upload_backup(temp_path)
+                self.assertEqual(result, "mock_drive_id_999")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
     def test_pdf_service_generar_reporte_horas(self):
         """Valida que PDFService compile correctamente con la tabla de resumen estandarizada."""
         datos = DatosReporte(
