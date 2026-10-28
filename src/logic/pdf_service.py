@@ -183,25 +183,39 @@ class PDFService:
             story.append(Paragraph("Resumen del período", e_seccion))
 
             if datos.lineas_resumen:
-                cw = [ancho_util * 0.6, ancho_util * 0.4]
-                tabla_resumen = Table(datos.lineas_resumen, colWidths=cw)
+                cw = [ancho_util * 0.55, ancho_util * 0.45]
+                filas_resumen_render = []
+                tiene_header = (
+                    len(datos.lineas_resumen) > 0
+                    and str(datos.lineas_resumen[0][0]).strip().lower() == "resumen"
+                )
+                if not tiene_header:
+                    filas_resumen_render.append(["Resumen", "Cantidades"])
+                filas_resumen_render.extend(datos.lineas_resumen)
+
+                tabla_resumen = Table(filas_resumen_render, colWidths=cw)
                 tabla_resumen.setStyle(
                     TableStyle(
                         [
-                            ("FONTNAME", (0, 0), (-1, -2), "Helvetica"),
-                            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                            ("FONTSIZE", (0, 0), (-1, -2), 10),
-                            ("FONTSIZE", (0, -1), (-1, -1), 12),
+                            ("BACKGROUND", (0, 0), (-1, 0), AZUL),
+                            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                            ("FONTSIZE", (0, 0), (-1, 0), 9),
+                            ("ALIGN", (0, 0), (0, -1), "LEFT"),
                             ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                            ("ROWBACKGROUNDS", (0, 0), (-1, -2), [colors.white, GRIS]),
+                            ("FONTNAME", (0, 1), (-1, -2), "Helvetica"),
+                            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                            ("FONTSIZE", (0, 1), (-1, -2), 9),
+                            ("FONTSIZE", (0, -1), (-1, -1), 11),
+                            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, GRIS]),
                             ("BACKGROUND", (0, -1), (-1, -1), AZUL),
                             ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
                             ("BOX", (0, 0), (-1, -1), 1, AZUL),
-                            ("LINEABOVE", (0, -1), (-1, -1), 1.5, AZUL),
-                            ("TOPPADDING", (0, 0), (-1, -1), 8),
-                            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                            ("GRID", (0, 0), (-1, -1), 0.4, GRIS2),
+                            ("TOPPADDING", (0, 0), (-1, -1), 6),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                         ]
                     )
                 )

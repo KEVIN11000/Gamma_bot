@@ -19,7 +19,7 @@
   - **Acción:** Actualizar `AgenteAutonomoHoras.preparar_datos_reporte` para calcular y estructurar la liquidación según el nuevo estándar: `mes`, `hora`, `por Horas`, `IVA 10%`, `INCLUIDO`, y fila opcional `SALDO ANTERIOR` / `Descuento` (solo si el monto es distinto de 0), finalizando con `FACTURA`. Agregar método `escribir_cuadro_resumen_en_sheet()` para plasmar este resumen en las celdas inferiores de la hoja activa de Google Sheets.
   - **Criterio de Aceptación:** Prueba unitaria comprobando que `preparar_datos_reporte(descuento=0)` omite la fila intermedia y que con `descuento > 0` o `ajuste > 0` calcula la factura total correcta.
 
-- [ ] **Tarea 3: Actualizar diseño de cuadro resumen en `PDFService`**
+- [x] **Tarea 3: Actualizar diseño de cuadro resumen en `PDFService`**
   - **Archivos:** `src/logic/pdf_service.py`, `tests/test_services.py`
   - **Acción:** Adaptar `generar_reporte_generico` para renderizar la tabla resumen al pie con el nuevo diseño y formato monetario (`$` con separadores de miles y decimales exactos), manteniendo alineación sobria y jerarquía visual de factura final.
   - **Criterio de Aceptación:** Prueba unitaria validando generación de PDF sin excepciones y presencia de los conceptos `mes`, `hora`, `por Horas`, `IVA 10%`, `INCLUIDO`, `FACTURA`.
