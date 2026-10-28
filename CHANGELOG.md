@@ -5,6 +5,29 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [1.18.1] - 2026-10-28
+
+### Añadido
+* **Generador de Planillas Nativas Excel (`ExcelReportService`):**
+  * Generación de archivos `.xlsx` oficiales con grilla de marcaciones A-G y fórmulas dinámicas de suma, porcentaje de IVA y cuadro resumen de cobro mensual.
+* **Motor de Analíticas Laborales MTD:**
+  * Cálculo de horas perdidas (< 8h estándar en jornadas trabajadas), horas extras (> 8h) y balance neto acumulado.
+  * Formateo legible de horas decimales (`Xh Ym`) y cómputo de salario devengado MTD.
+* **Consulta Unificada de Períodos Activos:**
+  * Función `obtener_estado_periodos` para verificar sincronización entre marcación laboral (`periodo_actual.txt`) y contabilidad (`Libro_Diario` / `Cierres_Historicos`).
+* **Endpoints REST en `mobile_api`:**
+  * `GET /api/v1/asistencia/periodos`: Consulta de sincronización de períodos.
+  * `GET /api/v1/asistencia/analiticas`: Métricas MTD de asistencia y horas perdidas/extras.
+  * `GET /api/v1/asistencia/reporte/excel`: Descarga binaria de planilla `.xlsx`.
+  * `GET /api/v1/asistencia/reporte/pdf`: Descarga binaria de reporte `.pdf`.
+* **Comandos de Telegram y Entrega Dual:**
+  * Handlers para `/horas` y `/periodo` con tarjetas interactivas en Markdown.
+  * Flujo de `/reporte` actualizado para adjuntar de forma automática ambos documentos (Excel y PDF).
+
+### Modificado
+* **Paridad Oficial de Cuadro Resumen:**
+  * Normalización de dos columnas (`Resumen` / `Cantidades`) con conceptos: `mes`, `hora`, `por Horas`, `IVA 10%`, `INCLUIDO`, y fila opcional `SALDO ANTERIOR` / `Descuento` (solo si el monto es distinto de 0), finalizando en `FACTURA`.
+
 ## [1.18.0] - 2026-10-22
 
 ### Añadido
