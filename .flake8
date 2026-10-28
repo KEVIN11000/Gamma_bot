@@ -6,6 +6,10 @@ exclude =
     __pycache__,
     .env,
     venv,
-    reportes
+    .venv,
+    reportes,
+    repositories,
+    .agents,
+    .specify
 per-file-ignores =
     __init__.py: F401
