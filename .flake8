@@ -8,7 +8,8 @@ exclude =
     venv,
     .venv,
     reportes,
-    repositories,
+    repositories/feature,
+    repositories/v1,
     .agents,
     .specify
 per-file-ignores =
