@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TipoMovimiento(str, Enum):
@@ -23,17 +23,27 @@ class TipoComprobante(str, Enum):
 
 
 class MovimientoCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     fecha: Optional[str] = None
-    movimiento: TipoMovimiento = TipoMovimiento.GASTO
-    proveedor_cliente: str
+    movimiento: TipoMovimiento = Field(
+        default=TipoMovimiento.GASTO,
+        alias="tipo",
+        description="Tipo de movimiento: Gasto o Ingreso",
+    )
+    proveedor_cliente: str = Field(
+        ...,
+        alias="concepto",
+        description="Proveedor o Cliente / Concepto del movimiento",
+    )
     nro_factura: Optional[str] = "S/N"
-    total: int = Field(..., gt=0)
+    total: int = Field(..., gt=0, alias="monto")
     categoria: str = "Varios"
     comprobante: TipoComprobante = TipoComprobante.NO_LEGAL
     tasa_iva: TasaIVA = TasaIVA.IVA_10
     id_obligacion: Optional[str] = None
     rastro_foto: Optional[str] = ""
-    client_id: Optional[str] = None
+    client_id: Optional[str] = Field(None, alias="clientId")
 
 
 class ObligacionCreate(BaseModel):

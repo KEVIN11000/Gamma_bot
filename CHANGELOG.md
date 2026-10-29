@@ -5,6 +5,28 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [1.18.5] - 2026-10-29
+
+### Añadido
+* **Paridad Integral y Optimización con Gamma Mobile (`v0.0.12` / `HANDOFF-backend.md`):**
+  * `MovimientoCreate` ([src/api/schemas.py](file:///e:/PG/vcp-s/Gamma_bot/src/api/schemas.py)): Soporte nativo de alias `"tipo"` (`movimiento`) y `"monto"` (`total`) con `populate_by_name=True`, garantizando que los ingresos móviles no se registren como gastos.
+  * Desempaquetado plano de `deuda_foco` en la raíz de `GET /api/v1/obligaciones/foco` para compatibilidad directa con DTOs de Android.
+  * Paridad dual de claves (`"tipo"` y `"tipo_movimiento"`) en los servicios de IA y OCR ([src/logic/ai_service.py](file:///e:/PG/vcp-s/Gamma_bot/src/logic/ai_service.py)).
+  * Respuesta estructurada `HTTP 200 OK` con `tipo: "info"` en `POST /api/v1/asistencia/marcar` cuando la jornada ya fue registrada.
+  * Invalidación reactiva de `_sheets_cache` al insertar movimientos para reflejar saldos de inmediato en el dashboard.
+  * Deduplicación e idempotencia por `client_id` (vía JSON o header `X-Client-Id`) con ventana de 24 horas.
+  * Cálculo estricto de horas trabajadas y salario MTD en `AgenteAutonomoHoras.calcular_analiticas_asistencia` exigiendo salida confirmada.
+  * Endpoint `GET /api/v1/asistencia/cierres` para consultar períodos laborales archivados.
+
+## [1.18.4] - 2026-10-29
+
+### Añadido
+* **Auto-eliminación de Botoneras y Mensajes Efímeros en Telegram (`TG-fc5352bf`):**
+  * Utilitarios centralizados en `src/com/core/utils.py`: `remover_teclado_inline` (`edit_message_reply_markup(reply_markup=None)`) y `eliminar_mensaje_seguro` con captura defensiva de excepciones de Telegram API (`message to delete not found`, `message is not modified`, `message can't be deleted`).
+  * Protección contra colisiones y accesos concurrentes en `pending_deletions.json` mediante `threading.Lock`.
+  * Integración en handlers de navegación (`base.py`) y finanzas/fijos (`finanzas.py`) para neutralizar botoneras de acción y evitar clics duplicados en el chat.
+  * Preservación intacta de mensajes informativos y comprobantes contables/laborales definitivos.
+
 ## [1.18.3] - 2026-10-28
 
 ### Corregido

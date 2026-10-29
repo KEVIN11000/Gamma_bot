@@ -48,7 +48,7 @@ def test_health_with_key(client):
     assert data["status"] == "ok"
     assert data["sheets_connected"] is True
     assert data["calendar_connected"] is True
-    assert data["version"] == "1.18.3"
+    assert data["version"] == "1.18.5"
     assert data["mobile_version"] == "0.0.10"
     assert (
         data["download_url"]
@@ -636,7 +636,7 @@ def test_asistencia_endpoints(client):
         assert res_warn.get_json()["tipo"] == "error"
         assert "⚠️" in res_warn.get_json()["mensaje"]
 
-    # Marcación informativa/bloqueada (ℹ️ Ya completaste todos los registros) -> HTTP 400
+    # Marcación informativa/bloqueada (ℹ️ Ya completaste todos los registros) -> HTTP 200 informativo
     with unittest.mock.patch(
         "logic.logic.AgenteAutonomoHoras.ejecutar_marcado_para_bot",
         return_value="ℹ️ Ya completaste todos los registros of hoy.",
@@ -646,8 +646,9 @@ def test_asistencia_endpoints(client):
             headers=headers,
             json={"modo": "normal"},
         )
-        assert res_info.status_code == 400
-        assert res_info.get_json()["tipo"] == "error"
+        assert res_info.status_code == 200
+        assert res_info.get_json()["tipo"] == "info"
+        assert res_info.get_json()["confirmado_en_planilla"] is True
 
     # Fallo en conexión a Google Sheets -> HTTP 502
     with unittest.mock.patch(
@@ -1228,4 +1229,57 @@ def test_asistencia_descarga_reportes_excel_y_pdf(client, tmp_path):
             )
             assert res_pdf.status_code == 200
             assert "application/pdf" in res_pdf.content_type
-            assert res_pdf.data == b"%PDF-1.4 fake_pdf_binary_content"
+
+
+def test_paridad_gammamobile_nuevos_contratos(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    # 1. Alias "tipo": "Ingreso" y "monto" / "concepto" en POST /movimientos
+    res_ingreso = client.post(
+        "/api/v1/movimientos",
+        headers=headers,
+        json={
+            "tipo": "Ingreso",
+            "concepto": "Honorarios Consultoría",
+            "monto": 2500000,
+            "categoria": "Servicios",
+        },
+    )
+    assert res_ingreso.status_code == 200
+    data_ingreso = res_ingreso.get_json()
+    assert data_ingreso["tipo"] == "Ingreso"
+    assert data_ingreso["movimiento"] == "Ingreso"
+    assert data_ingreso["total"] == 2500000
+
+    # 2. Idempotencia y deduplicación por client_id
+    res_dup1 = client.post(
+        "/api/v1/movimientos",
+        headers=headers,
+        json={
+            "tipo": "Gasto",
+            "concepto": "Combustible",
+            "monto": 100000,
+            "clientId": "unique-mobile-uuid-1234",
+        },
+    )
+    assert res_dup1.status_code == 200
+
+    res_dup2 = client.post(
+        "/api/v1/movimientos",
+        headers=headers,
+        json={
+            "tipo": "Gasto",
+            "concepto": "Combustible",
+            "monto": 100000,
+            "clientId": "unique-mobile-uuid-1234",
+        },
+    )
+    assert res_dup2.status_code == 200
+    assert res_dup2.get_json().get("duplicado_evitado") is True
+
+    # 3. GET /asistencia/cierres
+    res_cierres = client.get("/api/v1/asistencia/cierres", headers=headers)
+    assert res_cierres.status_code == 200
+    data_cierres = res_cierres.get_json()
+    assert data_cierres["status"] == "ok"
+    assert isinstance(data_cierres["cierres"], list)

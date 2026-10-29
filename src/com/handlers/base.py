@@ -9,6 +9,7 @@ from telebot.types import BotCommand, InlineKeyboardMarkup, InlineKeyboardButton
 
 from com.core.errors import safe_handler
 from com.core.security import auth_required
+from com.core.utils import remover_teclado_inline
 from logger_config import setup_logger
 
 logger = setup_logger("base_handler")
@@ -376,6 +377,8 @@ def register_base_handlers(bot: TeleBot, gamma_app: Any) -> Any:
     @safe_handler(bot, logger)
     def callback_accion(call):
         bot.answer_callback_query(call.id)
+        # Remover el teclado interactivo del mensaje original para evitar duplicidad de clics
+        remover_teclado_inline(bot, call.message.chat.id, call.message.message_id)
         accion = call.data.split(":")[1]
 
         fake_msg = call.message

@@ -50,7 +50,9 @@ class AIService:
             datos = json.loads(respuesta_ia.text)
             datos["fecha"] = fecha_hoy_str
             datos["mes"] = mes_actual
-            datos["tipo_movimiento"] = tipo_movimiento.capitalize()
+            tipo_capitalizado = tipo_movimiento.capitalize()
+            datos["tipo_movimiento"] = tipo_capitalizado
+            datos["tipo"] = tipo_capitalizado
             logger.info(f"🤖 IA Financiera interpretó: {datos}")
             return datos
         except json.JSONDecodeError as e:
@@ -152,6 +154,7 @@ class AIService:
             datos["fecha"] = fecha_hoy_str
             datos["mes"] = mes_actual
             datos["tipo_movimiento"] = "Gasto"
+            datos["tipo"] = "Gasto"
             logger.info(f"🤖 IA Financiera OCR extrajo: {datos}")
             return datos
         except json.JSONDecodeError as e:

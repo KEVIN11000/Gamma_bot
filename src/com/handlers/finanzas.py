@@ -4,7 +4,11 @@ from typing import Any
 
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
-from com.core.utils import reply_with_expiration
+from com.core.utils import (
+    eliminar_mensaje_seguro,
+    remover_teclado_inline,
+    reply_with_expiration,
+)
 
 from com.core.errors import safe_handler
 from com.core.security import auth_required
@@ -558,6 +562,7 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         elif accion.startswith("sel_"):
             concepto = accion.replace("sel_", "")
             set_state(call.from_user.id, "fijos_edit_monto", {"concepto": concepto})
+            remover_teclado_inline(bot, call.message.chat.id, call.message.message_id)
             msg = bot.send_message(
                 call.message.chat.id,
                 f"Has seleccionado *{concepto}*.\nIngresa el nuevo monto en Guaraníes (o escribe /cancelar):",
@@ -592,6 +597,7 @@ def register_finanzas_handlers(bot: TeleBot, gamma_app: Any) -> Any:
         elif accion.startswith("ncat_"):
             cat = accion.replace("ncat_", "")
             set_state(call.from_user.id, "fijos_nuevo_concepto", {"categoria": cat})
+            remover_teclado_inline(bot, call.message.chat.id, call.message.message_id)
             msg = bot.send_message(
                 call.message.chat.id,
                 f"Categoría: *{cat}*.\nPor favor escribe el nombre o concepto del gasto (ej. Seguro Médico) o /cancelar:",  # noqa: E501

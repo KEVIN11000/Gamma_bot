@@ -41,6 +41,9 @@ REPORTES_DIR = BASE_DIR / "reportes"
 AVISOS_FILE = BASE_DIR / "avisos.json"
 TICKETS_FILE = DATA_DIR / "tickets.json"
 
+# Almacén de deduplicación e idempotencia (client_id -> timestamp)
+_PROCESSED_CLIENT_IDS: dict[str, float] = {}
+
 
 def _ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -65,7 +68,7 @@ def health_check() -> Any:
                 "sheets_connected": True,
                 "calendar_connected": True,
                 "avisos": True,
-                "version": "1.18.3",
+                "version": "1.18.5",
                 "version_api": "1.0.0",
                 "mobile_version": "0.0.10",
                 "latest_app_version": "0.0.10",
@@ -217,6 +220,29 @@ def create_movimiento() -> Any:
             400,
         )
 
+    # Deduplicación e Idempotencia vía client_id (en body o header X-Client-Id)
+    client_id = (
+        req_obj.client_id
+        or request.headers.get("X-Client-Id")
+        or request.headers.get("X-Client-ID")
+    )
+    now_ts = time.time()
+    if client_id:
+        if client_id in _PROCESSED_CLIENT_IDS:
+            if now_ts - _PROCESSED_CLIENT_IDS[client_id] < 86400:  # 24 horas
+                return (
+                    jsonify(
+                        {
+                            "status": "ok",
+                            "mensaje": "Movimiento ya procesado anteriormente (idempotente).",
+                            "client_id": client_id,
+                            "duplicado_evitado": True,
+                        }
+                    ),
+                    200,
+                )
+        _PROCESSED_CLIENT_IDS[client_id] = now_ts
+
     # Cálculo fiscal Paraguay
     total = req_obj.total
     tasa = (
@@ -268,7 +294,13 @@ def create_movimiento() -> Any:
             ]
             ws.append_row(nueva_fila)
 
-            # Auto-sincronización reactiva de salario a Presupuesto_Base
+            # Invalidar reactivamente la caché de Google Sheets para actualizar balance y dashboard de inmediato
+            try:
+                from repositories.sheets_repository import _sheets_cache
+
+                _sheets_cache.clear()
+            except Exception as e_c:
+                logger.debug(f"No se pudo invalidar _sheets_cache: {e_c}")
             tipo_mov = req_obj.movimiento.value.lower()
             cat = req_obj.categoria.lower()
             prov = req_obj.proveedor_cliente.lower()
@@ -879,17 +911,19 @@ def get_deuda_foco() -> Any:
         proyeccion = res.get("proyeccion", [])
         deuda_foco = proyeccion[0] if proyeccion else None
 
-        return (
-            jsonify(
-                {
-                    "criterio": criterio,
-                    "margen_ataque": res.get("margen_ataque", 0),
-                    "deuda_foco": deuda_foco,
-                    "proyeccion": proyeccion,
-                }
-            ),
-            200,
-        )
+        resp_payload: dict[str, Any] = {
+            "criterio": criterio,
+            "margen_ataque": res.get("margen_ataque", 0),
+            "deuda_foco": deuda_foco,
+            "proyeccion": proyeccion,
+        }
+        # Desempaquetar campos planos de deuda_foco en la raíz para paridad directa con Android DTO
+        if isinstance(deuda_foco, dict):
+            for k, v in deuda_foco.items():
+                if k not in resp_payload:
+                    resp_payload[k] = v
+
+        return jsonify(resp_payload), 200
     except Exception as e:
         logger.error(f"Error calculando deuda foco: {e}")
         return (
@@ -1217,7 +1251,18 @@ def marcar_asistencia() -> Any:
         elif resultado.startswith("⚠️"):
             return jsonify({"tipo": "error", "mensaje": resultado}), 409
         elif resultado.startswith("ℹ️"):
-            return jsonify({"tipo": "error", "mensaje": resultado}), 400
+            # Respuesta informativa: evitar 400 en mobile y responder 200 con payload estructurado
+            return (
+                jsonify(
+                    {
+                        "status": "ok",
+                        "tipo": "info",
+                        "mensaje": resultado,
+                        "confirmado_en_planilla": True,
+                    }
+                ),
+                200,
+            )
 
         tipo = "salida" if "salida" in resultado.lower() else "entrada"
         match_hora = re.search(r"\b(\d{2}:\d{2})\b", resultado)
@@ -1890,6 +1935,74 @@ def ejecutar_cierre() -> Any:
 @mobile_api.route("/cierres/reportes/<path:filename>", methods=["GET"])
 def descargar_reporte_pdf(filename: str) -> Any:
     return send_from_directory(REPORTES_DIR, filename, mimetype="application/pdf")
+
+
+@mobile_api.route("/asistencia/cierres", methods=["GET"])
+@require_api_key
+def get_historial_cierres_laborales() -> Any:
+    """Devuelve la lista de períodos y reportes laborales de asistencia archivados."""
+    try:
+        from logic.logic import AgenteAutonomoHoras
+
+        spreadsheet_id = (
+            os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+        )
+        periodos: list[dict[str, Any]] = []
+
+        if spreadsheet_id:
+            try:
+                agente = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id)
+                hojas = [
+                    ws.title
+                    for ws in agente.wb.worksheets()
+                    if ws.title.lower() not in ("materias", "resumen", "config")
+                ]
+                for h in hojas:
+                    filename = f"cierre_laboral_{h.replace(' ', '_').lower()}.pdf"
+                    pdf_path = REPORTES_DIR / filename
+                    periodos.append(
+                        {
+                            "periodo": h,
+                            "pdf_disponible": pdf_path.exists(),
+                            "pdf_url": (
+                                f"/api/v1/cierres/reportes/{filename}"
+                                if pdf_path.exists()
+                                else None
+                            ),
+                        }
+                    )
+            except Exception as e_sheet:
+                logger.warning(
+                    f"Error listando hojas para cierres laborales: {e_sheet}"
+                )
+
+        # Fallback a archivos PDF encontrados en disco si no hubo conexión
+        if not periodos:
+            for p in sorted(REPORTES_DIR.glob("cierre_laboral_*.pdf")):
+                periodo_nombre = (
+                    p.stem.replace("cierre_laboral_", "").replace("_", " ").capitalize()
+                )
+                periodos.append(
+                    {
+                        "periodo": periodo_nombre,
+                        "pdf_disponible": True,
+                        "pdf_url": f"/api/v1/cierres/reportes/{p.name}",
+                    }
+                )
+
+        return (
+            jsonify(
+                {
+                    "status": "ok",
+                    "total": len(periodos),
+                    "cierres": periodos,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.error(f"Error consultando historial de cierres laborales: {e}")
+        return jsonify({"status": "error", "message": str(e), "cierres": []}), 500
 
 
 # ── 8. Sistema y Tickets ────────────────────────────────────────────────────

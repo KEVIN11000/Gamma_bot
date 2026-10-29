@@ -944,6 +944,9 @@ class AgenteAutonomoHoras:
         col_horas = next(
             (i for i, h in enumerate(headers) if "horas" in h.lower()), None
         )
+        col_salida = next(
+            (i for i, h in enumerate(headers) if "salida" in h.lower()), None
+        )
         if col_horas is None:
             return None, "❌ No se encontró la columna de horas en los encabezados."
 
@@ -968,6 +971,12 @@ class AgenteAutonomoHoras:
 
         jornadas_horas: list[float] = []
         for f in filas_datos:
+            # Condicionar el cómputo de horas devengadas a que la jornada tenga salida efectiva
+            if col_salida is not None and col_salida < len(f):
+                salida_val = str(f[col_salida]).strip()
+                if not salida_val or salida_val in ("-", "--:--"):
+                    continue
+
             if col_horas < len(f):
                 val_h = self._parsear_horas_a_decimal(f[col_horas])
                 if val_h > 0.0:
