@@ -68,7 +68,7 @@ def health_check() -> Any:
                 "sheets_connected": True,
                 "calendar_connected": True,
                 "avisos": True,
-                "version": "1.18.5",
+                "version": "1.18.6",
                 "version_api": "1.0.0",
                 "mobile_version": "0.0.10",
                 "latest_app_version": "0.0.10",
@@ -102,7 +102,9 @@ def get_dashboard_summary() -> Any:
         ingresos = balance.get("ingresos", 0)
         gastos = balance.get("gastos", 0)
         flujo_neto = balance.get("flujo_neto", ingresos - gastos)
-        saldo_acumulado = balance.get("saldo_inicial", 0) + flujo_neto
+        saldo_acumulado = balance.get(
+            "saldo_acumulado", balance.get("saldo_inicial", 0) + flujo_neto
+        )
 
         # Cálculo de margen libre: presupuesto base (ingresos fijos - gastos fijos) menos cuotas activas
         try:
@@ -133,9 +135,11 @@ def get_dashboard_summary() -> Any:
         ]
         mes_nombre = meses_es[ahora.month - 1]
 
+        saldo_inicial = balance.get("saldo_inicial", 0)
         response = jsonify(
             {
                 "mes": mes_nombre,
+                "saldo_inicial": saldo_inicial,
                 "ingresos": ingresos,
                 "gastos": gastos,
                 "flujo_neto": flujo_neto,
@@ -1886,19 +1890,85 @@ def ejecutar_cierre() -> Any:
     filename = f"{prefix}_{hoja.replace(' ', '_').lower()}.pdf"
     pdf_path = REPORTES_DIR / filename
 
-    total_horas = 160.0 if tipo == "horas" else 0.0
-    total_monto = 4500000
+    total_horas = 0.0
+    total_monto = 0
+    cierre_ejecutado = False
+    backup_id = ""
+
+    if tipo in ("horas", "laboral"):
+        try:
+            from logic.logic import AgenteAutonomoHoras
+
+            agente_horas = AgenteAutonomoHoras()
+            nombre_hoja_target = (
+                None if hoja in ("Período Actual", "Periodo Actual") else hoja
+            )
+            analiticas, err = agente_horas.calcular_analiticas_asistencia(
+                nombre_hoja=nombre_hoja_target
+            )
+            if analiticas:
+                total_horas = float(analiticas.get("total_horas_decimal", 0.0))
+                total_monto = int(analiticas.get("salario_acumulado_gs", 0))
+
+            if data.get("cerrar_planilla", False):
+                agente_horas.ejecutar_cierre_periodo_manual()
+                cierre_ejecutado = True
+        except Exception as e_horas:
+            logger.warning(
+                f"Error obteniendo analíticas reales de horas para cierre: {e_horas}"
+            )
+            total_horas = 0.0
+            total_monto = 0
+
+    elif tipo == "contable":
+        try:
+            from repositories.sheets_repository import SheetsRepository
+            from logic.logic import get_now_py
+            from logic.constants import MESES_ES
+
+            repo = SheetsRepository()
+            ahora = get_now_py()
+            mes_num = ahora.month
+            anio_num = ahora.year
+
+            partes = hoja.split()
+            if len(partes) == 2:
+                for idx, m_nombre in enumerate(MESES_ES, start=1):
+                    if m_nombre.lower() == partes[0].lower():
+                        mes_num = idx
+                        break
+                try:
+                    anio_num = int(partes[1])
+                except ValueError:
+                    pass
+
+            bal = repo.obtener_balance(mes=str(mes_num), anio=str(anio_num))
+            if bal:
+                ingresos = bal.get("ingresos", 0)
+                gastos = bal.get("gastos", 0)
+                flujo_neto = bal.get("flujo_neto", ingresos - gastos)
+                total_monto = flujo_neto
+            total_horas = 0.0
+
+            if data.get("cerrar_contabilidad", False):
+                from logic.financiero import execute_monthly_closing
+
+                backup_id = execute_monthly_closing(mes_num, anio_num)
+                cierre_ejecutado = True
+        except Exception as e_cont:
+            logger.warning(f"Error calculando balance contable para cierre: {e_cont}")
+            total_horas = 0.0
+            total_monto = 0
 
     try:
-        if not pdf_path.exists() or pdf_path.stat().st_size < 1000:
-            generar_pdf_cierre(
-                destino_path=pdf_path,
-                tipo=tipo,
-                hoja=hoja,
-                total_monto=total_monto,
-                total_horas=total_horas,
-                con_descuento=con_desc,
-            )
+        generar_pdf_cierre(
+            destino_path=pdf_path,
+            tipo=tipo,
+            hoja=hoja,
+            total_monto=total_monto,
+            total_horas=total_horas,
+            con_descuento=con_desc,
+        )
     except Exception as e:
         logger.error(f"Error generando PDF de cierre: {e}")
         return (
@@ -1914,7 +1984,11 @@ def ejecutar_cierre() -> Any:
             500,
         )
 
-    desc_str = " (con descuento de seguro)" if con_desc and tipo == "horas" else ""
+    desc_str = (
+        " (con descuento de seguro)"
+        if con_desc and tipo in ("horas", "laboral")
+        else ""
+    )
     tipo_str = (
         "contable (Libro Diario)" if tipo == "contable" else "laboral de asistencia"
     )
@@ -1926,6 +2000,9 @@ def ejecutar_cierre() -> Any:
                 "total_horas": total_horas,
                 "total_monto": total_monto,
                 "tipo": tipo,
+                "hoja": hoja,
+                "cierre_ejecutado": cierre_ejecutado,
+                "backup_id": backup_id,
             }
         ),
         200,

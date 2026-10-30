@@ -404,7 +404,8 @@ class AgenteFinanciero:
                 ):
                     saldo_inicial += monto_val
 
-            flujo_neto = saldo_inicial + total_ingresos - total_gastos
+            flujo_neto = total_ingresos - total_gastos
+            saldo_acumulado = saldo_inicial + flujo_neto
             posicion_iva_neta = total_iva_credito - total_iva_debito
             es_debito_fiscal = posicion_iva_neta < 0
             posicion_iva = abs(posicion_iva_neta)
@@ -414,6 +415,7 @@ class AgenteFinanciero:
                 "ingresos": total_ingresos,
                 "gastos": total_gastos,
                 "flujo_neto": flujo_neto,
+                "saldo_acumulado": saldo_acumulado,
                 "total_iva_credito": total_iva_credito,
                 "total_iva_debito": total_iva_debito,
                 "posicion_iva": posicion_iva,
@@ -731,7 +733,9 @@ def proyectar_capacidad_pago(
     saldo_caja = 0
     try:
         bal = repo.obtener_balance()
-        saldo_caja = safe_int(bal.get("flujo_neto", 0)) if bal else 0
+        saldo_caja = (
+            safe_int(bal.get("saldo_acumulado", bal.get("flujo_neto", 0))) if bal else 0
+        )
     except Exception as e_bal:
         logger.warning(f"Error obteniendo balance para proyector de capacidad: {e_bal}")
         saldo_caja = 0

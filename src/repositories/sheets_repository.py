@@ -85,6 +85,9 @@ class SheetsRepository:
             raise NotImplementedError("AgenteFinanciero.agregar_gasto not implemented")
 
     def _ensure_headers(self, ws, sheet_name: str) -> None:
+        import logging
+
+        logger = logging.getLogger("sheets_repo")
         headers_map = {
             "Obligaciones_Maestro": ENCABEZADOS_OBLIGACIONES_MAESTRO,
             "Libro_Diario": ENCABEZADOS_LIBRO_DIARIO,
@@ -102,14 +105,26 @@ class SheetsRepository:
                 ws.append_row(expected)
             elif first_row != expected:
                 try:
+                    second_row = ws.row_values(2)
+                except Exception:
+                    second_row = []
+
+                # Si existen filas de datos y la cantidad de columnas no coincide,
+                # sobrescribir los encabezados corrompería la alineación de datos.
+                if second_row and len(first_row) != len(expected):
+                    logger.error(
+                        f"INCONSISTENCIA ESTRUCTURAL en hoja '{sheet_name}': longitud actual "
+                        f"({len(first_row)}) difiere de la esperada ({len(expected)}) con datos preexistentes. "
+                        f"Se aborta la sobrescritura de encabezados para evitar desfasaje horizontal. "
+                        f"Ejecute la migración de datos antes de sincronizar cabeceras."
+                    )
+                    return
+
+                try:
                     for col_idx, header in enumerate(expected, start=1):
                         ws.update_cell(1, col_idx, header)
                 except Exception as e:
-                    import logging
-
-                    logging.getLogger("sheets_repo").error(
-                        f"Error syncing headers for {sheet_name}: {e}"
-                    )
+                    logger.error(f"Error syncing headers for {sheet_name}: {e}")
 
     def _get_sheet(self, sheet_name: str):
         if not hasattr(self, "_wb"):
