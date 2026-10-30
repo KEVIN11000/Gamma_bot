@@ -387,6 +387,41 @@ class TestSheetsRepository(unittest.TestCase):
         self.repo.insert_cierre_mensual({"ID_Cierre": "cierre_02"})
         self.assertIsNone(self.repo.cache.get("cierres_historicos"))
 
+    def test_ensure_headers_hoja_vacia(self):
+        """Verifica que en una hoja vacía se agregue la fila con encabezados esperados."""
+        mock_ws = unittest.mock.MagicMock()
+        mock_ws.row_values.return_value = []
+        self.repo._ensure_headers(mock_ws, "Obligaciones_Maestro")
+        mock_ws.append_row.assert_called_once()
+        mock_ws.update_cell.assert_not_called()
+
+    def test_ensure_headers_inconsistencia_estructural_bloquea_sobrescritura(self):
+        """Si la fila 1 tiene 15 columnas y hay datos en fila 2, NO debe sobrescribir celdas."""
+        mock_ws = unittest.mock.MagicMock()
+        # Simular 15 columnas (esquema legacy sin Tipo) y datos en fila 2
+        mock_ws.row_values.side_effect = lambda row_idx: (
+            ["Col1", "Col2", "Col3"] if row_idx == 1 else ["Val1", "Val2", "Val3"]
+        )
+        self.repo._ensure_headers(mock_ws, "Obligaciones_Maestro")
+        # No debe actualizar celdas para evitar el desfasaje horizontal
+        mock_ws.update_cell.assert_not_called()
+        mock_ws.append_row.assert_not_called()
+
+    def test_ensure_headers_misma_longitud_actualiza_seguro(self):
+        """Si la longitud coincide, se actualizan las celdas de forma segura."""
+        mock_ws = unittest.mock.MagicMock()
+        from logic.constants import ENCABEZADOS_OBLIGACIONES_MAESTRO
+
+        # Misma cantidad de columnas pero nombres en minúsculas
+        legacy_headers = [h.lower() for h in ENCABEZADOS_OBLIGACIONES_MAESTRO]
+        mock_ws.row_values.side_effect = lambda row_idx: (
+            legacy_headers if row_idx == 1 else ["Val"] * len(legacy_headers)
+        )
+        self.repo._ensure_headers(mock_ws, "Obligaciones_Maestro")
+        self.assertEqual(
+            mock_ws.update_cell.call_count, len(ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -439,11 +439,16 @@ class TestFinancieroLogic(unittest.TestCase):
         ]
         agente._ws = mock_ws
 
+        from repositories.sheets_repository import _sheets_cache
+
+        _sheets_cache.clear()
+
         balance = agente.obtener_balance()
         self.assertEqual(balance["saldo_inicial"], 500000)
         self.assertEqual(balance["ingresos"], 100000)
         self.assertEqual(balance["gastos"], 40000)
-        self.assertEqual(balance["flujo_neto"], 500000 + 100000 - 40000)
+        self.assertEqual(balance["flujo_neto"], 100000 - 40000)
+        self.assertEqual(balance["saldo_acumulado"], 500000 + (100000 - 40000))
 
     @patch("logic.financiero.SheetsRepository")
     @patch("logic.financiero.DriveService")
