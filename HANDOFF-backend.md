@@ -1,70 +1,52 @@
 # Traspaso Backend (Gamma Mobile -> Gamma_bot)
 ## Requerimientos de Backend para Estabilidad y Paridad con Gamma Mobile
 
-- **Fecha:** 29 de Octubre de 2026
+- **Fecha:** 29 de Octubre de 2026 (Actualizado: 30 de Octubre de 2026)
 - **Origen:** Gamma Mobile (Sesión de Remediación y Estabilidad `v0.0.12` / `remediacion-estabilidad-v012`)
-- **Destino:** Repositorio `Gamma_bot` (`E:\PG\vcp-s\Gamma_bot`) para desarrollo en su sesión dedicada.
-- **Principio:** Cero modificaciones en el backend durante la sesión de la app móvil; todos los requerimientos del servidor quedan formalizados en este documento.
+- **Destino:** Repositorio `Gamma_bot` (`E:\PG\vcp-s\Gamma_bot`)
+- **Estado Global:** ✅ **TODOS LOS MÓDULOS RESUELTOS Y VERIFICADOS EN v1.18.6**
 
 ---
 
-### Módulo 1: Alineación de Contratos y Esquemas (Pydantic vs Mobile)
-
-1. **Soporte de Alias `"tipo"` en `POST /api/v1/movimientos` (`src/api/schemas.py`)**:
-   - **Problema:** Android envía `"tipo": "Ingreso"`. `MovimientoCreate` solo reconoce `"movimiento"`, descartando `"tipo"` y asignando `TipoMovimiento.GASTO` por defecto. En consecuencia, todos los ingresos móviles se registran como gastos en Google Sheets.
-   - **Solución Requerida:** En `src/api/schemas.py`, configurar en `MovimientoCreate`:
-     ```python
-     movimiento: TipoMovimiento = Field(default=TipoMovimiento.GASTO, alias="tipo")
-     ```
-     O permitir tanto `tipo` como `movimiento` en el validador antes de crear la fila.
-
-2. **Desempaquetado de `deuda_foco` en `GET /api/v1/obligaciones/foco` (`src/api/blueprint.py`)**:
-   - **Problema:** El endpoint devuelve `{"criterio": "...", "deuda_foco": {...}}`, mientras que la app móvil consumía el DTO plano esperando los campos en la raíz.
-   - **Solución Requerida:** Mantener el objeto `deuda_foco` o exponer los campos planos en la raíz para garantizar compatibilidad con versiones previas.
-
-3. **Paridad de Clave en IA y OCR (`src/logic/ai_service.py`)**:
-   - **Problema:** El servicio de IA retorna `"tipo_movimiento"`, mientras que la app móvil consume `"tipo"`.
-   - **Solución Requerida:** Retornar ambas claves (`datos["tipo"] = tipo` y `datos["tipo_movimiento"] = tipo`) en la respuesta JSON.
+### Módulo 1: Alineación de Contratos y Esquemas (Pydantic vs Mobile) [ESTADO: RESUELTO EN v1.18.5]
+1. **Soporte de Alias `"tipo"` en `POST /api/v1/movimientos` (`src/api/schemas.py`)**: `MovimientoCreate` reconoce `"tipo"` y `"monto"` con `populate_by_name = True`.
+2. **Desempaquetado de `deuda_foco` en `GET /api/v1/obligaciones/foco` (`src/api/blueprint.py`)**: Atributos planos en la raíz + objeto anidado para compatibilidad total.
+3. **Paridad de Clave en IA y OCR (`src/logic/ai_service.py`)**: Retorna tanto `"tipo"` como `"tipo_movimiento"`.
 
 ---
 
-### Módulo 2: Respuestas Informativas y Códigos HTTP
-
-1. **Marcación Laboral Informativa en `POST /api/v1/asistencia/marcar` (`src/api/blueprint.py`)**:
-   - **Problema:** Cuando `AgenteAutonomoHoras` retorna `"ℹ️ Ya registraste tu entrada hoy"`, el endpoint devuelve `HTTP 400 Bad Request`, provocando que la app móvil muestre una alerta de error crítico.
-   - **Solución Requerida:** Responder con `HTTP 200 OK` y payload estructurado:
-     ```json
-     {
-       "tipo": "info",
-       "mensaje": "ℹ️ Ya registraste tu entrada hoy a las HH:mm",
-       "confirmado_en_planilla": true
-     }
-     ```
-
-2. **Invalidación Reactiva de Caché (`src/repositories/sheets_repository.py`)**:
-   - **Problema:** `_sheets_cache` tiene un TTL de 180 segundos. Tras registrar transacciones desde la app, `GET /dashboard/summary` sigue retornando el balance antiguo durante 3 minutos.
-   - **Solución Requerida:** Llamar a `_sheets_cache.clear()` al insertar movimientos en `POST /api/v1/movimientos`.
-
-3. **Cálculo de Analíticas MTD y Devengado Laboral (`src/logic/logic.py`)**:
-   - **Problema:** El devengado de horas y salario computa días con sólo marcación de entrada como si fueran jornadas completas.
-   - **Solución Requerida:** En `AgenteAutonomoHoras.obtener_analiticas_horas()`, condicionar el cálculo de horas trabajadas y salario devengado acumulado a que el día tenga registrada su salida efectiva.
+### Módulo 2: Respuestas Informativas y Códigos HTTP [ESTADO: RESUELTO EN v1.18.5]
+1. **Marcación Laboral Informativa en `POST /api/v1/asistencia/marcar` (`src/api/blueprint.py`)**: Responde `HTTP 200 OK` con `tipo: "info"` y `confirmado_en_planilla: true` ante marcaciones duplicadas.
+2. **Invalidación Reactiva de Caché (`src/repositories/sheets_repository.py`)**: `_sheets_cache.clear()` invocado tras cada inserción de movimiento.
+3. **Cálculo de Analíticas MTD y Devengado Laboral (`src/logic/logic.py`)**: Filtrado estricto en `calcular_analiticas_asistencia` exigiendo salida confirmada para devengar salario.
 
 ---
 
-### Módulo 3: Ejecución Real de Cierres Contables
-
+### Módulo 3: Ejecución Real de Cierres Contables [ESTADO: RESUELTO EN v1.18.6]
 1. **Reemplazo de Stub en `POST /api/v1/cierres/ejecutar` (`src/api/blueprint.py`)**:
-   - **Problema:** El endpoint genera un PDF sintético con ReportLab hardcodeando 160h y 4.5M Gs sin interactuar con Google Sheets ni ejecutar `execute_monthly_closing()`.
-   - **Solución Requerida:** Integrar la llamada real a `agente_excel.ejecutar_cierre_periodo_manual()` o `execute_monthly_closing()`.
-
-2. **Sincronización de Cierres Laborales en Historial (`src/api/blueprint.py`)**:
-   - **Problema:** No existe un endpoint que liste los cierres laborales archivados en Google Sheets para que la app móvil los consulte.
-   - **Solución Requerida:** Implementar `GET /api/v1/asistencia/cierres` retornando la lista de períodos laborales cerrados y sus PDFs.
+   - Eliminadas constantes sintéticas (160h, 4.5M Gs).
+   - Invocación real a `AgenteAutonomoHoras.calcular_analiticas_asistencia()` para cierres laborales y a `SheetsRepository.obtener_balance()` / `execute_monthly_closing()` para cierres contables.
+2. **Sincronización de Cierres Laborales en Historial (`src/api/blueprint.py`)**: `GET /api/v1/asistencia/cierres` lista las hojas archivadas y sus comprobantes PDF.
 
 ---
 
-### Módulo 4: Deduplicación e Idempotencia
-
+### Módulo 4: Deduplicación e Idempotencia [ESTADO: RESUELTO EN v1.18.5]
 1. **Recepción de `clientId` o `id` en `POST /api/v1/movimientos` (`src/api/blueprint.py`)**:
-   - **Problema:** Si ocurre un timeout de red tras escribir en Google Sheets, el Worker de Android reintenta y duplica el asiento contable en la planilla.
-   - **Solución Requerida:** Verificar si el `client_id` recibido en el header `X-Client-Id` o en el cuerpo ya fue registrado en las últimas 24 horas antes de hacer `append_row()`.
+   - Ventana de idempotencia de 24 horas con `duplicado_evitado: true` ante reintentos de red del cliente móvil.
+
+---
+
+### Módulo 5: Realineación de Columnas y Migración en `Obligaciones_Maestro` [ESTADO: RESUELTO EN v1.18.6]
+1. **Blindaje de `_ensure_headers` (`src/repositories/sheets_repository.py`)**:
+   - Bloquea sobrescrituras de encabezados celda por celda si la aridad de columnas difiere de la esperada en hojas con filas de datos existentes.
+2. **Script de Migración Idempotente (`scripts/migrar_obligaciones_maestro.py`)**:
+   - Función determinista `realinear_fila_obligacion()` que inserta `"Deuda"` en columna B y realinea datos desfasados a las 16 columnas de `ENCABEZADOS_OBLIGACIONES_MAESTRO`.
+   - Modos `--dry-run` y `--apply` disponibles para ejecución en Google Sheets.
+
+---
+
+### Módulo 6: Duplicación de `saldo_inicial` en Resumen de Dashboard [ESTADO: RESUELTO EN v1.18.6]
+1. **Corrección de Fórmula Contable (`src/logic/financiero.py` y `src/api/blueprint.py`)**:
+   - $\text{flujo\_neto} = \text{total\_ingresos} - \text{total\_gastos}$ (flujo neto operativo del período).
+   - $\text{saldo\_acumulado} = \text{saldo\_inicial} + \text{flujo\_neto}$.
+   - En `GET /api/v1/dashboard/summary`: `saldo_acumulado` no vuelve a sumar `saldo_inicial`, resolviendo el bug empírico donde `1.431.300 ₲` se mostraba duplicado como `2.862.600 ₲`.

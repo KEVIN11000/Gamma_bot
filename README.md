@@ -1,8 +1,8 @@
 # 🤖 GAMMA — Bot de Gestión Avanzada & Backend API
 
-[![Version](https://img.shields.io/badge/version-1.18.5-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.18.6-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-227%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-240%20passing-brightgreen.svg)](tests/)
 [![Architecture](https://img.shields.io/badge/architecture-modular%20src-orange.svg)](src/)
 
 **GAMMA** es un ecosistema integral y automatizado compuesto por un **Bot de Telegram** interactivo y un **Backend REST API** de alto rendimiento, diseñado para el control de asistencia laboral, gestión financiera estratégica, amortización de pasivos y agendamiento inteligente con IA.

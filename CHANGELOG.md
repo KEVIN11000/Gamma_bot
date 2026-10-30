@@ -5,6 +5,15 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [1.18.6] - 2026-10-30
+
+### Corregido
+* **Integridad Contable y Paridad Backend con Gamma Mobile (`HANDOFF-backend.md` Módulos 3.1, 5 y 6):**
+  * **Corrección de Duplicación de `saldo_inicial` (Módulo 6):** En `src/logic/financiero.py` se definió $\text{flujo\_neto} = \text{total\_ingresos} - \text{total\_gastos}$ (operativo) y $\text{saldo\_acumulado} = \text{saldo\_inicial} + \text{flujo\_neto}$, eliminando la doble suma del saldo inicial en `GET /api/v1/dashboard/summary` ([src/api/blueprint.py](file:///e:/PG/vcp-s/Gamma_bot/src/api/blueprint.py)) y en el proyector de capacidad de pago.
+  * **Blindaje Estructural de Encabezados (Módulo 5.1):** En `SheetsRepository._ensure_headers` ([src/repositories/sheets_repository.py](file:///e:/PG/vcp-s/Gamma_bot/src/repositories/sheets_repository.py)) se bloquea cualquier sobrescritura destructiva de celdas si la aridad de la cabecera no coincide con la longitud de columnas esperada y existen filas de datos, previniendo desfasajes horizontales.
+  * **Migración Idempotente de `Obligaciones_Maestro` (Módulo 5.2):** Creado script `scripts/migrar_obligaciones_maestro.py` con `--dry-run` y `--apply` para realinear filas legacy de 15 columnas o filas desfasadas a las 16 columnas canónicas de `ENCABEZADOS_OBLIGACIONES_MAESTRO`.
+  * **Ejecución Real de Cierres vía API (Módulo 3.1):** En `POST /api/v1/cierres/ejecutar` ([src/api/blueprint.py](file:///e:/PG/vcp-s/Gamma_bot/src/api/blueprint.py)) se eliminaron las constantes hardcodeadas (160h, 4.5M Gs), conectando el endpoint al cómputo real de analíticas de asistencia ([src/logic/logic.py](file:///e:/PG/vcp-s/Gamma_bot/src/logic/logic.py)) y balances de Libro Diario ([src/logic/financiero.py](file:///e:/PG/vcp-s/Gamma_bot/src/logic/financiero.py)), generando PDFs y reportes históricos fidedignos.
+
 ## [1.18.5] - 2026-10-29
 
 ### Añadido
