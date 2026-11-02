@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sqlite3
 import time
-from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union
 
+from adapters.notifications.telegram_adapter import TelegramNotificationAdapter
 from logger_config import setup_logger
+from ports.notification_port import INotificationPort
+from services.notification_dispatcher import NotificationDispatcher
 
 logger = setup_logger("worker")
 
@@ -14,9 +17,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DB_PATH = BASE_DIR / "cola.db"
 
 
-def get_connection() -> sqlite3.Connection:
+def _resolve_notifier(bot_or_notifier: Any) -> INotificationPort:
+    """Wraps a legacy bot object in TelegramNotificationAdapter if needed."""
+    if isinstance(bot_or_notifier, INotificationPort):
+        return bot_or_notifier
+    return TelegramNotificationAdapter(bot=bot_or_notifier)
+
+
+def get_connection(
+    db_path: Optional[Union[Path, str]] = None,
+) -> sqlite3.Connection:
     """Returns a connection to the SQLite database with timeout=15.0 and WAL mode."""
-    conn = sqlite3.connect(str(DB_PATH), timeout=15.0)
+    target_path = str(db_path or DB_PATH)
+    conn = sqlite3.connect(target_path, timeout=15.0)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
@@ -26,16 +39,18 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
-def init_db() -> None:
-    """Initializes the database schema for the queue."""
+def init_db(db_path: Optional[Union[Path, str]] = None) -> None:
+    """Initializes the database schema for the queue with non-destructive migrations."""
     try:
-        conn = get_connection()
+        conn = get_connection(db_path)
         try:
             with conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS queue (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        chat_id INTEGER NOT NULL,
+                        recipient_id TEXT,
+                        channel TEXT NOT NULL DEFAULT 'telegram',
+                        chat_id INTEGER,
                         operacion TEXT NOT NULL,
                         payload_json TEXT NOT NULL,
                         estado TEXT NOT NULL DEFAULT 'pendiente',
@@ -44,6 +59,28 @@ def init_db() -> None:
                         creado_at INTEGER NOT NULL
                     )
                     """)
+
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA table_info(queue);")
+                existing_cols = {row["name"] for row in cursor.fetchall()}
+
+                if "recipient_id" not in existing_cols:
+                    conn.execute("ALTER TABLE queue ADD COLUMN recipient_id TEXT;")
+                    conn.execute(
+                        "UPDATE queue SET recipient_id = CAST(chat_id AS TEXT) "
+                        "WHERE recipient_id IS NULL AND chat_id IS NOT NULL;"
+                    )
+                    logger.info("Migrated queue schema: added recipient_id column")
+
+                if "channel" not in existing_cols:
+                    conn.execute(
+                        "ALTER TABLE queue ADD COLUMN channel TEXT NOT NULL DEFAULT 'telegram';"
+                    )
+                    logger.info("Migrated queue schema: added channel column")
+
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_queue_estado_retry ON queue (estado, next_retry, creado_at);"
+                )
         finally:
             conn.close()
     except Exception as e:
@@ -55,10 +92,16 @@ init_db()
 
 
 def despachar_trabajo(
-    bot: Any, operacion: str, payload: Dict[str, Any], chat_id: int
+    bot_or_notifier: Any,
+    operacion: str,
+    payload: Dict[str, Any],
+    recipient_id: Union[str, int],
 ) -> None:
-    """Executes the specific domain logic for an enqueued operation."""
+    """Executes domain logic for an operation using agnostic notification delivery."""
     import os
+
+    notifier = _resolve_notifier(bot_or_notifier)
+    rec_str = str(recipient_id)
 
     if operacion == "registrar_movimiento":
         from logic.financiero import AgenteFinanciero
@@ -68,7 +111,7 @@ def despachar_trabajo(
         )
         agente = AgenteFinanciero(spreadsheet_id=spreadsheet_id)
         resultado = agente.registrar_movimiento(payload)
-        bot.send_message(chat_id, resultado)
+        notifier.send_message(rec_str, resultado)
 
     elif operacion == "create_debt":
         from logic.financiero import create_debt
@@ -80,8 +123,8 @@ def despachar_trabajo(
             quotas=payload["cuotas"],
             first_due_date=payload["fecha"],
         )
-        bot.send_message(
-            chat_id,
+        notifier.send_message(
+            rec_str,
             f"✅ Deuda '{payload['concepto']}' registrada con éxito. ID: `{debt_id}`",
             parse_mode="Markdown",
         )
@@ -96,8 +139,8 @@ def despachar_trabajo(
             tasa_iva=payload.get("tasa_iva", "Exento"),
         )
         monto_str = "{:,}".format(payload["amount"]).replace(",", ".")
-        bot.send_message(
-            chat_id,
+        notifier.send_message(
+            rec_str,
             f"✅ Abono de Gs. {monto_str} registrado para la deuda `{payload['debt_id']}`.",
             parse_mode="Markdown",
         )
@@ -108,7 +151,7 @@ def despachar_trabajo(
         spreadsheet_id_cal = str(os.getenv("SPREADSHEET_ID") or "")
         agente_excel = AgenteAutonomoHoras(spreadsheet_id=spreadsheet_id_cal)
         resultado = agente_excel.guardar_aviso_calendar(payload)
-        bot.send_message(chat_id, resultado, parse_mode="Markdown")
+        notifier.send_message(rec_str, resultado, parse_mode="Markdown")
 
     elif operacion == "generar_reporte":
         from logic.pdf_service import PDFService
@@ -131,65 +174,92 @@ def despachar_trabajo(
             descuento = float(payload.get("descuento", 0))
             incluir_iva = bool(payload.get("incluir_iva", False))
             datos, error = agente_excel.preparar_datos_reporte(
-                nombre_hoja=nombre_hoja, descuento=descuento, incluir_iva=incluir_iva
+                nombre_hoja=nombre_hoja,
+                descuento=descuento,
+                incluir_iva=incluir_iva,
             )
 
         if error:
-            bot.send_message(chat_id, f"❌ Error generando reporte: {error}")
+            notifier.send_message(rec_str, f"❌ Error generando reporte: {error}")
             return
 
         ruta_pdf, msg_pdf = PDFService.generar_reporte_generico(datos)
         if ruta_pdf and Path(ruta_pdf).exists():
-            with open(ruta_pdf, "rb") as f:
-                bot.send_document(
-                    chat_id,
-                    f,
-                    caption=f"📊 {msg_pdf}",
-                    visible_file_name=Path(ruta_pdf).name,
-                )
+            notifier.send_document(
+                rec_str,
+                ruta_pdf,
+                caption=f"📊 {msg_pdf}",
+                visible_file_name=Path(ruta_pdf).name,
+            )
         else:
-            bot.send_message(
-                chat_id, msg_pdf or "❌ No se pudo generar el archivo PDF."
+            notifier.send_message(
+                rec_str, msg_pdf or "❌ No se pudo generar el archivo PDF."
             )
 
     else:
         logger.warning(f"Operación desconocida en cola: '{operacion}'")
-        bot.send_message(chat_id, f"✅ Trabajo '{operacion}' completado.")
+        notifier.send_message(rec_str, f"✅ Trabajo '{operacion}' completado.")
 
 
 def enqueue(
-    chat_id: int,
+    recipient_id: Union[str, int],
     operacion: str,
     payload: Dict[str, Any],
-    sync_fallback: bool = False,
+    sync_fallback_or_channel: Union[bool, str] = False,
     bot: Any = None,
+    channel: str = "telegram",
+    notifier: Optional[INotificationPort] = None,
+    sync_fallback: Optional[bool] = None,
 ) -> int:
-    """Inserts a new job into the queue, with optional synchronous fallback.
+    """Inserts a new job into the queue, supporting multi-channel dispatch and fallback.
 
     Args:
-        chat_id: The Telegram chat ID.
-        operacion: The operation to perform.
-        payload: A dictionary containing the job data.
-        sync_fallback: If True, executes the job synchronously.
-        bot: Optional bot instance for synchronous fallback execution.
+        recipient_id: Telegram chat ID or multi-channel recipient identifier.
+        operacion: Name of domain operation.
+        payload: Dictionary payload for the operation.
+        sync_fallback_or_channel: Legacy sync_fallback bool or channel string.
+        bot: Optional Telegram bot instance for legacy synchronous fallback.
+        channel: Target notification channel ('telegram', 'whatsapp', etc.).
+        notifier: Optional custom INotificationPort instance.
+        sync_fallback: Explicit bool flag for synchronous fallback execution.
 
     Returns:
-        The ID of the inserted job, or 0 if executed synchronously via fallback.
+        Job ID, or 0 if executed synchronously via fallback.
     """
-    if sync_fallback and bot is not None:
+    if isinstance(sync_fallback_or_channel, str):
+        target_channel = sync_fallback_or_channel
+        is_sync_fallback = bool(sync_fallback) if sync_fallback is not None else False
+    else:
+        target_channel = channel
+        is_sync_fallback = (
+            sync_fallback
+            if sync_fallback is not None
+            else bool(sync_fallback_or_channel)
+        )
+
+    actual_notifier = notifier or (_resolve_notifier(bot) if bot is not None else None)
+    target_bot_or_notifier = bot if bot is not None else actual_notifier
+
+    if is_sync_fallback and target_bot_or_notifier is not None:
         try:
-            despachar_trabajo(bot, operacion, payload, chat_id)
+            despachar_trabajo(target_bot_or_notifier, operacion, payload, recipient_id)
             logger.info(
-                f"Executed job synchronously (sync_fallback) for chat_id {chat_id}, operacion {operacion}"
+                f"Executed job synchronously (sync_fallback) for recipient_id {recipient_id}, operacion {operacion}"
             )
             return 0
         except Exception as e:
             logger.error(f"Error in sync_fallback execution: {e}")
             try:
-                bot.send_message(
-                    chat_id,
-                    f"❌ Ocurrió un error al procesar tu reporte: {e}. Se reintentará en segundo plano.",
-                )
+                if actual_notifier is not None:
+                    actual_notifier.send_message(
+                        str(recipient_id),
+                        f"❌ Ocurrió un error al procesar tu reporte: {e}. Se reintentará en segundo plano.",
+                    )
+                elif bot is not None:
+                    bot.send_message(
+                        recipient_id,
+                        f"❌ Ocurrió un error al procesar tu reporte: {e}. Se reintentará en segundo plano.",
+                    )
             except Exception:
                 pass
 
@@ -200,23 +270,51 @@ def enqueue(
                 cursor = conn.cursor()
                 payload_str = json.dumps(payload)
                 now = int(time.time())
-                cursor.execute(
-                    "INSERT INTO queue (chat_id, operacion, payload_json, estado, creado_at, next_retry) "
-                    "VALUES (?, ?, ?, 'pendiente', ?, ?)",
-                    (chat_id, operacion, payload_str, now, now),
-                )
+                recipient_str = str(recipient_id)
+
+                try:
+                    chat_id_val = int(recipient_id)
+                except (ValueError, TypeError):
+                    chat_id_val = 0
+
+                cursor.execute("PRAGMA table_info(queue);")
+                cols = {row["name"] for row in cursor.fetchall()}
+
+                if "recipient_id" in cols and "channel" in cols:
+                    cursor.execute(
+                        "INSERT INTO queue (recipient_id, channel, chat_id, operacion, payload_json, estado, creado_at, next_retry) "
+                        "VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?)",
+                        (
+                            recipient_str,
+                            target_channel,
+                            chat_id_val,
+                            operacion,
+                            payload_str,
+                            now,
+                            now,
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT INTO queue (chat_id, operacion, payload_json, estado, creado_at, next_retry) "
+                        "VALUES (?, ?, ?, 'pendiente', ?, ?)",
+                        (chat_id_val, operacion, payload_str, now, now),
+                    )
+
                 job_id = int(cursor.lastrowid or 0)
                 logger.info(
-                    f"Enqueued job {job_id} for chat_id {chat_id}, operacion {operacion}"
+                    f"Enqueued job {job_id} for recipient_id {recipient_id} [{target_channel}], operacion {operacion}"
                 )
                 return job_id
         finally:
             conn.close()
     except Exception as e:
         logger.error(f"Error enqueueing job: {e}")
-        if bot is not None:
+        if target_bot_or_notifier is not None:
             try:
-                despachar_trabajo(bot, operacion, payload, chat_id)
+                despachar_trabajo(
+                    target_bot_or_notifier, operacion, payload, recipient_id
+                )
                 logger.info(
                     f"Fallback síncrono exitoso tras error de encolado para job {operacion}"
                 )
@@ -241,33 +339,72 @@ def get_pending_count() -> int:
         conn.close()
 
 
-def procesar_trabajos_pendientes(bot: Any) -> int:
+def procesar_trabajos_pendientes(
+    bot: Any = None,
+    dispatcher: Optional[NotificationDispatcher] = None,
+) -> int:
     """Processes pending jobs in the queue with atomic transactions and explicit logging."""
     conn = get_connection()
     procesados = 0
     try:
         now = int(time.time())
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, chat_id, operacion, payload_json, reintentos FROM queue "
-            "WHERE estado = 'pendiente' AND next_retry <= ? ORDER BY creado_at ASC LIMIT 10",
-            (now,),
-        )
+        cursor.execute("PRAGMA table_info(queue);")
+        cols = {row["name"] for row in cursor.fetchall()}
+
+        if "recipient_id" in cols and "channel" in cols:
+            cursor.execute(
+                "SELECT id, recipient_id, channel, chat_id, operacion, payload_json, reintentos FROM queue "
+                "WHERE estado = 'pendiente' AND next_retry <= ? ORDER BY creado_at ASC LIMIT 10",
+                (now,),
+            )
+        else:
+            cursor.execute(
+                "SELECT id, chat_id, operacion, payload_json, reintentos FROM queue "
+                "WHERE estado = 'pendiente' AND next_retry <= ? ORDER BY creado_at ASC LIMIT 10",
+                (now,),
+            )
         jobs = cursor.fetchall()
+
+        active_dispatcher = dispatcher
+        if active_dispatcher is None:
+            active_dispatcher = NotificationDispatcher(default_channel="telegram")
+            if bot is not None:
+                active_dispatcher.register_adapter("telegram", _resolve_notifier(bot))
 
         for job in jobs:
             job_id = job["id"]
-            chat_id = job["chat_id"]
+            chat_id = job["chat_id"] if "chat_id" in job.keys() else 0
+            recipient_id = (
+                job["recipient_id"]
+                if "recipient_id" in job.keys() and job["recipient_id"]
+                else str(chat_id)
+            )
+            channel = (
+                job["channel"]
+                if "channel" in job.keys() and job["channel"]
+                else "telegram"
+            )
             operacion = job["operacion"]
             payload_json = job["payload_json"]
             reintentos = job["reintentos"]
 
+            target_rec = chat_id if (bot is not None and chat_id) else recipient_id
+
             logger.info(
-                f"Iniciando procesamiento job_id={job_id} operacion='{operacion}' chat_id={chat_id}"
+                f"Iniciando procesamiento job_id={job_id} operacion='{operacion}' recipient_id={recipient_id} channel={channel}"
             )
             try:
                 payload = json.loads(payload_json)
-                despachar_trabajo(bot, operacion, payload, chat_id)
+
+                if bot is not None:
+                    despachar_trabajo(bot, operacion, payload, target_rec)
+                elif active_dispatcher.has_channel(channel):
+                    adapter = active_dispatcher.get_adapter(channel)
+                    despachar_trabajo(adapter, operacion, payload, recipient_id)
+                else:
+                    adapter = active_dispatcher.get_adapter()
+                    despachar_trabajo(adapter, operacion, payload, recipient_id)
 
                 with conn:
                     conn.execute(
