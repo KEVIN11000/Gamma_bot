@@ -4,7 +4,7 @@ import os  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
-from typing import Any, Dict, Optional, Union  # noqa: E402
+from typing import Any  # noqa: E402
 
 _UTILS_BASE = _Path(__file__).resolve().parents[2]  # resolves to src/
 PENDING_FILE = str(_UTILS_BASE / "data" / "pending_deletions.json")

@@ -1,6 +1,6 @@
 # 🤖 GAMMA — Bot de Gestión Avanzada & Backend API
 
-[![Version](https://img.shields.io/badge/version-1.18.6-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-240%20passing-brightgreen.svg)](tests/)
 [![Architecture](https://img.shields.io/badge/architecture-modular%20src-orange.svg)](src/)

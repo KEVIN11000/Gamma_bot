@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from logic.financiero import AgenteFinanciero
+from logic.financiero import AgenteFinanciero  # noqa: E402
 
 
 @pytest.fixture
@@ -30,7 +30,8 @@ def client():
 
 
 def test_obtener_balance_no_duplica_saldo_inicial():
-    """Verifica que flujo_neto sea solo ingresos - gastos y saldo_acumulado incluya saldo_inicial exactamente una vez."""
+    """Verifica que flujo_neto sea solo ingresos - gastos y saldo_acumulado
+    incluya saldo_inicial exactamente una vez."""
     mock_libro = MagicMock()
     mock_libro.get_all_values.return_value = [
         [

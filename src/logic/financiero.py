@@ -4,6 +4,7 @@ import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 import re  # noqa: E402
 import time  # noqa: E402
+from typing import Any  # noqa: E402
 
 from logger_config import setup_logger  # noqa: E402
 from logic.constants import (  # noqa: F401  # noqa: E402
@@ -291,15 +292,45 @@ class AgenteFinanciero:
 
             icono = "🟢" if datos.get("tipo_movimiento") == "Ingreso" else "🔴"
             monto_fmt = "{:,}".format(int(datos.get("total", 0))).replace(",", ".")
+
+            alerta_msg = ""
+            tipo_mov_raw = str(datos.get("tipo_movimiento", "")).lower().strip()
+            if "gasto" in tipo_mov_raw or "egreso" in tipo_mov_raw:
+                try:
+                    alerta = self.evaluar_techo_presupuestario(
+                        categoria=str(datos.get("categoria", "")),
+                        monto_nuevo=float(datos.get("total", 0)),
+                    )
+                    if alerta.get("alerta_emitida"):
+                        alerta_msg = f"\n\n{alerta['mensaje']}"
+                except Exception as e_alerta:
+                    logger.debug(f"Error evaluando alerta preventiva: {e_alerta}")
+
             return (
                 f"✅ Movimiento guardado en Libro Diario:\n"
                 f"{icono} {datos.get('tipo_movimiento')} "
                 f"por Gs. {monto_fmt}\n"
                 f"Categoría: {datos.get('categoria')}"
+                f"{alerta_msg}"
             )
         except Exception as e:
             logger.error(f"❌ Error registrando movimiento: {e}")
             return f"❌ Hubo un error al guardar en la planilla: {str(e)}"
+
+    def evaluar_techo_presupuestario(
+        self,
+        categoria: str,
+        monto_nuevo: float = 0.0,
+        mes: int | None = None,
+        anio: int | None = None,
+    ) -> dict[str, Any]:
+        """Evalúa si un egreso alcanza o supera el techo presupuestario asignado para la categoría."""
+        return evaluar_techo_presupuestario(
+            categoria=categoria,
+            monto_nuevo=monto_nuevo,
+            mes=mes,
+            anio=anio,
+        )
 
     def obtener_gastos_fijos(self) -> dict:
         """Obtiene los gastos fijos agrupados por categoria y concepto, delegando al repositorio."""
@@ -822,6 +853,84 @@ def proyectar_capacidad_pago(
     }
 
 
+def alta_obligacion(
+    nombre: str,
+    monto_inicial: int,
+    tipo: str = "Deuda",
+    entidad: str = "General",
+    cuotas_totales: int = 1,
+    cuotas_restantes: int | None = None,
+    cuota_referencia_gs: int | None = None,
+    saldo_actual: int | None = None,
+    estado: str = "Activo",
+    fecha_inicio: str | None = None,
+    dia_vencimiento: int = 0,
+    observaciones: str = "",
+    orden_prioridad: int = 999,
+    crear_evento_calendar: bool = False,
+    debt_id: str | None = None,
+    repo: Any | None = None,
+) -> dict[str, Any]:
+    """Crea una obligación en Obligaciones_Maestro con esquema unificado y estandarizado."""
+    if repo is None:
+        repo = SheetsRepository()
+
+    if not debt_id:
+        debt_id = f"OBL-{str(uuid.uuid4())[:6].upper()}"
+
+    if fecha_inicio is None:
+        fecha_inicio = get_now_py().strftime("%d/%m/%Y")
+
+    if saldo_actual is None:
+        saldo_actual = monto_inicial
+
+    if cuotas_restantes is None:
+        cuotas_restantes = cuotas_totales
+
+    if cuota_referencia_gs is None or cuota_referencia_gs == 0:
+        cuota_ref = (
+            round(monto_inicial / cuotas_totales)
+            if cuotas_totales > 0
+            else monto_inicial
+        )
+    else:
+        cuota_ref = cuota_referencia_gs
+
+    event_id = ""
+    if crear_evento_calendar:
+        try:
+            event_id = CalendarService.create_event(
+                f"Vencimiento {entidad}",
+                fecha_inicio,
+                f"Pago de deuda: {nombre}",
+            )
+        except Exception as e_cal:
+            logger.warning(
+                f"Error creando evento Calendar para deuda {debt_id}: {e_cal}"
+            )
+
+    nueva_obligacion = {
+        "ID_Obligacion": debt_id,
+        "Tipo": tipo,
+        "Nombre": nombre,
+        "Entidad": entidad,
+        "Monto_Inicial": monto_inicial,
+        "Saldo_Actual": saldo_actual,
+        "Estado": estado,
+        "Cuota_Referencia_Gs": cuota_ref,
+        "Fecha_Inicio": fecha_inicio,
+        "Observaciones": observaciones or f"Entidad: {entidad}",
+        "Cuotas": cuotas_totales,
+        "Event_ID": event_id,
+        "Dia_Vencimiento": dia_vencimiento,
+        "Cuotas_Totales": cuotas_totales,
+        "Cuotas_Restantes": cuotas_restantes,
+        "Orden_Prioridad": orden_prioridad,
+    }
+    repo.insert_obligacion(nueva_obligacion)
+    return nueva_obligacion
+
+
 def create_debt(
     entity: str,
     concept: str,
@@ -830,37 +939,23 @@ def create_debt(
     first_due_date: str,
     dia_vencimiento: int = 0,
     cuotas_totales: int | None = None,
+    repo: Any | None = None,
 ) -> str:
-    repo = SheetsRepository()
     debt_id = str(uuid.uuid4())[:8]
-    event_id = CalendarService.create_event(
-        f"Vencimiento {entity}", first_due_date, f"Pago de deuda: {concept}"
+    ob = alta_obligacion(
+        nombre=concept,
+        monto_inicial=total_amount,
+        tipo="Deuda",
+        entidad=entity,
+        cuotas_totales=cuotas_totales if cuotas_totales is not None else quotas,
+        cuotas_restantes=quotas,
+        fecha_inicio=first_due_date,
+        dia_vencimiento=dia_vencimiento,
+        crear_evento_calendar=True,
+        debt_id=debt_id,
+        repo=repo,
     )
-    cuota_ref = total_amount // quotas if quotas > 0 else total_amount
-
-    if cuotas_totales is None:
-        cuotas_totales = quotas
-
-    obligacion_dict = {
-        "ID_Obligacion": debt_id,
-        "Tipo": "Deuda",
-        "Nombre": concept,
-        "Entidad": entity,
-        "Monto_Inicial": total_amount,
-        "Saldo_Actual": total_amount,
-        "Estado": "Activo",
-        "Cuota_Referencia_Gs": cuota_ref,
-        "Fecha_Inicio": first_due_date,
-        "Observaciones": f"Entidad: {entity}",
-        "Cuotas": quotas,
-        "Event_ID": event_id,
-        "Dia_Vencimiento": dia_vencimiento,
-        "Cuotas_Totales": cuotas_totales,
-        "Cuotas_Restantes": quotas,
-        "Orden_Prioridad": 999,
-    }
-    repo.insert_obligacion(obligacion_dict)
-    return debt_id
+    return str(ob["ID_Obligacion"])
 
 
 def get_active_debts(debt_id: str | None = None) -> list[dict]:
@@ -885,49 +980,115 @@ def calcular_iva(monto_total: int, tasa_iva: str) -> tuple[int, int]:
     return gravado, iva
 
 
-def register_payment(
-    debt_id: str, amount: int, date: str, tasa_iva: str = "Exento"
-) -> None:
-    repo = SheetsRepository()
+def abonar_obligacion(
+    id_obligacion: str,
+    monto: int,
+    fecha: str | None = None,
+    nro_factura: str = "S/N",
+    tasa_iva: str = "Exento",
+    repo: Any | None = None,
+    usar_kwargs_update: bool = True,
+) -> dict[str, Any] | None:
+    """Amortiza una obligación y asienta el egreso contable unificado en Libro_Diario."""
+    if repo is None:
+        repo = SheetsRepository()
 
-    gravado, iva = calcular_iva(amount, tasa_iva)
+    obligacion = repo.get_obligacion_by_id(id_obligacion)
+    if not obligacion:
+        return None
+
+    saldo_actual = safe_int(obligacion.get("Saldo_Actual", 0))
+    nuevo_saldo = max(0, saldo_actual - monto)
+    nuevo_estado = (
+        "Saldada" if nuevo_saldo <= 0 else (obligacion.get("Estado") or "Activo")
+    )
+    cuotas_restantes = safe_int(
+        obligacion.get("Cuotas_Restantes", obligacion.get("Cuotas", 0))
+    )
+    nuevas_cuotas = max(0, cuotas_restantes - 1) if cuotas_restantes > 0 else 0
+
+    if usar_kwargs_update:
+        repo.update_obligacion_saldo(
+            id_obligacion,
+            nuevo_saldo,
+            cuotas_restantes=nuevas_cuotas,
+            nuevo_estado=nuevo_estado,
+        )
+    else:
+        repo.update_obligacion_saldo(
+            id_obligacion,
+            nuevo_saldo,
+            nuevas_cuotas,
+            nuevo_estado,
+        )
+
+    event_id = obligacion.get("Event_ID")
+    if event_id:
+        try:
+            CalendarService.mark_event_completed(event_id)
+        except Exception as e_cal:
+            logger.warning(
+                f"Error marcando evento Calendar completado para {id_obligacion}: {e_cal}"
+            )
+
+    ahora = get_now_py()
+    fecha_hoy = fecha or ahora.strftime("%d/%m/%Y")
+    nombre_deuda = obligacion.get("Nombre", "Obligación")
+    entidad_deuda = (
+        obligacion.get("Entidad") or obligacion.get("entidad") or "Pago Deuda"
+    )
+    mes_str = f"{ahora.month:02d}/{ahora.year}"
+
+    gravado, iva = calcular_iva(monto, tasa_iva)
+    clasificacion_iva = (
+        "N/A" if str(tasa_iva).strip().lower() == "exento" else "Crédito Fiscal"
+    )
 
     movimiento_dict = {
-        "Fecha": date,
+        "Fecha": fecha_hoy,
         "Movimiento": TIPO_EGRESO,
-        "Proveedor/Cliente": "Pago Deuda",
-        "Nro Factura": "S/N",
+        "Proveedor/Cliente": entidad_deuda,
+        "Nro Factura": nro_factura or "S/N",
         "Neto": gravado,
         "IVA": iva,
-        "Total": amount,
-        "Categoría": "Deudas",
-        "Comprobante": "Recibo",
-        "Rastro/Foto": "",
-        "Mes": "",
-        "ID_Obligacion": debt_id,
+        "Total": monto,
+        "Categoría": "Préstamos / Deudas",
+        "Comprobante": "Abono Cuota",
+        "Rastro/Foto": f"Abono a {nombre_deuda}",
+        "Mes": mes_str,
+        "ID_Obligacion": id_obligacion,
         "Tasa_IVA": tasa_iva,
         "Monto_Gravado": gravado,
         "Monto_IVA": iva,
-        "Clasificacion_IVA": (
-            "N/A" if tasa_iva.lower() == "exento" else "Crédito Fiscal"
-        ),
+        "Clasificacion_IVA": clasificacion_iva,
     }
     repo.insert_movimiento_diario(movimiento_dict)
 
-    obligacion = repo.get_obligacion_by_id(debt_id)
-    if obligacion:
-        saldo_actual = safe_int(obligacion.get("Saldo_Actual", 0))
-        cuotas_restantes = safe_int(obligacion.get("Cuotas_Restantes", 0))
+    return {
+        "status": "ok",
+        "id_obligacion": id_obligacion,
+        "saldo_actual": nuevo_saldo,
+        "cuotas_restantes": nuevas_cuotas,
+        "estado": nuevo_estado,
+        "egreso_registrado": monto,
+    }
 
-        nuevo_saldo = saldo_actual - amount
-        nuevo_estado = "Saldada" if nuevo_saldo <= 0 else None
-        nuevas_cuotas = cuotas_restantes - 1 if cuotas_restantes > 0 else 0
 
-        repo.update_obligacion_saldo(debt_id, nuevo_saldo, nuevas_cuotas, nuevo_estado)
-
-        event_id = obligacion.get("Event_ID")
-        if event_id:
-            CalendarService.mark_event_completed(event_id)
+def register_payment(
+    debt_id: str,
+    amount: int,
+    date: str,
+    tasa_iva: str = "Exento",
+    repo: Any | None = None,
+) -> dict[str, Any] | None:
+    return abonar_obligacion(
+        id_obligacion=debt_id,
+        monto=amount,
+        fecha=date,
+        tasa_iva=tasa_iva,
+        repo=repo,
+        usar_kwargs_update=False,
+    )
 
 
 def validar_consistencia_movimientos_mes(
@@ -984,7 +1145,8 @@ def execute_monthly_closing(month: int, year: int) -> str:
         safe_int(m.get("Total", 0))
         for m in movimientos
         if str(m.get("Movimiento", "")).lower() in ("egreso", "gasto")
-        and str(m.get("Categoría", m.get("Categoria", ""))).lower() == "deudas"
+        and str(m.get("Categoría", m.get("Categoria", ""))).lower()
+        in ("deudas", "préstamos / deudas", "prestamos / deudas")
     )
 
     iva_debito_fiscal = sum(
@@ -1160,3 +1322,196 @@ def approve_project(project_id: str) -> None:
     repo.update_obligacion_estado(project_id, "Activo")
 
     # Transition to Deudas_Maestro could be done here as well by getting simulation details
+
+
+def evaluar_techo_presupuestario(
+    categoria: str,
+    monto_nuevo: float = 0.0,
+    mes: int | None = None,
+    anio: int | None = None,
+    local_repo: Any | None = None,
+    sheets_repo: Any | None = None,
+) -> dict[str, Any]:
+    """
+    Evalúa si un egreso proyectado o realizado alcanza el umbral de alerta preventiva
+    del techo presupuestario asignado para la categoría.
+
+    Consulta 'PRESUPUESTO_ALERTAS_ACTIVO' y 'PRESUPUESTO_UMBRAL_ALERTA' en LocalRepository.
+    Si las alertas están desactivadas, retorna activo=False.
+    Si el gasto supera el umbral (default 80%), retorna alerta_emitida=True con mensaje descriptivo.
+    """
+    cat_limpia = categoria.strip()
+    if not cat_limpia:
+        return {
+            "activo": False,
+            "alerta_emitida": False,
+            "categoria": "",
+            "porcentaje_consumido": 0.0,
+            "monto_gastado": 0,
+            "limite_presupuesto": 0,
+            "mensaje": "Categoría vacía.",
+        }
+
+    # 1. Obtener repositorio local para consultar configuraciones
+    if local_repo is None:
+        try:
+            from repositories.local_repository import get_local_repository
+
+            local_repo = get_local_repository()
+        except Exception as e_repo:
+            logger.debug(f"No se pudo cargar LocalRepository: {e_repo}")
+            local_repo = None
+
+    activo = True
+    umbral = 80
+    if local_repo is not None:
+        val_activo = local_repo.obtener_configuracion(
+            "PRESUPUESTO_ALERTAS_ACTIVO", default=True
+        )
+        if isinstance(val_activo, str):
+            activo = val_activo.strip().lower() in ("true", "1", "t", "yes", "si")
+        else:
+            activo = bool(val_activo)
+
+        val_umbral = local_repo.obtener_configuracion(
+            "PRESUPUESTO_UMBRAL_ALERTA", default=80
+        )
+        try:
+            umbral = int(val_umbral)
+        except (ValueError, TypeError):
+            umbral = 80
+
+    if not activo:
+        return {
+            "activo": False,
+            "alerta_emitida": False,
+            "categoria": cat_limpia,
+            "porcentaje_consumido": 0.0,
+            "monto_gastado": int(monto_nuevo),
+            "limite_presupuesto": 0,
+            "umbral_configurado": umbral,
+            "mensaje": "Alertas de presupuesto desactivadas por configuración.",
+        }
+
+    # 2. Obtener límite presupuestario asignado a la categoría
+    limite_presupuesto = 0
+    if sheets_repo is None:
+        try:
+            from repositories.sheets_repository import SheetsRepository
+
+            sheets_repo = SheetsRepository()
+        except Exception:
+            sheets_repo = None
+
+    if sheets_repo is not None:
+        try:
+            from logic.constants import ENCABEZADOS_PRESUPUESTO_BASE
+
+            ws_pb = sheets_repo._get_sheet("Presupuesto_Base")
+            if ws_pb:
+                records = sheets_repo._get_records(ws_pb, ENCABEZADOS_PRESUPUESTO_BASE)
+                for r in records:
+                    c_sheet = str(r.get("Categoria", "")).strip().lower()
+                    if c_sheet == cat_limpia.lower():
+                        limite_presupuesto += safe_int(r.get("Monto_Mensual_Gs", 0))
+        except Exception as e_sheet:
+            logger.debug(f"Error consultando límite en Presupuesto_Base: {e_sheet}")
+
+    # Fallback a configuración local si no se encontró en Presupuesto_Base
+    if limite_presupuesto <= 0 and local_repo is not None:
+        clave_cfg = f"PRESUPUESTO_TECHO_{cat_limpia.upper().replace(' ', '_')}"
+        limite_presupuesto = safe_int(
+            local_repo.obtener_configuracion(clave_cfg, default=0)
+        )
+
+    if limite_presupuesto <= 0:
+        return {
+            "activo": True,
+            "alerta_emitida": False,
+            "categoria": cat_limpia,
+            "porcentaje_consumido": 0.0,
+            "monto_gastado": int(monto_nuevo),
+            "limite_presupuesto": 0,
+            "umbral_configurado": umbral,
+            "mensaje": f"Sin límite presupuestario configurado para '{cat_limpia}'.",
+        }
+
+    # 3. Sumar egresos acumulados del mes para la categoría
+    ahora = get_now_py()
+    m_target = mes if mes is not None else ahora.month
+    y_target = anio if anio is not None else ahora.year
+
+    gastos_acumulados = 0
+    if sheets_repo is not None:
+        try:
+            movimientos = sheets_repo.get_all_movimientos()
+            for m in movimientos:
+                tipo = str(m.get("Movimiento", m.get("Tipo", ""))).strip().lower()
+                if tipo in ("gasto", "egreso"):
+                    c_mov = (
+                        str(m.get("Categoría", m.get("Categoria", ""))).strip().lower()
+                    )
+                    if c_mov == cat_limpia.lower():
+                        coincide = False
+                        mes_val = str(m.get("Mes", "")).strip()
+                        if mes_val:
+                            partes_mes = mes_val.split("/")
+                            if len(partes_mes) == 2:
+                                try:
+                                    if (
+                                        int(partes_mes[0]) == m_target
+                                        and int(partes_mes[1]) == y_target
+                                    ):
+                                        coincide = True
+                                except ValueError:
+                                    pass
+                        if not coincide:
+                            fecha_str = str(m.get("Fecha", "")).strip()
+                            partes_f = fecha_str.split("/")
+                            if len(partes_f) >= 2:
+                                try:
+                                    if int(partes_f[1]) == m_target:
+                                        if len(partes_f) == 3:
+                                            y_str = partes_f[2]
+                                            y_num = (
+                                                int(y_str)
+                                                if len(y_str) == 4
+                                                else int(f"20{y_str}")
+                                            )
+                                            if y_num == y_target:
+                                                coincide = True
+                                        else:
+                                            coincide = True
+                                except ValueError:
+                                    pass
+                        if coincide:
+                            gastos_acumulados += safe_int(
+                                m.get("Total", m.get("total", 0))
+                            )
+        except Exception as e_movs:
+            logger.debug(f"Error consultando gastos de Libro_Diario: {e_movs}")
+
+    total_gastado = gastos_acumulados + int(monto_nuevo)
+    porcentaje_consumido = round((total_gastado / limite_presupuesto) * 100, 1)
+
+    alerta_emitida = porcentaje_consumido >= umbral
+    if alerta_emitida:
+        total_fmt = "{:,}".format(total_gastado).replace(",", ".")
+        limite_fmt = "{:,}".format(limite_presupuesto).replace(",", ".")
+        mensaje = (
+            f"⚠️ Alerta preventiva: Has alcanzado el {porcentaje_consumido:.0f}% de tu "
+            f"presupuesto en {cat_limpia} (₲ {total_fmt} de ₲ {limite_fmt})."
+        )
+    else:
+        mensaje = f"Presupuesto bajo control: {porcentaje_consumido:.0f}% consumido en {cat_limpia}."
+
+    return {
+        "activo": True,
+        "alerta_emitida": alerta_emitida,
+        "categoria": cat_limpia,
+        "porcentaje_consumido": porcentaje_consumido,
+        "monto_gastado": total_gastado,
+        "limite_presupuesto": limite_presupuesto,
+        "umbral_configurado": umbral,
+        "mensaje": mensaje,
+    }

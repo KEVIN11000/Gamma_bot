@@ -103,8 +103,14 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
         )
 
         respuesta = gamma_app.agente_excel.ejecutar_marcado_para_bot(modo=modo)
+        texto = (
+            gamma_app.agente_excel.formatear_para_telegram(respuesta)
+            if hasattr(gamma_app.agente_excel, "formatear_para_telegram")
+            and not isinstance(respuesta, str)
+            else str(respuesta)
+        )
         bot.edit_message_text(
-            respuesta,
+            texto,
             call.message.chat.id,
             call.message.message_id,
             parse_mode="Markdown",

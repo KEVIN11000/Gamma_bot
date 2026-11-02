@@ -183,3 +183,33 @@ class CuadroResumenHoras(BaseModel):
     tipo_ajuste: Optional[str] = None
     monto_ajuste: int = 0
     factura_total: int
+
+
+class ClimaAlertaParaguas(BaseModel):
+    necesita_paraguas: bool
+    probabilidad_lluvia: int
+    motivo: str
+
+
+class ClimaResponse(BaseModel):
+    temperatura_actual: float
+    temperatura_min: float
+    temperatura_max: float
+    condicion: str
+    alerta_paraguas: ClimaAlertaParaguas
+    actualizado_at: str
+
+
+class SyncRequest(BaseModel):
+    direccion: str = Field(
+        "local_to_sheets", pattern="^(local_to_sheets|sheets_to_local)$"
+    )
+    modulo: str = Field("laboral", pattern="^(laboral|materias|todo)$")
+    mes: Optional[int] = None
+    anio: Optional[int] = None
+
+
+class SyncResponse(BaseModel):
+    exito: bool
+    registros_sincronizados: int
+    detalles: str

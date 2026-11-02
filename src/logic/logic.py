@@ -15,14 +15,12 @@ from dotenv import load_dotenv  # noqa: E402
 
 from logger_config import setup_logger  # noqa: E402
 from logic.constants import (  # noqa: E402
-    COLUMNAS_DIRECTO,
-    COLUMNAS_LETRAS,
-    COLUMNAS_NORMAL,
     DIA_LIBRE,
     DIAS_LIMITE_AVISOS,
     DIAS_SEMANA,
     ENCABEZADOS_HORAS,
     ENCABEZADOS_MATERIAS,
+    MarcacionResult,
     MAX_AVISOS_CALENDAR,
     MESES_ES,
     MONTO_POR_HORA_DEFAULT,
@@ -284,24 +282,25 @@ class AgenteAutonomoHoras:
     MONTO_POR_HORA = int(MONTO_POR_HORA_DEFAULT)
 
     def __init__(
-        self, spreadsheet_id: str | None = None, mes: str | None = None
+        self,
+        spreadsheet_id: str | None = None,
+        mes: str | None = None,
+        local_repo: Any | None = None,
     ) -> None:
-        """__init__ method/function.
-
-        Args:
-            spreadsheet_id: Description for spreadsheet_id.
-            mes: Description for mes.
-
-        Returns:
-            Description of the return value.
-
-        Raises:
-            Exception: Description of the exception.
-        """
+        """__init__ method/function."""
         self.mes = mes
         self.spreadsheet_id = spreadsheet_id or os.getenv("SPREADSHEET_ID", "")
         self._wb = None
         self._ws = None
+        if local_repo is not None:
+            self.local_repo = local_repo
+        else:
+            try:
+                from repositories.local_repository import get_local_repository
+
+                self.local_repo = get_local_repository()
+            except Exception:
+                self.local_repo = None
 
     @property
     def cliente(self):
@@ -469,74 +468,278 @@ class AgenteAutonomoHoras:
                 return primera_fila_vacia
         return None
 
-    def ejecutar_marcado_para_bot(self, modo="normal"):
-        """
-        ejecutar_marcado_para_bot method/function.
+    @staticmethod
+    def calcular_horas_jornada(
+        hora_entrada: str | None,
+        hora_salida_almuerzo: str | None,
+        hora_vuelta_almuerzo: str | None,
+        hora_salida: str | None,
+    ) -> float:
+        """Calcula las horas trabajadas en decimal a partir de las marcas horarias."""
+        if not hora_entrada or not hora_salida:
+            return 0.0
 
-        Args:
-            modo: Description for modo.
+        def a_minutos(h_str: str) -> int:
+            partes = h_str.strip().split(":")
+            return int(partes[0]) * 60 + int(partes[1])
 
-        Returns:
-            Description of the return value.
+        try:
+            min_entrada = a_minutos(hora_entrada)
+            min_salida = a_minutos(hora_salida)
 
-        Raises:
-            Exception: Description of the exception.
-        """
-        fila = self._obtener_o_crear_fila_hoy()
-        if not fila:
-            msg = "❌ Límite de filas alcanzado o error en fecha."
-            logger.info(msg)
-            return msg
+            if hora_salida_almuerzo and hora_vuelta_almuerzo:
+                min_sal_alm = a_minutos(hora_salida_almuerzo)
+                min_vta_alm = a_minutos(hora_vuelta_almuerzo)
+                tramo1 = max(0, min_sal_alm - min_entrada)
+                tramo2 = max(0, min_salida - min_vta_alm)
+                total_minutos = tramo1 + tramo2
+            else:
+                total_minutos = max(0, min_salida - min_entrada)
 
-        hora_ahora = get_now_py().strftime("%H:%M")
+            return round(total_minutos / 60.0, 2)
+        except Exception as e:
+            logger.warning(f"Error calculando horas decimales: {e}")
+            return 0.0
+
+    @staticmethod
+    def formatear_para_telegram(resultado: MarcacionResult | str) -> str:
+        """Presenter para Telegram garantizando retrocompatibilidad total con el bot."""
+        if isinstance(resultado, str):
+            return resultado
+        if hasattr(resultado, "formatear_telegram"):
+            return resultado.formatear_telegram()
+        return getattr(resultado, "mensaje", str(resultado))
+
+    def ejecutar_corte_automatico(
+        self,
+        fecha: str | None = None,
+        hora_referencia: str | None = None,
+    ) -> MarcacionResult | None:
+        """Aplica corte automático si la jornada está abierta y se superó HORA_SALIDA_DEFECTO."""
+        repo = self.local_repo
+        if repo is None:
+            try:
+                from repositories.local_repository import get_local_repository
+
+                repo = get_local_repository()
+                self.local_repo = repo
+            except Exception as e_repo:
+                logger.error(
+                    f"Error accediendo a LocalRepository en corte automático: {e_repo}"
+                )
+                return None
+
+        hora_corte = str(
+            repo.obtener_configuracion("HORA_SALIDA_DEFECTO", default="17:00")
+        )
+        ahora = get_now_py()
+        if fecha is None:
+            fecha = ahora.strftime("%Y-%m-%d")
+        if hora_referencia is None:
+            hora_referencia = ahora.strftime("%H:%M")
+
+        # Si la hora actual aún no alcanza la hora de corte, no corresponde aplicar
+        if hora_referencia < hora_corte:
+            return None
+
+        jornada = repo.obtener_jornada_por_fecha(fecha)
+        if not jornada:
+            return None
+
+        # Debe tener entrada y no tener salida
+        if not jornada.get("hora_entrada") or jornada.get("hora_salida"):
+            return None
+
+        h_ent = jornada.get("hora_entrada")
+        h_salm = jornada.get("hora_salida_almuerzo")
+        h_valm = jornada.get("hora_vuelta_almuerzo")
+        horas_decimal = self.calcular_horas_jornada(h_ent, h_salm, h_valm, hora_corte)
+
+        repo.actualizar_jornada(
+            fecha,
+            hora_salida=hora_corte,
+            horas_decimal=horas_decimal,
+            auto_cerrado=1,
+            sincronizado_sheets=0,
+        )
+        jornada_actualizada = repo.obtener_jornada_por_fecha(fecha) or {}
+        mensaje = f"ℹ️ Se aplicó corte automático de jornada a las {hora_corte} hs."
+        logger.info(f"Corte automático aplicado a jornada {fecha} a las {hora_corte}.")
+
+        return MarcacionResult(
+            exito=True,
+            tipo="salida",
+            hora=hora_corte,
+            mensaje=mensaje,
+            auto_corte=True,
+            datos_jornada=jornada_actualizada,
+        )
+
+    verificar_y_aplicar_corte_automatico = ejecutar_corte_automatico
+
+    def ejecutar_marcado_para_bot(
+        self,
+        modo: str = "normal",
+        fecha: str | None = None,
+        hora: str | None = None,
+    ) -> MarcacionResult:
+        """Registra una marcación laboral en LocalRepository y retorna MarcacionResult."""
+        ahora = get_now_py()
+        if fecha:
+            try:
+                dt_fecha = datetime.strptime(fecha, "%Y-%m-%d")
+                dia_actual = DIAS_SEMANA[dt_fecha.weekday()]
+                fecha_actual = fecha
+            except Exception:
+                dia_actual = DIAS_SEMANA[ahora.weekday()]
+                fecha_actual = fecha
+        else:
+            fecha_actual = ahora.strftime("%Y-%m-%d")
+            dia_actual = DIAS_SEMANA[ahora.weekday()]
+
+        hora_ahora = hora or ahora.strftime("%H:%M")
 
         if hasattr(self, "fin_de") and self.fin_de():
             log_msg = f"{hora_ahora} Dia libre, no hay marcas que hacer!!!"
             logger.info(log_msg)
-            return "ℹ️ Hoy es tu día libre, no es necesario registrar marcas."
+            return MarcacionResult(
+                exito=False,
+                tipo="info",
+                hora=hora_ahora,
+                mensaje="ℹ️ Hoy es tu día libre, no es necesario registrar marcas.",
+                auto_corte=False,
+                datos_jornada={},
+            )
 
-        columnas = COLUMNAS_DIRECTO if modo == "directo" else COLUMNAS_NORMAL
+        repo = self.local_repo
+        if repo is None:
+            try:
+                from repositories.local_repository import get_local_repository
 
-        valores_fila = self.ws.row_values(fila)
+                repo = get_local_repository()
+                self.local_repo = repo
+            except Exception as e_repo:
+                msg = f"❌ Error de persistencia local: {e_repo}"
+                logger.error(msg)
+                return MarcacionResult(
+                    exito=False,
+                    tipo="error",
+                    hora=hora_ahora,
+                    mensaje=msg,
+                    auto_corte=False,
+                    datos_jornada={},
+                )
 
-        def celda_vacia(col_index):
-            """
-            celda_vacia method/function.
-
-            Args:
-                col_index: Description for col_index.
-
-            Returns:
-                Description of the return value.
-
-            Raises:
-                Exception: Description of the exception.
-            """
-            idx = col_index - 1
-            return idx >= len(valores_fila) or not valores_fila[idx].strip()
+        try:
+            jornada = repo.obtener_o_crear_jornada(
+                fecha=fecha_actual, dia=dia_actual, modo=modo
+            )
+        except Exception as e_db:
+            msg = f"❌ Error accediendo a jornada local: {e_db}"
+            logger.error(msg)
+            return MarcacionResult(
+                exito=False,
+                tipo="error",
+                hora=hora_ahora,
+                mensaje=msg,
+                auto_corte=False,
+                datos_jornada={},
+            )
 
         if modo == "directo":
-            almerzo_ocupado = not celda_vacia(4) or not celda_vacia(5)
-            if almerzo_ocupado:
-                return (
-                    "⚠️ Ya hay registros de almuerzo en la planilla.\n"
-                    "Usá el marcado normal (▶️ Marcar) para registrar la salida."
+            almuerzo_ocupado = bool(
+                jornada.get("hora_salida_almuerzo")
+                or jornada.get("hora_vuelta_almuerzo")
+            )
+            if almuerzo_ocupado:
+                return MarcacionResult(
+                    exito=False,
+                    tipo="error",
+                    hora=hora_ahora,
+                    mensaje=(
+                        "⚠️ Ya hay registros de almuerzo en la planilla.\n"
+                        "Usá el marcado normal (▶️ Marcar) para registrar la salida."
+                    ),
+                    auto_corte=False,
+                    datos_jornada=jornada,
                 )
 
-        for col_index, nombre in columnas:
-            if celda_vacia(col_index):
-                letra_celda = COLUMNAS_LETRAS[col_index]
-                self.ws.update(
-                    f"{letra_celda}{fila}",
-                    [[hora_ahora]],
-                    value_input_option="USER_ENTERED",
+        col_a_actualizar: str | None = None
+        tipo_marca: str | None = None
+
+        if modo == "directo":
+            if not jornada.get("hora_entrada"):
+                col_a_actualizar = "hora_entrada"
+                tipo_marca = "entrada"
+            elif not jornada.get("hora_salida"):
+                col_a_actualizar = "hora_salida"
+                tipo_marca = "salida"
+            else:
+                return MarcacionResult(
+                    exito=False,
+                    tipo="info",
+                    hora=hora_ahora,
+                    mensaje="ℹ️ Ya completaste todos los registros of hoy.",
+                    auto_corte=False,
+                    datos_jornada=jornada,
+                )
+        else:
+            if not jornada.get("hora_entrada"):
+                col_a_actualizar = "hora_entrada"
+                tipo_marca = "entrada"
+            elif not jornada.get("hora_salida_almuerzo"):
+                col_a_actualizar = "hora_salida_almuerzo"
+                tipo_marca = "salida_almuerzo"
+            elif not jornada.get("hora_vuelta_almuerzo"):
+                col_a_actualizar = "hora_vuelta_almuerzo"
+                tipo_marca = "vuelta_almuerzo"
+            elif not jornada.get("hora_salida"):
+                col_a_actualizar = "hora_salida"
+                tipo_marca = "salida"
+            else:
+                return MarcacionResult(
+                    exito=False,
+                    tipo="info",
+                    hora=hora_ahora,
+                    mensaje="ℹ️ Ya completaste todos los registros of hoy.",
+                    auto_corte=False,
+                    datos_jornada=jornada,
                 )
 
-                log_msg = f"Marcado [{modo}] {nombre}: {hora_ahora} en fila {fila}"
-                logger.info(log_msg)
-                return f"✅ *{nombre}* registrado a las {hora_ahora}."
+        updates: dict[str, Any] = {col_a_actualizar: hora_ahora, "modo": modo}
+        if col_a_actualizar == "hora_salida":
+            h_ent = jornada.get("hora_entrada")
+            h_salm = jornada.get("hora_salida_almuerzo")
+            h_valm = jornada.get("hora_vuelta_almuerzo")
+            updates["horas_decimal"] = self.calcular_horas_jornada(
+                h_ent, h_salm, h_valm, hora_ahora
+            )
 
-        return "ℹ️ Ya completaste todos los registros of hoy."
+        repo.actualizar_jornada(fecha_actual, **updates)
+        jornada_actualizada = repo.obtener_jornada_por_fecha(fecha_actual) or {}
+
+        nombres = {
+            "entrada": "Entrada",
+            "salida_almuerzo": "S. Almuerzo",
+            "vuelta_almuerzo": "V. Almuerzo",
+            "salida": "Salida",
+        }
+        nombre_punto = nombres.get(tipo_marca, tipo_marca.capitalize())
+        mensaje = f"✅ *{nombre_punto}* registrado a las {hora_ahora}."
+        logger.info(
+            f"Marcado [{modo}] {nombre_punto}: {hora_ahora} en fecha {fecha_actual}"
+        )
+
+        return MarcacionResult(
+            exito=True,
+            tipo=tipo_marca,
+            hora=hora_ahora,
+            mensaje=mensaje,
+            auto_corte=False,
+            datos_jornada=jornada_actualizada,
+        )
+
+    marcar_jornada = ejecutar_marcado_para_bot
 
     def ejecutar_cierre_periodo_manual(self):
         """

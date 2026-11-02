@@ -126,19 +126,19 @@ CODIGOS_CLIMA = {
 }
 
 
-def notificacion_clima(bot: Any, chat_id: Any) -> Any:
+def obtener_datos_clima() -> dict[str, Any]:
     """
-    Consulta Open-Meteo (gratuito, sin API key) y envía el pronóstico
-    del día para Asunción a las 07:00 AM.
+    Consulta Open-Meteo (gratuito, sin API key) para Asunción, Paraguay.
+    Retorna un diccionario estructurado compatible con ClimaResponse y cron jobs.
+    Si la consulta falla, devuelve un fallback seguro con mensaje explicativo.
     """
     try:
-
         url = (
             f"https://api.open-meteo.com/v1/forecast"
             f"?latitude={ASUNCION_LAT}&longitude={ASUNCION_LON}"
             f"&daily=weathercode,temperature_2m_max,temperature_2m_min,"
             f"precipitation_probability_max,windspeed_10m_max"
-            f"&timezone=America%2FAsuncion&forecast_days=1"
+            f"&current_weather=true&timezone=America%2FAsuncion&forecast_days=1"
         )
 
         resp = requests.get(url, timeout=10)
@@ -146,15 +146,93 @@ def notificacion_clima(bot: Any, chat_id: Any) -> Any:
         data = resp.json()
 
         daily = data.get("daily", {})
-        wmo_code = daily.get("weathercode", [0])[0]
-        temp_max = daily.get("temperature_2m_max", [0])[0]
-        temp_min = daily.get("temperature_2m_min", [0])[0]
-        precip_pct = daily.get("precipitation_probability_max", [0])[0]
-        viento = daily.get("windspeed_10m_max", [0])[0]
+        current = data.get("current_weather", {})
+
+        wmo_codes = daily.get("weathercode", [0])
+        wmo_code = int(wmo_codes[0]) if wmo_codes else 0
+
+        max_temps = daily.get("temperature_2m_max", [0.0])
+        temp_max = float(max_temps[0]) if max_temps else 0.0
+
+        min_temps = daily.get("temperature_2m_min", [0.0])
+        temp_min = float(min_temps[0]) if min_temps else 0.0
+
+        precip_probs = daily.get("precipitation_probability_max", [0])
+        precip_pct = int(precip_probs[0]) if precip_probs else 0
+
+        windspeeds = daily.get("windspeed_10m_max", [0.0])
+        viento = float(windspeeds[0]) if windspeeds else 0.0
+
+        temp_actual = float(current.get("temperature", temp_max))
 
         emoji, descripcion = CODIGOS_CLIMA.get(
             wmo_code, ("🌡️", "Condición desconocida")
         )
+
+        # Alerta contextual de lluvia
+        if precip_pct >= 60:
+            necesita_paraguas = True
+            motivo = "Alta probabilidad de lluvia. ¡No olvides el paraguas!"
+        elif precip_pct >= 35:
+            necesita_paraguas = True
+            motivo = "Posibles lluvias por la tarde. Lleva el paraguas por las dudas."
+        else:
+            necesita_paraguas = False
+            motivo = "Baja probabilidad de precipitaciones."
+
+        actualizado_at = get_now_py().isoformat()
+
+        return {
+            "temperatura_actual": round(temp_actual, 1),
+            "temperatura_min": round(temp_min, 1),
+            "temperatura_max": round(temp_max, 1),
+            "condicion": descripcion,
+            "alerta_paraguas": {
+                "necesita_paraguas": necesita_paraguas,
+                "probabilidad_lluvia": precip_pct,
+                "motivo": motivo,
+            },
+            "actualizado_at": actualizado_at,
+            "viento": round(viento, 1),
+            "emoji": emoji,
+        }
+
+    except Exception as e:
+        logger.error(f"Error obteniendo datos de clima: {e}")
+        return {
+            "temperatura_actual": 0.0,
+            "temperatura_min": 0.0,
+            "temperatura_max": 0.0,
+            "condicion": "Servicio no disponible",
+            "alerta_paraguas": {
+                "necesita_paraguas": False,
+                "probabilidad_lluvia": 0,
+                "motivo": "No se pudo consultar el servicio meteorológico.",
+            },
+            "actualizado_at": get_now_py().isoformat(),
+            "viento": 0.0,
+            "emoji": "🌡️",
+        }
+
+
+def notificacion_clima(bot: Any, chat_id: Any) -> Any:
+    """
+    Consulta Open-Meteo (gratuito, sin API key) y envía el pronóstico
+    del día para Asunción a las 07:00 AM.
+    """
+    try:
+        datos = obtener_datos_clima()
+        if datos["condicion"] == "Servicio no disponible":
+            logger.warning("No se pudo obtener el clima para notificación matutina.")
+            return False
+
+        temp_min = datos["temperatura_min"]
+        temp_max = datos["temperatura_max"]
+        descripcion = datos["condicion"]
+        alerta = datos["alerta_paraguas"]
+        precip_pct = alerta["probabilidad_lluvia"]
+        viento = datos.get("viento", 0.0)
+        emoji = datos.get("emoji", "🌡️")
 
         # Alerta contextual de lluvia
         alerta_lluvia = ""

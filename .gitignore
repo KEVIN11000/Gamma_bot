@@ -27,6 +27,8 @@ htmlcov/
 scratch_*.py
 cola.db
 cola.db-*
+data/*.db
+data/*.db-*
 
 # Handoff de contexto (local-only, no publicar en el servidor)
 HANDOFF.md

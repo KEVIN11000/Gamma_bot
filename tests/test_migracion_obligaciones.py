@@ -1,7 +1,6 @@
 import os
 import sys
 from unittest.mock import MagicMock
-import pytest
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -10,7 +9,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 )
 
-from migrar_obligaciones_maestro import (
+from migrar_obligaciones_maestro import (  # noqa: E402
     realinear_fila_obligacion,
     migrar_hoja_obligaciones_maestro,
 )

@@ -704,6 +704,84 @@ class TestFinancieroLogic(unittest.TestCase):
         self.assertEqual(sim["meses_ahorrados_por_abonos"]["DEU-01"], 3)
         self.assertEqual(sim["meses_ahorrados_por_abonos"]["DEU-99"], 0)
 
+    @patch("logic.financiero.SheetsRepository")
+    @patch("logic.financiero.CalendarService")
+    def test_unificacion_asientos_deudas_y_abonos_homogeneos(
+        self, MockCalendar, MockRepo
+    ):
+        """Verifica que register_payment y abonar_obligacion generen asientos idénticos."""
+        from logic.financiero import (
+            alta_obligacion,
+            abonar_obligacion,
+            register_payment,
+        )
+
+        repo_instance = MockRepo.return_value
+
+        # Test alta_obligacion
+        ob_creada = alta_obligacion(
+            nombre="Préstamo Rodado",
+            monto_inicial=2000000,
+            entidad="Cooperativa San Cristóbal",
+            cuotas_totales=4,
+            debt_id="OBL-UNIQ01",
+        )
+        self.assertEqual(ob_creada["ID_Obligacion"], "OBL-UNIQ01")
+        repo_instance.insert_obligacion.assert_called_once()
+        repo_instance.insert_obligacion.reset_mock()
+
+        repo_instance.get_obligacion_by_id.return_value = {
+            "ID_Obligacion": "OBL-UNIQ01",
+            "Entidad": "Cooperativa San Cristóbal",
+            "Nombre": "Préstamo Rodado",
+            "Saldo_Actual": "2000000",
+            "Cuotas_Restantes": "4",
+            "Event_ID": "evt_uni",
+        }
+
+        # 1. Llamada estilo bot (register_payment)
+        res_bot = register_payment(
+            debt_id="OBL-UNIQ01",
+            amount=500000,
+            date="10/11/2026",
+            tasa_iva="Exento",
+        )
+        self.assertEqual(res_bot["saldo_actual"], 1500000)
+        self.assertEqual(res_bot["cuotas_restantes"], 3)
+        self.assertEqual(res_bot["estado"], "Activo")
+
+        asiento_bot = repo_instance.insert_movimiento_diario.call_args[0][0]
+        self.assertEqual(asiento_bot["Categoría"], "Préstamos / Deudas")
+        self.assertEqual(asiento_bot["Comprobante"], "Abono Cuota")
+        self.assertEqual(asiento_bot["Movimiento"], "Egreso")
+        self.assertEqual(asiento_bot["Proveedor/Cliente"], "Cooperativa San Cristóbal")
+        self.assertEqual(asiento_bot["ID_Obligacion"], "OBL-UNIQ01")
+        self.assertEqual(asiento_bot["Total"], 500000)
+
+        # 2. Llamada estilo API (abonar_obligacion)
+        repo_instance.insert_movimiento_diario.reset_mock()
+        res_api = abonar_obligacion(
+            id_obligacion="OBL-UNIQ01",
+            monto=500000,
+            fecha="10/11/2026",
+            nro_factura="S/N",
+            tasa_iva="Exento",
+            usar_kwargs_update=True,
+        )
+        self.assertEqual(res_api["saldo_actual"], 1500000)
+        self.assertEqual(res_api["cuotas_restantes"], 3)
+        self.assertEqual(res_api["estado"], "Activo")
+
+        asiento_api = repo_instance.insert_movimiento_diario.call_args[0][0]
+        self.assertEqual(asiento_api["Categoría"], asiento_bot["Categoría"])
+        self.assertEqual(asiento_api["Comprobante"], asiento_bot["Comprobante"])
+        self.assertEqual(asiento_api["Movimiento"], asiento_bot["Movimiento"])
+        self.assertEqual(
+            asiento_api["Proveedor/Cliente"], asiento_bot["Proveedor/Cliente"]
+        )
+        self.assertEqual(asiento_api["ID_Obligacion"], asiento_bot["ID_Obligacion"])
+        self.assertEqual(asiento_api["Total"], asiento_bot["Total"])
+
 
 if __name__ == "__main__":
     unittest.main()

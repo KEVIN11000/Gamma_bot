@@ -5,6 +5,23 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [2.0.0] - 2026-11-02
+
+### Añadido
+* **Arquitectura Modular API REST (`src/api/v1/*`):**
+  * Descomposición integral de `src/api/blueprint.py` en 9 submódulos cohesivos (`routes_health.py`, `routes_dashboard.py`, `routes_movimientos.py`, `routes_avisos.py`, `routes_obligaciones.py`, `routes_asistencia.py`, `routes_cierres.py`, `routes_clima.py`, `routes_soporte.py`) orquestados en el Blueprint unificado `v1_bp`.
+  * Preservación del alias retrocompatible `mobile_api = v1_bp` en `src/api/blueprint.py` y `src/api/__init__.py`.
+* **Capa de Persistencia Local SQLite con Soporte WAL (`src/repositories/local_repository.py`):**
+  * Tablas `asistencia_laboral`, `asistencia_materias` y `configuraciones_sistema` con timeout de 15s y latencia < 15ms.
+* **DTO Puro `MarcacionResult` (`src/logic/constants.py`):**
+  * Eliminado el parsing por expresiones regulares sobre emojis; la API y los bots consumen directamente objetos tipados con soporte de corte automático a las 17:00 hs.
+* **Unificación de Lógica de Deudas y Abonos (`src/logic/financiero.py`):**
+  * Métodos `alta_obligacion`, `create_debt`, `abonar_obligacion` y `register_payment` homogeneizados con `Categoría = "Préstamos / Deudas"` y `Comprobante = "Abono Cuota"`.
+* **Endpoint Climático para Gamma Mobile (`GET /api/v1/clima`):**
+  * Consulta a Open-Meteo para Asunción con alerta de paraguas contextualizada (umbral $\ge 35\%$) y resiliencia con fallback seguro ante fallas de red.
+
+---
+
 ## [1.18.6] - 2026-10-30
 
 ### Corregido

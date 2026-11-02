@@ -5,7 +5,6 @@ from typing import Any
 from telebot import TeleBot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 from com.core.utils import (
-    eliminar_mensaje_seguro,
     remover_teclado_inline,
     reply_with_expiration,
 )

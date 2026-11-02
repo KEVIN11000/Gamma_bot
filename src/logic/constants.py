@@ -2,7 +2,9 @@ from __future__ import annotations
 
 # Constants used across the Gamma_bot project
 
+from dataclasses import dataclass, field
 from pathlib import Path as _Path
+from typing import Any
 
 _VERSION_FILE = _Path(__file__).resolve().parents[1] / "VERSION"
 VERSION = (
@@ -144,3 +146,55 @@ EXPIRACION_BOTONES_SECONDS = 86400
 
 # Timezone
 TIMEZONE = "America/Asuncion"
+
+
+@dataclass(frozen=True)
+class MarcacionResult:
+    """DTO puro que encapsula el resultado tipado de una marcación laboral."""
+
+    exito: bool
+    tipo: str  # "entrada" | "salida" | "salida_almuerzo" | "vuelta_almuerzo" | "info" | "error"
+    hora: str  # "HH:MM"
+    mensaje: str  # Mensaje descriptivo
+    auto_corte: bool = False
+    datos_jornada: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.datos_jornada is None:
+            object.__setattr__(self, "datos_jornada", {})
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serializa el resultado a diccionario estándar."""
+        return {
+            "exito": self.exito,
+            "tipo": self.tipo,
+            "hora": self.hora,
+            "mensaje": self.mensaje,
+            "auto_corte": self.auto_corte,
+            "datos_jornada": dict(self.datos_jornada),
+        }
+
+    def formatear_telegram(self) -> str:
+        """Formatea el resultado con emojis y estilo Markdown para Telegram."""
+        if not self.exito:
+            if "⚠️" in self.mensaje or "❌" in self.mensaje or "ℹ️" in self.mensaje:
+                return self.mensaje
+            return f"❌ {self.mensaje}"
+
+        if self.auto_corte:
+            return f"ℹ️ Se aplicó corte automático de jornada a las {self.hora} hs."
+
+        if self.tipo in ("entrada", "salida", "salida_almuerzo", "vuelta_almuerzo"):
+            nombres = {
+                "entrada": "Entrada",
+                "salida_almuerzo": "S. Almuerzo",
+                "vuelta_almuerzo": "V. Almuerzo",
+                "salida": "Salida",
+            }
+            nombre_punto = nombres.get(self.tipo, self.tipo.capitalize())
+            return f"✅ *{nombre_punto}* registrado a las {self.hora}."
+
+        return self.mensaje
+
+    def __str__(self) -> str:
+        return self.formatear_telegram()
