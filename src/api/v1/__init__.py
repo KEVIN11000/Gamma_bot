@@ -11,6 +11,7 @@ from api.v1.routes_health import health_bp
 from api.v1.routes_movimientos import movimientos_bp
 from api.v1.routes_obligaciones import obligaciones_bp
 from api.v1.routes_soporte import soporte_bp
+from api.v1.routes_webhooks import webhooks_bp
 
 v1_bp = Blueprint("mobile_api", __name__)
 
@@ -23,6 +24,7 @@ v1_bp.register_blueprint(avisos_bp)
 v1_bp.register_blueprint(cierres_bp)
 v1_bp.register_blueprint(clima_bp)
 v1_bp.register_blueprint(soporte_bp)
+v1_bp.register_blueprint(webhooks_bp)
 
 __all__ = [
     "v1_bp",
@@ -35,4 +37,5 @@ __all__ = [
     "cierres_bp",
     "clima_bp",
     "soporte_bp",
+    "webhooks_bp",
 ]

@@ -116,3 +116,57 @@ def test_despachar_trabajo_with_notification_port():
     assert len(mock_notifier.sent_messages) == 1
     assert mock_notifier.sent_messages[0].recipient_id == "+595981111222"
     assert "unknown_custom_op" in mock_notifier.sent_messages[0].message
+
+
+def test_create_default_dispatcher_auto_registers_whatsapp(monkeypatch):
+    """Verifies that create_default_dispatcher auto-registers whatsapp adapter when env var is present."""
+    monkeypatch.delenv("WHATSAPP_API_URL", raising=False)
+    disp_without = worker.create_default_dispatcher()
+    assert not disp_without.has_channel("whatsapp")
+
+    monkeypatch.setenv("WHATSAPP_API_URL", "http://localhost:8080")
+    disp_with = worker.create_default_dispatcher()
+    assert disp_with.has_channel("whatsapp")
+
+
+def test_whatsapp_end_to_end_worker_dispatch(monkeypatch):
+    """Verifies full lifecycle of enqueued WhatsApp message processed by default dispatcher."""
+    monkeypatch.setenv("WHATSAPP_API_URL", "http://test-wa:8080")
+    monkeypatch.setenv("WHATSAPP_API_KEY", "tok_123")
+    monkeypatch.setenv("WHATSAPP_INSTANCE_NAME", "inst_test")
+
+    from unittest.mock import MagicMock, patch
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    wa_rec = "+595981111222"
+    job_id = worker.enqueue(
+        wa_rec,
+        "procesar_mensaje_whatsapp",
+        {"text": "consulta estado", "push_name": "Maria"},
+        channel="whatsapp",
+    )
+    assert job_id > 0
+
+    with patch("requests.Session.post", return_value=mock_resp) as mock_post:
+        procesados = worker.procesar_trabajos_pendientes()
+        assert procesados >= 1
+
+        mock_post.assert_called_once()
+        url = mock_post.call_args[0][0]
+        json_data = mock_post.call_args[1]["json"]
+
+        assert url == "http://test-wa:8080/message/sendText/inst_test"
+        assert json_data["number"] == "595981111222"
+        assert "Maria" in json_data["text"]
+        assert "consulta estado" in json_data["text"]
+
+    conn = worker.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT estado FROM queue WHERE id = ?", (job_id,)
+        ).fetchone()
+        assert row["estado"] == "completado"
+    finally:
+        conn.close()

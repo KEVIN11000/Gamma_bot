@@ -7,6 +7,7 @@ import time
 from typing import Any, Dict, Optional, Union
 
 from adapters.notifications.telegram_adapter import TelegramNotificationAdapter
+from adapters.notifications.whatsapp_adapter import WhatsAppNotificationAdapter
 from logger_config import setup_logger
 from ports.notification_port import INotificationPort
 from services.notification_dispatcher import NotificationDispatcher
@@ -22,6 +23,26 @@ def _resolve_notifier(bot_or_notifier: Any) -> INotificationPort:
     if isinstance(bot_or_notifier, INotificationPort):
         return bot_or_notifier
     return TelegramNotificationAdapter(bot=bot_or_notifier)
+
+
+def create_default_dispatcher(bot: Any = None) -> NotificationDispatcher:
+    """Builds a configured NotificationDispatcher with auto-detected channel adapters."""
+    import os
+
+    dispatcher = NotificationDispatcher(default_channel="telegram")
+    if bot is not None:
+        dispatcher.register_adapter("telegram", _resolve_notifier(bot))
+
+    wa_api_url = os.getenv("WHATSAPP_API_URL")
+    if wa_api_url:
+        try:
+            wa_adapter = WhatsAppNotificationAdapter()
+            dispatcher.register_adapter("whatsapp", wa_adapter)
+            logger.info("Auto-registered WhatsAppNotificationAdapter in dispatcher")
+        except Exception as exc:
+            logger.warning(f"Could not auto-register WhatsApp adapter: {exc}")
+
+    return dispatcher
 
 
 def get_connection(
@@ -196,6 +217,12 @@ def despachar_trabajo(
                 rec_str, msg_pdf or "❌ No se pudo generar el archivo PDF."
             )
 
+    elif operacion == "procesar_mensaje_whatsapp":
+        text_content = payload.get("text", "")
+        push_name = payload.get("push_name") or "Usuario"
+        response_msg = f"👋 Hola {push_name}, recibí tu mensaje: '{text_content}'"
+        notifier.send_message(rec_str, response_msg)
+
     else:
         logger.warning(f"Operación desconocida en cola: '{operacion}'")
         notifier.send_message(rec_str, f"✅ Trabajo '{operacion}' completado.")
@@ -282,7 +309,8 @@ def enqueue(
 
                 if "recipient_id" in cols and "channel" in cols:
                     cursor.execute(
-                        "INSERT INTO queue (recipient_id, channel, chat_id, operacion, payload_json, estado, creado_at, next_retry) "
+                        "INSERT INTO queue (recipient_id, channel, chat_id, operacion, "
+                        "payload_json, estado, creado_at, next_retry) "
                         "VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?)",
                         (
                             recipient_str,
@@ -368,9 +396,7 @@ def procesar_trabajos_pendientes(
 
         active_dispatcher = dispatcher
         if active_dispatcher is None:
-            active_dispatcher = NotificationDispatcher(default_channel="telegram")
-            if bot is not None:
-                active_dispatcher.register_adapter("telegram", _resolve_notifier(bot))
+            active_dispatcher = create_default_dispatcher(bot=bot)
 
         for job in jobs:
             job_id = job["id"]
@@ -392,7 +418,8 @@ def procesar_trabajos_pendientes(
             target_rec = chat_id if (bot is not None and chat_id) else recipient_id
 
             logger.info(
-                f"Iniciando procesamiento job_id={job_id} operacion='{operacion}' recipient_id={recipient_id} channel={channel}"
+                f"Iniciando job_id={job_id} operacion='{operacion}' "
+                f"recipient_id={recipient_id} channel={channel}"
             )
             try:
                 payload = json.loads(payload_json)

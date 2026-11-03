@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TipoMovimiento(str, Enum):
@@ -213,3 +213,78 @@ class SyncResponse(BaseModel):
     exito: bool
     registros_sincronizados: int
     detalles: str
+
+
+class WhatsAppMessageData(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    remote_jid: str = Field(
+        ..., alias="remoteJid", description="ID del chat o número E.164"
+    )
+    from_me: bool = Field(
+        False,
+        alias="fromMe",
+        description="True si fue enviado por la propia instancia",
+    )
+    push_name: Optional[str] = Field(
+        None, alias="pushName", description="Nombre visible del usuario"
+    )
+    text: Optional[str] = Field(None, description="Cuerpo del mensaje de texto")
+    message_type: str = Field(
+        "conversation",
+        alias="messageType",
+        description="Tipo de mensaje",
+    )
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_nested_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        parsed = dict(data)
+
+        # Extract nested key if present (Evolution API structure)
+        key = parsed.get("key")
+        if isinstance(key, dict):
+            if "remote_jid" not in parsed and "remoteJid" not in parsed:
+                parsed["remote_jid"] = key.get("remoteJid") or key.get("remote_jid")
+            if "from_me" not in parsed and "fromMe" not in parsed:
+                parsed["from_me"] = (
+                    key.get("fromMe") if "fromMe" in key else key.get("from_me", False)
+                )
+
+        # Extract nested message text if present (Evolution API structure)
+        msg = parsed.get("message")
+        if isinstance(msg, dict) and not parsed.get("text"):
+            if "conversation" in msg:
+                parsed["text"] = msg["conversation"]
+            elif "extendedTextMessage" in msg and isinstance(
+                msg["extendedTextMessage"], dict
+            ):
+                parsed["text"] = msg["extendedTextMessage"].get("text")
+            elif "documentMessage" in msg and isinstance(msg["documentMessage"], dict):
+                parsed["text"] = msg["documentMessage"].get("caption")
+
+        return parsed
+
+
+class WhatsAppWebhookEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    event: str = Field(
+        ...,
+        description="Tipo de evento: messages.upsert, send.message, connection.update",
+    )
+    instance: str = Field(
+        "gamma",
+        description="Nombre de la instancia que emitió el evento",
+    )
+    data: WhatsAppMessageData
+
+
+class WhatsAppWebhookResponse(BaseModel):
+    status: str = "ok"
+    job_id: Optional[int] = None
+    ignored: bool = False
+    motivo: Optional[str] = None
