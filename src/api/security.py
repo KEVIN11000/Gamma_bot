@@ -6,6 +6,23 @@ import hmac
 import os
 from typing import Callable, Any
 from flask import request, jsonify
+from flask_limiter import Limiter
+
+
+def get_client_ip() -> str:
+    """Extrae la IP real del cliente considerando cabeceras de proxy inverso."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+
+# Instancia central de Limiter para toda la aplicación
+limiter = Limiter(
+    key_func=get_client_ip,
+    default_limits=["10 per minute"],
+    storage_uri="memory://",
+)
 
 
 def is_valid_api_key(provided_key: str | None) -> bool:

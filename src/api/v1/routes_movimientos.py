@@ -6,10 +6,11 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 
-from api.schemas import MovimientoCreate
+from api.schemas import MovimientoCreate, ParseMovementRequest, ParsedMovement
 from api.security import require_api_key
 from logger_config import setup_logger
 from logic.logic import get_now_py, safe_int
+from src.utils.nlp_parser import FinanceNLParser
 
 logger = setup_logger("routes_movimientos")
 
@@ -255,3 +256,41 @@ def ocr_comprobante() -> Any:
     except Exception as e:
         logger.error(f"Error en OCR: {e}")
         return jsonify({"error": {"code": "OCR_ERROR", "message": str(e)}}), 500
+
+
+@movimientos_bp.route("/movimientos/parse", methods=["POST"])
+@require_api_key
+def parse_movimiento() -> Any:
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Payload JSON requerido con la clave 'texto'",
+                    }
+                }
+            ),
+            422,
+        )
+
+    try:
+        req = ParseMovementRequest(**body)
+    except ValidationError as ve:
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Texto inválido o no proporcionado para el parser",
+                        "detail": ve.errors(),
+                    }
+                }
+            ),
+            422,
+        )
+
+    result = FinanceNLParser.parse(req.texto)
+    parsed_resp = ParsedMovement(**result.to_dict())
+    return jsonify(parsed_resp.model_dump()), 200

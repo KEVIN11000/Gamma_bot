@@ -288,3 +288,50 @@ class WhatsAppWebhookResponse(BaseModel):
     job_id: Optional[int] = None
     ignored: bool = False
     motivo: Optional[str] = None
+
+
+class ParseMovementRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    texto: str = Field(
+        ...,
+        min_length=2,
+        max_length=500,
+        description="Texto libre del movimiento financiero a parsear",
+    )
+
+
+class ParsedMovement(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    valido: bool = Field(
+        ...,
+        description="Indica si se extrajo un movimiento con confianza suficiente",
+    )
+    tipo_movimiento: str = Field(
+        default="Gasto",
+        description="'Gasto' o 'Ingreso'",
+    )
+    monto: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Monto numérico total extraído",
+    )
+    categoria: str = Field(
+        default="Varios",
+        description="Categoría normalizada",
+    )
+    proveedor_cliente: str = Field(
+        default="S/N",
+        description="Comercio, cliente o proveedor detectado",
+    )
+    descripcion: str = Field(
+        default="",
+        description="Descripción limpia del movimiento",
+    )
+    confianza: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Nivel de certeza de la extracción (0.0 a 1.0)",
+    )

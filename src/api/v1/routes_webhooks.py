@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 
 from api.schemas import WhatsAppWebhookEvent, WhatsAppWebhookResponse
-from api.security import require_webhook_secret
+from api.security import require_webhook_secret, limiter
 from app_queue.worker import enqueue
 from logger_config import setup_logger
 
@@ -15,9 +15,22 @@ webhooks_bp = Blueprint("webhooks_v1", __name__)
 
 
 @webhooks_bp.route("/webhooks/whatsapp", methods=["POST"])
+@limiter.limit("60 per minute")
 @require_webhook_secret
 def handle_whatsapp_webhook() -> Any:
     """Ingests incoming WhatsApp events and enqueues messages asynchronously."""
+    if request.content_length and request.content_length > 65536:
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "PAYLOAD_TOO_LARGE",
+                        "message": "El cuerpo de la petición excede el tamaño máximo permitido (64KB)",
+                    }
+                }
+            ),
+            413,
+        )
     raw_json = request.get_json(silent=True)
     if not raw_json or not isinstance(raw_json, dict):
         return (

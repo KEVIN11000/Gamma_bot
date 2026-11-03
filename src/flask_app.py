@@ -11,9 +11,8 @@ from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
 import telebot  # noqa: E402
-from flask import Flask, abort, request  # noqa: E402
-from flask_limiter import Limiter  # noqa: E402
-from flask_limiter.util import get_remote_address  # noqa: E402
+from flask import Flask, abort, request, jsonify  # noqa: E402
+from api.security import limiter  # noqa: E402
 
 import sys  # noqa: E402
 
@@ -33,11 +32,6 @@ from com.core.utils import limpiar_menus_expirados  # noqa: E402
 
 logger = setup_logger("flask")
 app = Flask(__name__)
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["10 per minute"],
-    storage_uri="memory://",
-)
 limiter.init_app(app)
 
 from api.blueprint import mobile_api  # noqa: E402
@@ -393,6 +387,23 @@ def admin_logs() -> Any:
         "lines": lines,
         "fallback_tickets": fallback_tickets,
     }, 200
+
+
+@app.errorhandler(429)
+def handle_rate_limit_exceeded(e: Any) -> Any:
+    """Manejador estandarizado de límite de tasa excedido."""
+    desc = getattr(e, "description", "Límite de peticiones excedido")
+    return (
+        jsonify(
+            {
+                "error": {
+                    "code": "TOO_MANY_REQUESTS",
+                    "message": f"{desc}. Reintente más tarde.",
+                }
+            }
+        ),
+        429,
+    )
 
 
 @app.errorhandler(Exception)

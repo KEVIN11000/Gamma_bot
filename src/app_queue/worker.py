@@ -218,10 +218,124 @@ def despachar_trabajo(
             )
 
     elif operacion == "procesar_mensaje_whatsapp":
-        text_content = payload.get("text", "")
+        text_content = payload.get("text", "").strip()
         push_name = payload.get("push_name") or "Usuario"
-        response_msg = f"👋 Hola {push_name}, recibí tu mensaje: '{text_content}'"
-        notifier.send_message(rec_str, response_msg)
+        lower_text = text_content.lower()
+
+        # 1. Comandos de saludo / ayuda básica
+        greetings = {
+            "hola",
+            "buenas",
+            "buenas tardes",
+            "buenas noches",
+            "buen dia",
+            "buenos dias",
+            "start",
+            "/start",
+            "help",
+            "ayuda",
+            "menu",
+            "/menu",
+        }
+        if lower_text in greetings:
+            response_msg = (
+                f"👋 ¡Hola {push_name}! Soy Gamma Bot.\n\n"
+                f"Puedes registrar tus finanzas enviándome mensajes en lenguaje natural:\n\n"
+                f"🔹 *Gastos:*\n"
+                f"• 'Gasto 45.000 almuerzo en Don Vito'\n"
+                f"• '15k en biggie pan y leche'\n"
+                f"• 'Pague 120.000 combustible en Petrobras'\n\n"
+                f"🔹 *Ingresos:*\n"
+                f"• 'Ingreso 2.500.000 cobro de cliente'\n"
+                f"• 'Cobré 1500000 sueldo'\n\n"
+                f"¡Escribe tu movimiento y lo registraré automáticamente!"
+            )
+            notifier.send_message(rec_str, response_msg)
+            return
+
+        # 2. Procesamiento con FinanceNLParser
+        from src.utils.nlp_parser import FinanceNLParser
+
+        parsed = FinanceNLParser.parse(text_content)
+
+        if parsed.valido and parsed.monto > 0:
+            if parsed.monto.is_integer():
+                monto_fmt = f"{int(parsed.monto):,}".replace(",", ".") + " Gs"
+            else:
+                monto_fmt = (
+                    f"{parsed.monto:,.2f}".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+
+            # Persistir en Google Sheets / repositorio contable
+            try:
+                from repositories.sheets_repository import SheetsRepository
+                from logic.logic import get_now_py
+
+                repo = SheetsRepository()
+                ws = repo._get_sheet("Libro_Diario")
+                if ws:
+                    ahora = get_now_py()
+                    total_int = int(parsed.monto)
+                    monto_gravado = round(total_int / 1.1)
+                    monto_iva = total_int - monto_gravado
+                    nueva_fila = [
+                        ahora.strftime("%d/%m/%Y"),
+                        parsed.tipo_movimiento,
+                        parsed.proveedor_cliente,
+                        "S/N",
+                        str(monto_gravado),
+                        str(monto_iva),
+                        str(total_int),
+                        parsed.categoria,
+                        "No Legal",
+                        "",
+                        ahora.strftime("%m/%Y"),
+                        "",
+                        "10%",
+                        str(monto_gravado),
+                        str(monto_iva),
+                        "10%",
+                    ]
+                    ws.append_row(nueva_fila)
+
+                try:
+                    from repositories.sheets_repository import _sheets_cache
+
+                    _sheets_cache.clear()
+                except Exception:
+                    pass
+            except Exception as e_sheet:
+                logger.warning(
+                    f"Error persistiendo movimiento en Google Sheets: {e_sheet}"
+                )
+
+            response_msg = (
+                f"✅ *{parsed.tipo_movimiento} Registrado*\n\n"
+                f"💰 *Monto:* {monto_fmt}\n"
+                f"🏷️ *Categoría:* {parsed.categoria}\n"
+                f"🏢 *Comercio/Cliente:* {parsed.proveedor_cliente}\n"
+                f"📝 *Detalle:* {parsed.descripcion}"
+            )
+            notifier.send_message(rec_str, response_msg)
+        else:
+            if any(char.isdigit() for char in text_content):
+                response_msg = (
+                    "🤔 No pude interpretar el movimiento con certeza.\n\n"
+                    "Por favor especifica el monto y el concepto. Ejemplos:\n"
+                    "• 'Gasto 50.000 combustible en Shell'\n"
+                    "• 'Ingreso 1500000 cobro de cliente'\n"
+                    "• '15k en biggie pan y leche'"
+                )
+            else:
+                response_msg = (
+                    f"👋 Hola {push_name}, recibí tu mensaje: '{text_content}'\n\n"
+                    f"Para registrar un gasto o ingreso, puedes escribir por ejemplo:\n"
+                    f"• 'Gasto 45.000 almuerzo en Don Vito'\n"
+                    f"• 'Ingreso 500k adelanto sueldo'"
+                )
+            notifier.send_message(rec_str, response_msg)
 
     else:
         logger.warning(f"Operación desconocida en cola: '{operacion}'")
