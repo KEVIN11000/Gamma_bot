@@ -335,3 +335,72 @@ class ParsedMovement(BaseModel):
         le=1.0,
         description="Nivel de certeza de la extracción (0.0 a 1.0)",
     )
+
+
+class FlujoCajaItemDiario(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    fecha: str = Field(..., description="Fecha del día proyectado (YYYY-MM-DD)")
+    saldo_inicial: float = Field(..., description="Saldo al comenzar el día")
+    ingresos: float = Field(default=0.0, description="Ingresos previstos en el día")
+    egresos_fijos: float = Field(
+        default=0.0, description="Gastos fijos / cuotas a vencer en el día"
+    )
+    egresos_variables: float = Field(
+        default=0.0, description="Estimación de gasto diario ordinario"
+    )
+    saldo_final: float = Field(..., description="Saldo al finalizar el día")
+    compromisos: list[str] = Field(
+        default_factory=list,
+        description="Nombres de obligaciones o servicios que vencen",
+    )
+
+
+class FlujoCajaResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    saldo_actual: float = Field(
+        ..., description="Saldo real actual al inicio del horizonte"
+    )
+    saldo_proyectado_30d: float = Field(..., description="Saldo esperado al día 30")
+    total_ingresos_proyectados: float = Field(
+        ..., description="Suma de ingresos esperados en 30 días"
+    )
+    total_gastos_fijos: float = Field(
+        ..., description="Suma de cuotas y servicios fijos a vencer"
+    )
+    total_gastos_variables_estimados: float = Field(
+        ..., description="Suma proyectada de gastos variables"
+    )
+    dias_criticos: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Días con saldo negativo o por debajo del umbral de reserva",
+    )
+    dias: list[FlujoCajaItemDiario] = Field(
+        default_factory=list, description="Serie temporal de 30 días"
+    )
+
+
+class DispositivoCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    device_token: str = Field(
+        ...,
+        min_length=10,
+        max_length=500,
+        description="Token push único del dispositivo",
+    )
+    platform: str = Field(
+        default="android",
+        pattern="^(android|ios|web)$",
+        description="Plataforma del cliente",
+    )
+    alias_usuario: Optional[str] = Field(default="default", max_length=100)
+
+
+class DispositivoResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str = "ok"
+    registrado: bool = True
+    dispositivos_activos: int = 1

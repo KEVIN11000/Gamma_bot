@@ -188,14 +188,17 @@ def create_movimiento() -> Any:
     alerta_presupuesto = None
     if req_obj.movimiento.value.lower() == "gasto":
         try:
-            from logic.financiero import evaluar_techo_presupuestario
+            from services.presupuesto_service import (
+                despachar_alerta_presupuestaria_proactiva,
+            )
 
-            alerta = evaluar_techo_presupuestario(
+            res_alerta = despachar_alerta_presupuestaria_proactiva(
                 categoria=req_obj.categoria,
                 monto_nuevo=float(total),
             )
-            if alerta.get("alerta_emitida"):
-                alerta_presupuesto = alerta
+            alerta_dict = res_alerta.get("alerta")
+            if alerta_dict and alerta_dict.get("alerta_emitida"):
+                alerta_presupuesto = alerta_dict
         except Exception as e_alerta:
             logger.debug(f"Error evaluando alerta de presupuesto: {e_alerta}")
 

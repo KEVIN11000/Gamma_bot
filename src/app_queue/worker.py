@@ -42,6 +42,15 @@ def create_default_dispatcher(bot: Any = None) -> NotificationDispatcher:
         except Exception as exc:
             logger.warning(f"Could not auto-register WhatsApp adapter: {exc}")
 
+    try:
+        from adapters.notifications.push_adapter import PushNotificationAdapter
+
+        push_adapter = PushNotificationAdapter()
+        dispatcher.register_adapter("push", push_adapter)
+        logger.info("Auto-registered PushNotificationAdapter in dispatcher")
+    except Exception as exc:
+        logger.warning(f"Could not auto-register Push adapter: {exc}")
+
     return dispatcher
 
 
@@ -319,6 +328,23 @@ def despachar_trabajo(
                 f"📝 *Detalle:* {parsed.descripcion}"
             )
             notifier.send_message(rec_str, response_msg)
+
+            if parsed.tipo_movimiento.lower() == "gasto":
+                try:
+                    from services.presupuesto_service import (
+                        despachar_alerta_presupuestaria_proactiva,
+                    )
+
+                    despachar_alerta_presupuestaria_proactiva(
+                        categoria=parsed.categoria,
+                        monto_nuevo=float(parsed.monto),
+                        recipient_id=rec_str,
+                        channel="whatsapp",
+                    )
+                except Exception as e_al:
+                    logger.debug(
+                        f"Error evaluando alerta presupuestaria WhatsApp: {e_al}"
+                    )
         else:
             if any(char.isdigit() for char in text_content):
                 response_msg = (
@@ -336,6 +362,15 @@ def despachar_trabajo(
                     f"• 'Ingreso 500k adelanto sueldo'"
                 )
             notifier.send_message(rec_str, response_msg)
+
+    elif operacion == "enviar_notificacion":
+        mensaje = payload.get("mensaje", "")
+        titulo = payload.get("titulo")
+        parse_mode = payload.get("parse_mode", "Markdown")
+        extra_kwargs: Dict[str, Any] = {}
+        if titulo:
+            extra_kwargs["title"] = titulo
+        notifier.send_message(rec_str, mensaje, parse_mode=parse_mode, **extra_kwargs)
 
     else:
         logger.warning(f"Operación desconocida en cola: '{operacion}'")

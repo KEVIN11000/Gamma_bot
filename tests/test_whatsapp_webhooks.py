@@ -36,14 +36,14 @@ def clean_webhook_queue():
     conn = worker.get_connection()
     try:
         with conn:
-            conn.execute("DELETE FROM queue WHERE channel = 'whatsapp'")
+            conn.execute("DELETE FROM queue")
     finally:
         conn.close()
     yield
     conn = worker.get_connection()
     try:
         with conn:
-            conn.execute("DELETE FROM queue WHERE channel = 'whatsapp'")
+            conn.execute("DELETE FROM queue")
     finally:
         conn.close()
 
