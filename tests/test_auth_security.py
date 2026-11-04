@@ -108,6 +108,42 @@ class TestAuthSecurity(unittest.TestCase):
             resp = client.get("/cron/clima", headers={"X-Cron-Secret": "my_secret"})
         self.assertNotEqual(resp.status_code, 403)
 
+    def test_api_key_fail_closed_in_production(self):
+        """En producción, is_valid_api_key nunca debe aceptar fallbacks como 'dev-key'."""
+        from api.security import is_valid_api_key
+
+        with patch.dict(os.environ, {"FLASK_ENV": "production"}, clear=False):
+            os.environ.pop("X_API_KEY", None)
+            os.environ.pop("GAMMA_MOBILE_API_KEY", None)
+            self.assertFalse(is_valid_api_key("dev-key"))
+            self.assertFalse(is_valid_api_key("cualquier-clave"))
+
+    def test_webhook_secret_fail_closed_in_production(self):
+        """En producción, is_valid_webhook_secret nunca debe aceptar fallbacks como 'dev-webhook-secret'."""
+        from api.security import is_valid_webhook_secret
+
+        with patch.dict(os.environ, {"FLASK_ENV": "production"}, clear=False):
+            os.environ.pop("WHATSAPP_WEBHOOK_SECRET", None)
+            os.environ.pop("WEBHOOK_SECRET", None)
+            os.environ.pop("X_API_KEY", None)
+            self.assertFalse(is_valid_webhook_secret("dev-webhook-secret"))
+
+    def test_validate_production_config_requires_api_and_webhook_keys(self):
+        """validate_production_config debe abortar si faltan X_API_KEY o WHATSAPP_WEBHOOK_SECRET."""
+        from config import validate_production_config
+
+        prod_env = {
+            "FLASK_ENV": "production",
+            "TOKEN": "token_123",
+            "GITHUB_WEBHOOK_SECRET": "gh_secret",
+            "CRON_SECRET": "cron_secret",
+        }
+        with patch.dict(os.environ, prod_env, clear=True):
+            with self.assertRaises(RuntimeError) as ctx:
+                validate_production_config()
+            self.assertIn("X_API_KEY", str(ctx.exception))
+            self.assertIn("WHATSAPP_WEBHOOK_SECRET", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -174,7 +174,11 @@ class GitHubWebhookService:
         """Valida la firma HMAC-SHA256 enviada por GitHub en el encabezado X-Hub-Signature-256."""
         secret_to_use = secret if secret is not None else cls.get_webhook_secret()
         if not secret_to_use:
-            # Modo permisivo si no hay secret configurado en entorno local / desarrollo
+            from config import is_production
+
+            if is_production():
+                return False
+            # Modo permisivo solo si no hay secret configurado en entorno local / desarrollo
             return True
 
         if not signature_header or not signature_header.startswith("sha256="):

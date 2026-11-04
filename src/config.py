@@ -30,7 +30,7 @@ FLASK_ENV: str = os.getenv("FLASK_ENV", "development").lower()
 
 def is_production() -> bool:
     """Return True when the app is running in a production‑like environment."""
-    return FLASK_ENV == "production"
+    return os.getenv("FLASK_ENV", "development").lower() == "production"
 
 
 def mask_chat_id(chat_id: int) -> str:
@@ -50,6 +50,10 @@ def validate_production_config() -> None:
         missing.append("CRON_SECRET")
     if not TOKEN:
         missing.append("TOKEN")
+    if not (os.getenv("X_API_KEY") or os.getenv("GAMMA_MOBILE_API_KEY")):
+        missing.append("X_API_KEY")
+    if not os.getenv("WHATSAPP_WEBHOOK_SECRET"):
+        missing.append("WHATSAPP_WEBHOOK_SECRET")
     if missing:
         raise RuntimeError(
             f"Variables de entorno requeridas en producción: {', '.join(missing)}"

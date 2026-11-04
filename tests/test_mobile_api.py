@@ -847,7 +847,12 @@ def test_cierres_and_pdf(client):
 
     # Descarga estática y verificación de integridad PDF binaria (Fix TCK-004)
     filename = pdf_url.split("/")[-1]
-    res_pdf = client.get(f"/api/v1/cierres/reportes/{filename}")
+    # 401 si no tiene API key
+    res_pdf_unauth = client.get(f"/api/v1/cierres/reportes/{filename}")
+    assert res_pdf_unauth.status_code == 401
+
+    # 200 con API key válida
+    res_pdf = client.get(f"/api/v1/cierres/reportes/{filename}", headers=headers)
     assert res_pdf.status_code == 200
     assert res_pdf.content_type == "application/pdf"
     assert res_pdf.data.startswith(b"%PDF-1.")

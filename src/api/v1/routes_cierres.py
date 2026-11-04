@@ -432,6 +432,7 @@ def ejecutar_cierre() -> Any:
 
 
 @cierres_bp.route("/cierres/reportes/<path:filename>", methods=["GET"])
+@require_api_key
 def descargar_reporte_pdf(filename: str) -> Any:
     reportes_dir = _get_reportes_dir()
     return send_from_directory(reportes_dir, filename, mimetype="application/pdf")
