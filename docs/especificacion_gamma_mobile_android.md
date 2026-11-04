@@ -513,3 +513,150 @@ app/src/main/java/com/kevin/gammamobile/
   1. Job de backend: ejecución de `flake8` y `pytest` para la API y `logic/logic.py`.  
   2. Job de Android: compilación de `./gradlew assembleDebug` y ejecución de pruebas unitarias locales.  
 - **Criterio de Aceptación:** Workflow completo en verde ante cada push a la rama `Main-stable`.
+
+
+---
+
+## 8. Actualización Backend v2.0.0: Nuevas Capacidades y Contratos Móviles
+
+### 8.1 Resumen de la Versión 2.0.0 para Gamma Mobile
+
+El Backend v2.0.0 incorpora un ecosistema omnicanal, motor algorítmico de proyección a 30 días, parser conversacional determinista y receptor de tokens push:
+
+1. **Flujo de Caja Proyectado a 30 Días:**
+   - Endpoint: `GET /api/v1/proyecciones/flujo-caja`
+   - Parámetros opcionales: `saldo_inicial` (Double), `gasto_diario` (Double), `umbral_reserva` (Double).
+   - Retorna serie diaria temporal con imputación de compromisos bancarios de `Obligaciones_Maestro`, consumo variable diario proyectado, ingresos previstos y marcación de días críticos (`saldo_final < 0` o bajo reserva).
+
+2. **Parser Conversacional de Gastos / Ingresos en Lenguaje Natural (NLP):**
+   - Endpoint: `POST /api/v1/movimientos/parse`
+   - Payload: `{"texto": "Gasto 50.000 combustible en Shell"}`
+   - Latencia: $< 5$ ms (sin dependencia de cuotas de LLM externo). Extrae montos (separadores paraguayos, multiplicadores `k`/`M`, divisas), tipo de movimiento, categoría canónica y comercio.
+
+3. **Registro de Tokens Push para Notificaciones Móviles:**
+   - Endpoint: `POST /api/v1/dispositivos/registrar`
+   - Payload: `{"device_token": "<FCM_TOKEN>", "platform": "android", "alias_usuario": "Kevin"}`
+   - Permite que el backend envíe alertas presupuestarias críticas y recordatorios contables directamente a la barra de estado de Gamma Mobile.
+
+4. **Tarjeta de Clima y Alerta de Paraguas:**
+   - Endpoint: `GET /api/v1/clima`
+   - Retorna temperatura actual, mínima, máxima, condición y booleano `alerta_paraguas` (activado si la probabilidad de lluvia es $\ge 35\%$).
+
+### 8.2 Modelos de Datos en Kotlin (Jetpack Compose / Retrofit)
+
+```kotlin
+package com.gamma.mobile.data.model
+
+import com.google.gson.annotations.SerializedName
+
+// 1. Proyección de Flujo de Caja
+data class FlujoCajaResponse(
+    @SerializedName("saldo_actual") val saldoActual: Double,
+    @SerializedName("saldo_proyectado_30d") val saldoProyectado30d: Double,
+    @SerializedName("total_ingresos_proyectados") val totalIngresosProyectados: Double,
+    @SerializedName("total_gastos_fijos") val totalGastosFijos: Double,
+    @SerializedName("total_gastos_variables_estimados") val totalGastosVariablesEstimados: Double,
+    @SerializedName("dias_criticos") val diasCriticos: List<DiaCriticoDto>,
+    @SerializedName("dias") val dias: List<FlujoCajaItemDiarioDto>
+)
+
+data class FlujoCajaItemDiarioDto(
+    val fecha: String,
+    @SerializedName("saldo_inicial") val saldoInicial: Double,
+    val ingresos: Double,
+    @SerializedName("egresos_fijos") val egresosFijos: Double,
+    @SerializedName("egresos_variables") val egresosVariables: Double,
+    @SerializedName("saldo_final") val saldoFinal: Double,
+    val compromisos: List<String>
+)
+
+data class DiaCriticoDto(
+    val fecha: String,
+    val saldo: Double,
+    val motivo: String
+)
+
+// 2. Parser Financiero NLP
+data class ParseMovementRequest(
+    val texto: String
+)
+
+data class ParsedMovementDto(
+    val valido: Boolean,
+    val monto: Double,
+    val moneda: String,
+    @SerializedName("tipo_movimiento") val tipoMovimiento: String,
+    val categoria: String,
+    @SerializedName("proveedor_cliente") val proveedorCliente: String,
+    val descripcion: String,
+    val confianza: Double
+)
+
+// 3. Registro de Dispositivo Push
+data class DispositivoCreateDto(
+    @SerializedName("device_token") val deviceToken: String,
+    val platform: String = "android",
+    @SerializedName("alias_usuario") val aliasUsuario: String = "default"
+)
+
+data class DispositivoResponseDto(
+    val status: String,
+    val registrado: Boolean,
+    @SerializedName("dispositivos_activos") val dispositivosActivos: Int
+)
+
+// 4. Clima y Paraguas
+data class ClimaResponseDto(
+    @SerializedName("temperatura_actual") val temperaturaActual: Double,
+    @SerializedName("temperatura_min") val temperaturaMin: Double,
+    @SerializedName("temperatura_max") val temperaturaMax: Double,
+    val condicion: String,
+    @SerializedName("alerta_paraguas") val alertaParaguas: ClimaAlertaParaguasDto,
+    @SerializedName("actualizado_at") val actualizadoAt: String
+)
+
+data class ClimaAlertaParaguasDto(
+    val activar: Boolean,
+    @SerializedName("probabilidad_lluvia") val probabilidadLluvia: Int,
+    val motivo: String
+)
+```
+
+### 8.3 Interfaz de Servicio Retrofit para Android
+
+```kotlin
+package com.gamma.mobile.data.remote
+
+import com.gamma.mobile.data.model.*
+import retrofit2.Response
+import retrofit2.http.*
+
+interface GammaApiService {
+
+    @GET("api/v1/proyecciones/flujo-caja")
+    suspend fun getFlujoCaja(
+        @Query("saldo_inicial") saldoInicial: Double? = null,
+        @Query("gasto_diario") gastoDiario: Double? = null,
+        @Query("umbral_reserva") umbralReserva: Double? = null
+    ): Response<FlujoCajaResponse>
+
+    @POST("api/v1/movimientos/parse")
+    suspend fun parseMovimiento(
+        @Body request: ParseMovementRequest
+    ): Response<ParsedMovementDto>
+
+    @POST("api/v1/dispositivos/registrar")
+    suspend fun registrarDispositivo(
+        @Body request: DispositivoCreateDto
+    ): Response<DispositivoResponseDto>
+
+    @GET("api/v1/clima")
+    suspend fun getClima(): Response<ClimaResponseDto>
+}
+```
+
+### 8.4 Políticas de Resiliencia en Cliente Android
+
+1. **Rate Limiting (`HTTP 429`):** Interceptor OkHttp que lea la cabecera `Retry-After` (segundos) y posponga reintentos automáticos para evitar saturación.
+2. **Tamaño de Carga (`HTTP 413`):** Limitar adjuntos o imágenes a $< 64$ KB antes de enviarlas por la API REST.
+3. **Idempotencia:** Enviar encabezado `X-Client-Id: <UUID>` en mutaciones críticas (`/movimientos`, `/asistencia/marcar`) para prevenir duplicados ante reconexiones de red móvil.

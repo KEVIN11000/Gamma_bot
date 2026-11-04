@@ -5,20 +5,32 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
-## [2.0.0] - 2026-11-02
+## [2.0.0] - 2026-11-04
 
 ### Añadido
-* **Arquitectura Modular API REST (`src/api/v1/*`):**
-  * Descomposición integral de `src/api/blueprint.py` en 9 submódulos cohesivos (`routes_health.py`, `routes_dashboard.py`, `routes_movimientos.py`, `routes_avisos.py`, `routes_obligaciones.py`, `routes_asistencia.py`, `routes_cierres.py`, `routes_clima.py`, `routes_soporte.py`) orquestados en el Blueprint unificado `v1_bp`.
-  * Preservación del alias retrocompatible `mobile_api = v1_bp` en `src/api/blueprint.py` y `src/api/__init__.py`.
-* **Capa de Persistencia Local SQLite con Soporte WAL (`src/repositories/local_repository.py`):**
-  * Tablas `asistencia_laboral`, `asistencia_materias` y `configuraciones_sistema` con timeout de 15s y latencia < 15ms.
-* **DTO Puro `MarcacionResult` (`src/logic/constants.py`):**
-  * Eliminado el parsing por expresiones regulares sobre emojis; la API y los bots consumen directamente objetos tipados con soporte de corte automático a las 17:00 hs.
-* **Unificación de Lógica de Deudas y Abonos (`src/logic/financiero.py`):**
-  * Métodos `alta_obligacion`, `create_debt`, `abonar_obligacion` y `register_payment` homogeneizados con `Categoría = "Préstamos / Deudas"` y `Comprobante = "Abono Cuota"`.
-* **Endpoint Climático para Gamma Mobile (`GET /api/v1/clima`):**
-  * Consulta a Open-Meteo para Asunción con alerta de paraguas contextualizada (umbral $\ge 35\%$) y resiliencia con fallback seguro ante fallas de red.
+* **Motor Proyector de Flujo de Caja a 30 Días (Fase 5):**
+  * Implementado `CashFlowProjector` (`src/services/cashflow_service.py`) con simulación temporal diaria, imputación de compromisos bancarios de `Obligaciones_Maestro`, proyección de consumo variable diario y detección proactiva de días críticos con saldo negativo o iliquidez.
+  * Nuevo endpoint REST `GET /api/v1/proyecciones/flujo-caja` en `src/api/v1/routes_proyecciones.py` con DTOs `FlujoCajaResponse` y `FlujoCajaItemDiario`.
+* **Alertas Presupuestarias Proactivas Multi-Canal con Cooldown (Fase 5):**
+  * Función `despachar_alerta_presupuestaria_proactiva` (`src/services/presupuesto_service.py`) con encolado asíncrono y control de cooldown en memoria de 24h por categoría y destinatario para Telegram y WhatsApp.
+* **Adaptador Push y Registro de Dispositivos Gamma Mobile (Fase 5):**
+  * `PushNotificationAdapter` implementando `INotificationPort` con persistencia atómica en `data/dispositivos_push.json`, auto-registro de canal push en el dispatcher y endpoints REST `POST /api/v1/dispositivos/registrar`, `GET /api/v1/dispositivos` y `POST /api/v1/dispositivos/notificar`.
+* **Parser Financiero Conversacional de Lenguaje Natural (Fase 4):**
+  * Motor determinista `FinanceNLParser` (`src/utils/nlp_parser.py`) con regex de alto rendimiento para extraer montos (separadores paraguayos, multiplicadores `k`/`M`, divisas), tipos de movimiento, categorías y comercios reconocidos en <5 ms.
+  * Endpoint REST `POST /api/v1/movimientos/parse` para integración directa con interfaces móviles.
+  * Integración en el worker para registro automático de finanzas desde mensajes libres de WhatsApp con confirmaciones enriquecidas.
+* **Hardening y Rate Limiting en Webhooks (Fase 4):**
+  * Centralización de `limiter` en `src/api/security.py` con resolución segura de proxies (`X-Forwarded-For`), límite de 60 req/min y límite de carga útil de 64 KB (`HTTP 413`) en `POST /api/v1/webhooks/whatsapp`.
+* **Canal WhatsApp y Webhooks Asíncronos Desacoplados (Fase 3):**
+  * `WhatsAppNotificationAdapter` sobre API REST de WhatsApp / Evolution API, saneamiento telefónico en formato canónico E.164 (`src/utils/phone_utils.py`) y encolado desacoplado en `cola.db`.
+* **Despachador Omnicanal Agnóstico y Migración de Cola (Fase 2):**
+  * Interfaz canónica `INotificationPort` (`src/ports/notification_port.py`) y orquestador `NotificationDispatcher` (`src/services/notification_dispatcher.py`).
+  * Migración no destructiva de `cola.db` con soporte de `recipient_id` alfanumérico y columna `channel`.
+* **Arquitectura Modular API REST y Persistencia Local Dual (Fase 1):**
+  * Descomposición integral de la API REST en submódulos bajo `src/api/v1/*` orquestados en `v1_bp`.
+  * Capa de persistencia local SQLite (`src/repositories/local_repository.py`) con modo WAL y latencia < 15ms.
+  * Endpoint climático para Asunción con alerta preventiva de lluvia (`GET /api/v1/clima`).
+  * DTO puro `MarcacionResult` y homogenización de asientos contables de amortización de pasivos en `src/logic/financiero.py`.
 
 ---
 
