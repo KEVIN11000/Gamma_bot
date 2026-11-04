@@ -1,22 +1,29 @@
-from __future__ import annotations  # noqa: E402
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import sys
+
+# Asegurar que el directorio src esté en sys.path antes de cualquier import de módulos internos
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
 import hashlib  # noqa: E402
 import hmac  # noqa: E402
 import json  # noqa: E402
-import os  # noqa: E402
 import subprocess  # noqa: E402
 import time  # noqa: E402
 import traceback  # noqa: E402
-from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
+from flask import Flask, abort, jsonify, request  # noqa: E402
 import telebot  # noqa: E402
-from flask import Flask, abort, request, jsonify  # noqa: E402
-from api.security import limiter  # noqa: E402
 
-import sys  # noqa: E402
-
-sys.path.insert(0, os.path.dirname(__file__))
+try:
+    from api.security import limiter  # noqa: E402
+except ModuleNotFoundError:
+    from src.api.security import limiter  # noqa: E402
 
 import config  # noqa: E402
 
@@ -34,7 +41,10 @@ logger = setup_logger("flask")
 app = Flask(__name__)
 limiter.init_app(app)
 
-from api.blueprint import mobile_api  # noqa: E402
+try:
+    from api.blueprint import mobile_api  # noqa: E402
+except ModuleNotFoundError:
+    from src.api.blueprint import mobile_api  # noqa: E402
 
 app.register_blueprint(mobile_api, url_prefix="/api/v1")
 
