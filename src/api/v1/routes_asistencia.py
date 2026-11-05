@@ -138,7 +138,7 @@ def marcar_asistencia() -> Any:
     if modo not in ("normal", "directo"):
         modo = "normal"
 
-    spreadsheet_id = os.getenv("LIBRO_CONTABLE_ID") or os.getenv("SPREADSHEET_ID") or ""
+    spreadsheet_id = os.getenv("SPREADSHEET_ID") or ""
     if not spreadsheet_id:
         return (
             jsonify(
