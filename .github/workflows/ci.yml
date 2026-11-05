@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -25,7 +25,7 @@ jobs:
       - name: Lint with black
         run: black --check .
       - name: Lint with flake8
-        run: flake8 docs scripts src tests --max-line-length=88 --extend-ignore=E501,W293,F821,E402,E203,F401,W503
+        run: flake8 docs scripts src tests --show-source --statistics
       - name: Type check with mypy
         run: mypy docs scripts src tests --no-site-packages
 
@@ -36,7 +36,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -55,7 +55,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
