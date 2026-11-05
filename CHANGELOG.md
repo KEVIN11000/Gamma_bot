@@ -5,6 +5,21 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [2.1.1] - 2026-11-05
+
+### Corregido
+* **Aislamiento de Spreadsheets y Remediación de SyncService (`src/services/sync_service.py`, `src/api/v1/routes_asistencia.py`):**
+  * **Problema resuelto:** Eliminado el fallback erróneo `LIBRO_CONTABLE_ID` de `SyncService` y del endpoint `/asistencia/marcar`, que provocaba la creación indebida de pestañas laborales en el libro contable. Se garantiza el uso exclusivo de `SPREADSHEET_ID` para asistencia laboral y `SPREADSHEET_MATERIAS_ID` para cátedras.
+  * **Búsqueda secuencial determinista:** Eliminado el uso de `append_row` (que saltaba a la fila 61); se escanea el rango operativo de filas 2 a 40 respetando la fórmula dinámica `=SI(...)` en Columna G y aplicando `value_input_option="USER_ENTERED"`.
+  * **Auto-sincronización defensiva post-deploy:** Hook en `src/flask_app.py:deploy()` para conciliar automáticamente las jornadas con `forzar=True`.
+  * **Supresión de error 400 en soporte Telegram:** Manejo seguro de `ApiTelegramException` por "message is not modified" en `src/com/handlers/soporte.py`.
+
+### Añadido
+* **Endpoint de Rectificación de Jornada Laboral (`src/api/v1/routes_asistencia.py`, `src/api/schemas.py`):**
+  * Nuevo endpoint autenticado `PUT /api/v1/asistencia/jornadas/<fecha>` para actualizar horarios históricos o del día en SQLite (`gamma_local.db`) con recálculo automático de `horas_decimal` y volcado inmediato write-through a Google Sheets, garantizando reportes e impresiones de fin de mes consistentes.
+
+---
+
 ## [2.1.0] - 2026-11-05
 
 ### Corregido
