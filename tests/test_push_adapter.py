@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Generator
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -30,7 +31,9 @@ def tmp_storage(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def push_adapter(tmp_storage: Path) -> PushNotificationAdapter:
+def push_adapter(
+    tmp_storage: Path,
+) -> Generator[PushNotificationAdapter, None, None]:
     """Provides a clean PushNotificationAdapter using isolated tmp storage."""
     adapter = PushNotificationAdapter(storage_path=tmp_storage)
     set_push_adapter(adapter)

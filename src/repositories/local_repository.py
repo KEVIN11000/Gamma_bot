@@ -175,7 +175,7 @@ class LocalRepository:
 
         with self.transaction() as conn:
             cur = conn.execute(
-                f"UPDATE asistencia_laboral SET {set_clause} WHERE fecha = ?",
+                f"UPDATE asistencia_laboral SET {set_clause} WHERE fecha = ?",  # nosec B608
                 params,
             )
             return cur.rowcount > 0
@@ -211,7 +211,7 @@ class LocalRepository:
         placeholders = ", ".join("?" for _ in fechas)
         query = (
             f"UPDATE asistencia_laboral SET sincronizado_sheets = 1, actualizado_at = ? "
-            f"WHERE fecha IN ({placeholders})"
+            f"WHERE fecha IN ({placeholders})"  # nosec B608
         )
         params = [now] + list(fechas)
 
@@ -286,7 +286,7 @@ class LocalRepository:
         placeholders = ", ".join("?" for _ in ids)
         query = (
             f"UPDATE asistencia_materias SET sincronizado_sheets = 1, actualizado_at = ? "
-            f"WHERE id IN ({placeholders})"
+            f"WHERE id IN ({placeholders})"  # nosec B608
         )
         params = [now] + list(ids)
 

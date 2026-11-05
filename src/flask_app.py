@@ -23,7 +23,7 @@ import telebot  # noqa: E402
 try:
     from api.security import limiter  # noqa: E402
 except ModuleNotFoundError:
-    from src.api.security import limiter  # noqa: E402
+    from src.api.security import limiter  # type: ignore[no-redef]  # noqa: E402
 
 import config  # noqa: E402
 
@@ -44,7 +44,7 @@ limiter.init_app(app)
 try:
     from api.blueprint import mobile_api  # noqa: E402
 except ModuleNotFoundError:
-    from src.api.blueprint import mobile_api  # noqa: E402
+    from src.api.blueprint import mobile_api  # type: ignore[no-redef]  # noqa: E402
 
 app.register_blueprint(mobile_api, url_prefix="/api/v1")
 

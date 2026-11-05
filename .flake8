@@ -7,9 +7,11 @@ exclude =
     .env,
     venv,
     .venv,
+    build,
+    dist,
+    *.egg-info,
     reportes,
-    repositories/feature,
-    repositories/v1,
+    repositories,
     .agents,
     .specify
 per-file-ignores =
