@@ -86,7 +86,7 @@ def test_dispatcher_send_document_routes_to_channel():
 
     ok = dispatcher.send_document(
         recipient_id="user_1",
-        document_path="/tmp/balance.pdf",
+        document_path="/var/reports/balance.pdf",
         caption="Balance Mensual",
         visible_file_name="balance.pdf",
     )
@@ -94,7 +94,7 @@ def test_dispatcher_send_document_routes_to_channel():
     assert len(telegram_mock.sent_documents) == 1
     doc = telegram_mock.sent_documents[0]
     assert doc.recipient_id == "user_1"
-    assert doc.document_path == "/tmp/balance.pdf"
+    assert doc.document_path == "/var/reports/balance.pdf"
     assert doc.caption == "Balance Mensual"
     assert doc.visible_file_name == "balance.pdf"
 

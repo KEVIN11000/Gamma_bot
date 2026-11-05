@@ -159,7 +159,7 @@ def test_push_adapter_send_message_broadcast(
 def test_push_adapter_send_document(push_adapter: PushNotificationAdapter) -> None:
     success = push_adapter.send_document(
         recipient_id="token-doc-123456",
-        document_path="/tmp/reporte_mensual.pdf",
+        document_path="/var/reports/reporte_mensual.pdf",
         caption="Aquí está tu reporte",
         visible_file_name="reporte.pdf",
     )
@@ -167,7 +167,7 @@ def test_push_adapter_send_document(push_adapter: PushNotificationAdapter) -> No
     assert len(push_adapter.sent_notifications) == 1
     record = push_adapter.sent_notifications[0]
     assert "reporte" in record.message
-    assert record.extra_data["document_path"] == "/tmp/reporte_mensual.pdf"
+    assert record.extra_data["document_path"] == "/var/reports/reporte_mensual.pdf"
     assert record.extra_data["filename"] == "reporte.pdf"
 
 

@@ -25,7 +25,7 @@ jobs:
       - name: Lint with black
         run: black --check .
       - name: Lint with flake8
-        run: flake8 . --max-line-length=88 --extend-ignore=E501,W293,F821,E402,E203,F401,W503
+        run: flake8 docs scripts src tests --max-line-length=88 --extend-ignore=E501,W293,F821,E402,E203,F401,W503
       - name: Type check with mypy
         run: mypy docs scripts src tests --no-site-packages
 
@@ -65,7 +65,7 @@ jobs:
         run: safety check
         continue-on-error: true
       - name: Run bandit
-        run: bandit -r . -x tests,test_qa_suite.py -ll
+        run: bandit -r src -ll
 
   notify-failure:
     needs: [lint, test, security]

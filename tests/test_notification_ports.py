@@ -49,7 +49,7 @@ def test_mock_adapter_send_document():
 
     ok = adapter.send_document(
         recipient_id="99999",
-        document_path="/tmp/report.pdf",
+        document_path="/var/reports/report.pdf",
         caption="Reporte Financiero",
         visible_file_name="resumen.pdf",
         timeout=30,
@@ -59,7 +59,7 @@ def test_mock_adapter_send_document():
 
     record = adapter.sent_documents[0]
     assert record.recipient_id == "99999"
-    assert record.document_path == "/tmp/report.pdf"
+    assert record.document_path == "/var/reports/report.pdf"
     assert record.caption == "Reporte Financiero"
     assert record.visible_file_name == "resumen.pdf"
     assert record.extra == {"timeout": 30}
