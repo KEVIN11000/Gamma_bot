@@ -59,6 +59,10 @@ class ObligacionCreate(BaseModel):
     fecha_inicio: Optional[str] = None
     estado: str = "Activo"
     observaciones: Optional[str] = ""
+    es_gasto_fijo: bool = Field(
+        default=True,
+        description="True si la cuota se considera un gasto fijo estructural para el margen libre",
+    )
 
 
 class ObligacionUpdate(BaseModel):
@@ -74,6 +78,25 @@ class ObligacionUpdate(BaseModel):
     fecha_inicio: Optional[str] = None
     estado: Optional[str] = None
     observaciones: Optional[str] = None
+    es_gasto_fijo: Optional[bool] = None
+
+
+class ObligacionResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id_obligacion: str
+    tipo: str = "Deuda"
+    nombre: str
+    entidad: Optional[str] = "General"
+    monto_inicial: int
+    saldo_actual: int
+    estado: str = "Activo"
+    cuota_referencia_gs: int = 0
+    dia_vencimiento: Optional[int] = 0
+    cuotas_totales: Optional[int] = 1
+    cuotas_restantes: Optional[int] = 1
+    es_gasto_fijo: bool = True
+    observaciones: Optional[str] = ""
 
 
 class AbonoRequest(BaseModel):

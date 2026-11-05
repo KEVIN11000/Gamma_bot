@@ -575,24 +575,39 @@ import uuid  # noqa: E402
 
 
 def calcular_margen_de_ataque() -> int:
-    repo = SheetsRepository()
-    ingresos_base, gastos_fijos = repo.obtener_presupuesto_base_completo()
-    deudas_activas = [
-        d
-        for d in repo.get_obligaciones_activas()
-        if str(d.get("Estado", "")).strip().lower() not in ("pausado", "pausada")
-    ]
+    try:
+        repo = SheetsRepository()
+        ingresos_base, gastos_fijos = repo.obtener_presupuesto_base_completo()
 
-    suma_cuotas = sum(safe_int(d.get("Cuota_Referencia_Gs", 0)) for d in deudas_activas)
+        # Fallback dinámico si Presupuesto_Base no tiene ingresos registrados (TCK-004)
+        if ingresos_base <= 0:
+            salario_fallback = repo.obtener_ultimo_salario_libro_diario()
+            if salario_fallback > 0:
+                ingresos_base = salario_fallback
 
-    # Fallback dinámico si Presupuesto_Base no tiene ingresos registrados (TCK-004)
-    if ingresos_base <= 0:
-        salario_fallback = repo.obtener_ultimo_salario_libro_diario()
-        if salario_fallback > 0:
-            ingresos_base = salario_fallback
+        deudas_activas = repo.get_obligaciones_activas()
+        deudas_fijas = []
+        for d in deudas_activas:
+            estado = str(d.get("Estado", "")).strip().lower()
+            if estado in ("pausado", "pausada", "cancelado", "pagado", "inactivo"):
+                continue
 
-    margen = ingresos_base - gastos_fijos - suma_cuotas
-    return margen if margen > 0 else 0
+            raw_fijo = str(d.get("Es_Gasto_Fijo", "1")).strip().lower()
+            es_fijo = (
+                raw_fijo in ("1", "true", "si", "yes", "t") if raw_fijo != "" else True
+            )
+            if es_fijo:
+                deudas_fijas.append(d)
+
+        suma_cuotas = sum(
+            safe_int(d.get("Cuota_Referencia_Gs", 0)) for d in deudas_fijas
+        )
+
+        margen = ingresos_base - gastos_fijos - suma_cuotas
+        return max(0, margen)
+    except Exception as e:
+        logger.warning(f"Error en calcular_margen_de_ataque: {e}")
+        return 0
 
 
 def proyectar_cola_deudas(criterio="prioridad") -> dict:
@@ -870,6 +885,7 @@ def alta_obligacion(
     crear_evento_calendar: bool = False,
     debt_id: str | None = None,
     repo: Any | None = None,
+    es_gasto_fijo: bool = True,
 ) -> dict[str, Any]:
     """Crea una obligación en Obligaciones_Maestro con esquema unificado y estandarizado."""
     if repo is None:
@@ -926,6 +942,7 @@ def alta_obligacion(
         "Cuotas_Totales": cuotas_totales,
         "Cuotas_Restantes": cuotas_restantes,
         "Orden_Prioridad": orden_prioridad,
+        "Es_Gasto_Fijo": 1 if es_gasto_fijo else 0,
     }
     repo.insert_obligacion(nueva_obligacion)
     return nueva_obligacion

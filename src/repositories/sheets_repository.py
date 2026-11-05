@@ -200,6 +200,14 @@ class SheetsRepository:
                 )
                 if estado_idx > 0:
                     ws.update_cell(idx, estado_idx, estado)
+                    # Alternancia automática de Es_Gasto_Fijo al pausar/activar
+                    if "es_gasto_fijo" in keys_lower:
+                        fijo_idx = keys_lower.index("es_gasto_fijo") + 1
+                        est_lower = estado.strip().lower()
+                        if est_lower in ("pausado", "pausada"):
+                            ws.update_cell(idx, fijo_idx, 0)
+                        elif est_lower in ("activo", "activa"):
+                            ws.update_cell(idx, fijo_idx, 1)
                     self.cache.invalidate("obligaciones_")
                     self.cache.invalidate("presupuesto_base")
                 break
@@ -267,6 +275,13 @@ class SheetsRepository:
             return cached
         ws = self._get_sheet("Obligaciones_Maestro")
         records = self._get_records(ws, ENCABEZADOS_OBLIGACIONES_MAESTRO)
+        for r in records:
+            if (
+                "Es_Gasto_Fijo" not in r
+                or str(r.get("Es_Gasto_Fijo", "")).strip() == ""
+            ):
+                est = str(r.get("Estado", "")).strip().lower()
+                r["Es_Gasto_Fijo"] = 0 if est in ("pausado", "pausada") else 1
         self.cache.set("obligaciones_todas", records, ttl_seconds=180)
         return records
 
@@ -287,11 +302,28 @@ class SheetsRepository:
         for idx, r in enumerate(records, start=2):
             if str(r.get("ID_Obligacion", "")) == str(id_obligacion):
                 keys_lower = [k.lower() for k in r.keys()]
-                for key, val in datos.items():
+                datos_mut = dict(datos)
+                # Alternancia automática de Es_Gasto_Fijo al pausar/activar si no viene explícito
+                if "estado" in [k.lower() for k in datos_mut.keys()]:
+                    est_val = next(
+                        (v for k, v in datos_mut.items() if k.lower() == "estado"), ""
+                    )
+                    est = str(est_val).strip().lower()
+                    has_fijo = any(
+                        k.lower() == "es_gasto_fijo" for k in datos_mut.keys()
+                    )
+                    if not has_fijo:
+                        if est in ("pausado", "pausada"):
+                            datos_mut["Es_Gasto_Fijo"] = 0
+                        elif est in ("activo", "activa"):
+                            datos_mut["Es_Gasto_Fijo"] = 1
+
+                for key, val in datos_mut.items():
                     k_lower = key.lower()
                     if k_lower in keys_lower:
                         col_idx = keys_lower.index(k_lower) + 1
-                        ws.update_cell(idx, col_idx, val)
+                        val_str = int(val) if isinstance(val, bool) else val
+                        ws.update_cell(idx, col_idx, val_str)
                 self.cache.invalidate("obligaciones_")
                 self.cache.invalidate("presupuesto_base")
                 return True

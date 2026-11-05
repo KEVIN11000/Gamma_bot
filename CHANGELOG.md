@@ -5,6 +5,22 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [2.1.0] - 2026-11-05
+
+### Corregido
+* **Desacoplamiento Matemático de Margen Libre (`src/logic/financiero.py`, `src/api/v1/routes_dashboard.py`, `src/api/v1/routes_proyectos.py`):**
+  * **Problema resuelto:** Los gastos operativos cotidianos del Libro Diario estaban reduciendo indebidamente el margen libre disponible mensual (`margen_libre`), desvirtuando su propósito de métrica de capacidad estructural y horizonte de endeudamiento. Adicionalmente, existía un fallback empírico viciado `max(0, flujo_neto - int(gastos * 0.2))` en el endpoint de dashboard.
+  * **Solución aplicada:** Se redefinió la fórmula canónica de Margen Libre: $\text{MLD} = \text{Ingreso Base} - \text{Gastos Fijos} - \sum \text{Cuotas Activas con } (\text{Es\_Gasto\_Fijo} = 1)$. Los gastos operativos del Libro Diario solo impactan el saldo acumulado en caja (`saldo_acumulado`), manteniendo el margen libre como un indicador estructural estable e inmune a compras diarias. Se eliminaron los fallbacks viciados en los endpoints de dashboard y proyectos.
+
+### Añadido
+* **Atributo Booleano `Es_Gasto_Fijo` en Obligaciones (`Obligaciones_Maestro`):**
+  * Columna 17 (`Es_Gasto_Fijo`) agregada en `ENCABEZADOS_OBLIGACIONES_MAESTRO` (`src/logic/constants.py`).
+  * Soporte en esquemas Pydantic v2 `ObligacionCreate`, `ObligacionUpdate` y `ObligacionResponse` (`src/api/schemas.py`) con default `True` (`1`).
+  * Alternancia dinámica automática en capa de persistencia (`src/repositories/sheets_repository.py`) y endpoints REST (`src/api/v1/routes_obligaciones.py`): al pausar una obligación (`Estado == "Pausado"` o `"Pausada"`), `Es_Gasto_Fijo` conmuta automáticamente a `0` liberando inmediatamente su cuota del margen libre; al reactivar a `"Activo"`, se restablece a `1`.
+  * Retrocompatibilidad nativa en `SheetsRepository.get_todas_obligaciones()` infiriendo dinámicamente `1` para deudas activas preexistentes sin la columna 17 poblada en Google Sheets.
+
+---
+
 ## [2.0.0] - 2026-11-04
 
 ### Corregido

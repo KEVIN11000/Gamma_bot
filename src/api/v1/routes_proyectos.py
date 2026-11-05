@@ -68,11 +68,26 @@ def simular_proyecto() -> Any:
         deudas_activas = repo.get_obligaciones_activas()
         qd_act = 0
         for d in deudas_activas:
-            m_total = safe_int(d.get("Monto_Inicial", 0))
-            cuotas = safe_int(d.get("Cuotas", d.get("Cuotas_Totales", 1)))
-            if cuotas <= 0:
-                cuotas = 1
-            qd_act += m_total // cuotas
+            estado = str(d.get("Estado", "")).strip().lower()
+            if estado in ("pausado", "pausada", "cancelado", "pagado", "inactivo"):
+                continue
+
+            raw_fijo = str(d.get("Es_Gasto_Fijo", "1")).strip().lower()
+            es_fijo = (
+                raw_fijo in ("1", "true", "si", "yes", "t") if raw_fijo != "" else True
+            )
+            if not es_fijo:
+                continue
+
+            cuota_ref = safe_int(d.get("Cuota_Referencia_Gs", 0))
+            if cuota_ref > 0:
+                qd_act += cuota_ref
+            else:
+                m_total = safe_int(d.get("Monto_Inicial", 0))
+                cuotas = safe_int(d.get("Cuotas", d.get("Cuotas_Totales", 1)))
+                if cuotas <= 0:
+                    cuotas = 1
+                qd_act += m_total // cuotas
 
         cuota_mensual = req.monto // req.meses if req.meses > 0 else req.monto
         mld = ingreso_base - gf - qd_act - cuota_mensual
@@ -115,6 +130,7 @@ def simular_proyecto() -> Any:
             "Cuotas_Totales": req.meses,
             "Cuotas_Restantes": req.meses,
             "Orden_Prioridad": 999,
+            "Es_Gasto_Fijo": 0,
         }
         repo.insert_obligacion(obligacion_dict)
 

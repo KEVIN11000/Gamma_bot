@@ -45,14 +45,14 @@ def calcular_resumen_financiero() -> dict[str, Any]:
         "saldo_acumulado", balance.get("saldo_inicial", 0) + flujo_neto
     )
 
-    # Cálculo de margen libre: presupuesto base (ingresos fijos - gastos fijos) menos cuotas activas
+    # Cálculo de margen libre: presupuesto base (ingresos fijos - gastos fijos) menos cuotas activas fijas
     try:
         from logic.financiero import calcular_margen_de_ataque
 
         margen_libre = calcular_margen_de_ataque()
     except Exception as e_margen:
         logger.warning(f"Fallback cálculo margen libre: {e_margen}")
-        margen_libre = max(0, flujo_neto - int(gastos * 0.2))
+        margen_libre = 0
 
     posicion_iva = balance.get("posicion_iva", 0)
     es_debito_fiscal = balance.get("es_debito_fiscal", False)

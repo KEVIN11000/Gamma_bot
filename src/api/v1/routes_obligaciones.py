@@ -96,6 +96,7 @@ def create_obligacion() -> Any:
             fecha_inicio=req_obj.fecha_inicio,
             dia_vencimiento=req_obj.dia_vencimiento or 0,
             observaciones=req_obj.observaciones or "",
+            es_gasto_fijo=req_obj.es_gasto_fijo,
         )
         return jsonify(nueva), 201
     except Exception as e:
@@ -155,6 +156,14 @@ def update_obligacion(obligacion_id: str) -> Any:
             update_dict["Tipo"] = req_obj.tipo
         if req_obj.entidad is not None:
             update_dict["Entidad"] = req_obj.entidad
+        if req_obj.es_gasto_fijo is not None:
+            update_dict["Es_Gasto_Fijo"] = 1 if req_obj.es_gasto_fijo else 0
+        elif req_obj.estado is not None:
+            est_lower = req_obj.estado.strip().lower()
+            if est_lower in ("pausado", "pausada"):
+                update_dict["Es_Gasto_Fijo"] = 0
+            elif est_lower in ("activo", "activa"):
+                update_dict["Es_Gasto_Fijo"] = 1
 
         repo.update_obligacion(obligacion_id, update_dict)
         existente.update(update_dict)

@@ -116,6 +116,7 @@ ENCABEZADOS_OBLIGACIONES_MAESTRO = [
     "Cuotas_Totales",
     "Cuotas_Restantes",
     "Orden_Prioridad",
+    "Es_Gasto_Fijo",
 ]
 
 ENCABEZADOS_PRESUPUESTO_BASE = [

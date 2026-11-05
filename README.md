@@ -1,8 +1,8 @@
-# 🤖 GAMMA — Backend Omnicanal & API REST (v2.0.0)
+# 🤖 GAMMA — Backend Omnicanal & API REST (v2.1.0)
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-414%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-480%20passing-brightgreen.svg)](tests/)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Architecture](https://img.shields.io/badge/architecture-hexagonal%20%2F%20ports%20%26%20adapters-orange.svg)](src/)
 
@@ -159,19 +159,19 @@ Gamma_bot/
 │   ├── history/                        # Historiales archivados de fases v2.0.0
 │   └── specs/                          # Artefactos SDD por módulo
 ├── data/                               # Bases de datos locales (gamma_local.db, dispositivos)
-├── tests/                              # Suite de 414 pruebas unitarias y de integración
+├── tests/                              # Suite de 480 pruebas unitarias y de integración
 ├── reportes/                           # Comprobantes y balances PDF generados
 ├── CHANGELOG.md                        # Registro histórico de versiones
 ├── HANDOFF.md                          # Estado actual del proyecto
 ├── pytest.ini                          # Configuración de pruebas
-└── VERSION                             # 2.0.0
+└── VERSION                             # 2.1.0
 ```
 
 ---
 
 ## 🧪 Verificación y Suite de Calidad
 
-El proyecto mantiene una suite exhaustiva con **414 pruebas automáticas**:
+El proyecto mantiene una suite exhaustiva con **480 pruebas automáticas**:
 
 ```bash
 # Ejecutar todas las pruebas unitarias y de integración

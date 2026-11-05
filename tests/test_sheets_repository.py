@@ -13,13 +13,13 @@ class TestSheetsRepository(unittest.TestCase):
         mock_ws = unittest.mock.MagicMock()
         mock_get_sheet.return_value = mock_ws
 
-        # Test that the mapping returns 16 columns and Entidad is at column D (index 3)
+        # Test that the mapping returns 17 columns and Entidad is at column D (index 3)
         self.repo.insert_obligacion(
             {"ID_Obligacion": "123", "Entidad": "Banco Familiar"}
         )
         mock_ws.append_row.assert_called_once()
         called_args = mock_ws.append_row.call_args[0][0]
-        self.assertEqual(len(called_args), 16)
+        self.assertEqual(len(called_args), 17)
         self.assertEqual(called_args[3], "Banco Familiar")
 
     @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
@@ -38,7 +38,8 @@ class TestSheetsRepository(unittest.TestCase):
         mock_ws.get_all_records.return_value = [{"ID_Obligacion": "123"}]
         mock_get_sheet.return_value = mock_ws
         res = self.repo.get_obligacion_by_id("123")
-        self.assertEqual(res, {"ID_Obligacion": "123"})
+        self.assertEqual(res["ID_Obligacion"], "123")
+        self.assertEqual(res.get("Es_Gasto_Fijo"), 1)
 
     @unittest.mock.patch("repositories.sheets_repository.SheetsRepository._get_sheet")
     def test_get_obligaciones_activas(self, mock_get_sheet):
