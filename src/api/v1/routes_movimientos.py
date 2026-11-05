@@ -24,7 +24,6 @@ def _get_processed_clients_store() -> dict[str, float]:
         return _PROCESSED_CLIENT_IDS
     except Exception:
         # Fallback local si blueprint aún se está inicializando
-        global _LOCAL_PROCESSED_CLIENT_IDS
         return _LOCAL_PROCESSED_CLIENT_IDS
 
 

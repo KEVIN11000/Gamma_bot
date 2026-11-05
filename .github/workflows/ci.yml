@@ -96,8 +96,14 @@ jobs:
                     job_id: fj.id
                   });
                   const lines = String(logRes.data).split('\n');
-                  const relevant = lines.filter(l => l.includes('error') || l.includes('FAIL') || l.includes('flake8') || l.includes('bandit') || l.includes('mypy') || l.includes('Error'));
-                  details += `\n\n#### Detalle de ${fj.name}:\n\`\`\`text\n` + (relevant.slice(-25).join('\n') || lines.slice(-25).join('\n')) + `\n\`\`\``;
+                  const errorIdx = lines.findIndex(l => l.includes('##[error]'));
+                  let snippet = '';
+                  if (errorIdx !== -1) {
+                    snippet = lines.slice(Math.max(0, errorIdx - 30), errorIdx + 5).join('\n');
+                  } else {
+                    snippet = lines.slice(-30).join('\n');
+                  }
+                  details += `\n\n#### Detalle de ${fj.name}:\n\`\`\`text\n` + snippet + `\n\`\`\``;
                 } catch (eLog) {
                   details += `\n\n(No se pudo descargar log de ${fj.name}: ${eLog.message})`;
                 }
