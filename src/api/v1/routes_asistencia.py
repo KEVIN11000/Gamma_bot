@@ -12,6 +12,8 @@ from pydantic import ValidationError
 from api.schemas import (
     AnaliticasHorasResponse,
     EstadoJornadaHoyResponse,
+    JornadaRectificarRequest,
+    JornadaRectificarResponse,
     PeriodosResponse,
     SyncRequest,
     SyncResponse,
@@ -593,6 +595,140 @@ def sincronizar_asistencia() -> Any:
                     "exito": False,
                     "registros_sincronizados": 0,
                     "detalles": f"Error interno en servicio de sincronización: {str(e)}",
+                }
+            ),
+            500,
+        )
+
+
+@asistencia_bp.route("/asistencia/jornadas/<fecha>", methods=["PUT"])
+@require_api_key
+def rectificar_jornada_asistencia(fecha: str) -> Any:
+    """Rectifica, actualiza o completa las marcas horarias de una jornada laboral puntual."""
+    fecha_limpia = fecha.strip()
+    try:
+        dt = datetime.strptime(fecha_limpia, "%Y-%m-%d")
+    except ValueError:
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INVALID_DATE_FORMAT",
+                        "message": f"Formato de fecha inválido: '{fecha_limpia}'. Debe ser YYYY-MM-DD.",
+                    }
+                }
+            ),
+            400,
+        )
+
+    body = request.get_json(silent=True)
+    if body is None:
+        body = {}
+
+    try:
+        req = JornadaRectificarRequest(**body)
+    except ValidationError as val_err:
+        detalles_sanitizados = [
+            {
+                "loc": [str(x) for x in err.get("loc", [])],
+                "msg": str(err.get("msg", "")),
+                "type": str(err.get("type", "")),
+            }
+            for err in val_err.errors()
+        ]
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Parámetros de rectificación inválidos",
+                        "detalles": detalles_sanitizados,
+                    }
+                }
+            ),
+            400,
+        )
+
+    try:
+        from logic.logic import DIAS_SEMANA, AgenteAutonomoHoras
+        from repositories.local_repository import get_local_repository
+
+        repo = get_local_repository()
+        nombre_dia = DIAS_SEMANA[dt.weekday()]
+
+        # Asegurar existencia de la jornada en SQLite
+        repo.obtener_o_crear_jornada(fecha=fecha_limpia, dia=nombre_dia, modo=req.modo)
+
+        # Calcular horas decimales
+        horas_decimal = AgenteAutonomoHoras.calcular_horas_jornada(
+            req.hora_entrada,
+            req.hora_salida_almuerzo,
+            req.hora_vuelta_almuerzo,
+            req.hora_salida,
+        )
+
+        campos_actualizar: dict[str, Any] = {
+            "hora_entrada": req.hora_entrada,
+            "hora_salida_almuerzo": req.hora_salida_almuerzo,
+            "hora_vuelta_almuerzo": req.hora_vuelta_almuerzo,
+            "hora_salida": req.hora_salida,
+            "horas_decimal": horas_decimal,
+            "modo": req.modo,
+            "sincronizado_sheets": 0,
+        }
+
+        repo.actualizar_jornada(fecha_limpia, **campos_actualizar)
+        jornada_actualizada = repo.obtener_jornada_por_fecha(fecha_limpia) or {}
+
+        sincronizado_ok = False
+        if req.sincronizar_sheets:
+            try:
+                from services.sync_service import SyncService
+
+                spreadsheet_id = os.getenv("SPREADSHEET_ID")
+                if spreadsheet_id:
+                    sync_svc = SyncService(
+                        local_repo=repo, spreadsheet_id=spreadsheet_id
+                    )
+                    res_sync = sync_svc.volcar_local_a_sheets(
+                        mes=dt.month, anio=dt.year, modulo="laboral", forzar=True
+                    )
+                    sincronizado_ok = bool(res_sync.get("exito", False))
+                else:
+                    logger.warning(
+                        "SPREADSHEET_ID no configurado; no se pudo sincronizar a Sheets"
+                    )
+            except Exception as exc_sync:
+                logger.warning(
+                    f"Error sincronizando jornada rectificada a Sheets: {exc_sync}"
+                )
+
+        resp_dto = JornadaRectificarResponse(
+            status="ok",
+            fecha=fecha_limpia,
+            dia=nombre_dia,
+            modo=req.modo,
+            hora_entrada=jornada_actualizada.get("hora_entrada"),
+            hora_salida_almuerzo=jornada_actualizada.get("hora_salida_almuerzo"),
+            hora_vuelta_almuerzo=jornada_actualizada.get("hora_vuelta_almuerzo"),
+            hora_salida=jornada_actualizada.get("hora_salida"),
+            horas_decimal=horas_decimal,
+            sincronizado_sheets=sincronizado_ok,
+            mensaje="Jornada rectificada y persistida correctamente",
+        )
+        return jsonify(resp_dto.model_dump()), 200
+
+    except Exception as exc_gen:
+        logger.error(
+            f"Error rectificando jornada {fecha_limpia}: {exc_gen}", exc_info=True
+        )
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": f"Error interno rectificando jornada: {exc_gen}",
+                    }
                 }
             ),
             500,

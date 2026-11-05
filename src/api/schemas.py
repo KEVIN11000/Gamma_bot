@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -597,4 +598,97 @@ class BootstrapResponse(BaseModel):
     )
     proximos_vencimientos: list[dict[str, Any]] = Field(
         default_factory=list, description="Compromisos a vencer"
+    )
+
+
+class JornadaRectificarRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    hora_entrada: Optional[str] = Field(
+        default=None, description="Hora de entrada en formato HH:MM"
+    )
+    hora_salida_almuerzo: Optional[str] = Field(
+        default=None, description="Hora de salida a almuerzo en formato HH:MM"
+    )
+    hora_vuelta_almuerzo: Optional[str] = Field(
+        default=None, description="Hora de regreso de almuerzo en formato HH:MM"
+    )
+    hora_salida: Optional[str] = Field(
+        default=None, description="Hora de salida definitiva en formato HH:MM"
+    )
+    modo: str = Field(
+        default="normal", description="Modo de jornada: 'normal' o 'directo'"
+    )
+    sincronizar_sheets: bool = Field(
+        default=True,
+        description="Si True, propaga de inmediato los cambios a Google Sheets",
+    )
+
+    @field_validator(
+        "hora_entrada",
+        "hora_salida_almuerzo",
+        "hora_vuelta_almuerzo",
+        "hora_salida",
+        mode="before",
+    )
+    @classmethod
+    def validar_formato_hora(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        v_str = str(v).strip()
+        if not v_str:
+            return None
+        if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", v_str):
+            raise ValueError(
+                f"Formato de hora inválido: '{v_str}'. Debe ser HH:MM (00:00 - 23:59)."
+            )
+        return v_str
+
+    @field_validator("modo")
+    @classmethod
+    def validar_modo(cls, v: str) -> str:
+        v_lower = str(v).strip().lower()
+        if v_lower not in ("normal", "directo"):
+            raise ValueError("El modo debe ser 'normal' o 'directo'.")
+        return v_lower
+
+    @model_validator(mode="after")
+    def validar_consistencia_cronologica(self) -> JornadaRectificarRequest:
+        if self.hora_entrada and self.hora_salida:
+            if self.hora_salida < self.hora_entrada:
+                raise ValueError(
+                    "La hora de salida no puede ser anterior a la hora de entrada."
+                )
+        if self.hora_salida_almuerzo and self.hora_vuelta_almuerzo:
+            if self.hora_vuelta_almuerzo < self.hora_salida_almuerzo:
+                raise ValueError(
+                    "La vuelta de almuerzo no puede ser anterior a la salida de almuerzo."
+                )
+        return self
+
+
+class JornadaRectificarResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str = Field(default="ok", description="Estado de la operación")
+    fecha: str = Field(..., description="Fecha de la jornada en formato YYYY-MM-DD")
+    dia: str = Field(..., description="Día de la semana (ej. Miércoles)")
+    modo: str = Field(default="normal", description="Modo de la jornada")
+    hora_entrada: Optional[str] = Field(default=None, description="Hora de entrada")
+    hora_salida_almuerzo: Optional[str] = Field(
+        default=None, description="Hora de salida a almuerzo"
+    )
+    hora_vuelta_almuerzo: Optional[str] = Field(
+        default=None, description="Hora de regreso de almuerzo"
+    )
+    hora_salida: Optional[str] = Field(default=None, description="Hora de salida")
+    horas_decimal: float = Field(
+        default=0.0, description="Total de horas trabajadas en decimal"
+    )
+    sincronizado_sheets: bool = Field(
+        default=False, description="True si fue sincronizado con Google Sheets"
+    )
+    mensaje: str = Field(
+        default="Jornada actualizada correctamente",
+        description="Mensaje informativo para el usuario",
     )
