@@ -11,7 +11,10 @@ from api.v1.routes_dispositivos import dispositivos_bp
 from api.v1.routes_health import health_bp
 from api.v1.routes_movimientos import movimientos_bp
 from api.v1.routes_obligaciones import obligaciones_bp
+from api.v1.routes_presupuesto import presupuesto_bp
 from api.v1.routes_proyecciones import proyecciones_bp
+from api.v1.routes_proyectos import proyectos_bp
+from api.v1.routes_reportes import reportes_bp
 from api.v1.routes_soporte import soporte_bp
 from api.v1.routes_webhooks import webhooks_bp
 
@@ -22,7 +25,10 @@ v1_bp.register_blueprint(dashboard_bp)
 v1_bp.register_blueprint(asistencia_bp)
 v1_bp.register_blueprint(movimientos_bp)
 v1_bp.register_blueprint(obligaciones_bp)
+v1_bp.register_blueprint(presupuesto_bp)
 v1_bp.register_blueprint(proyecciones_bp)
+v1_bp.register_blueprint(proyectos_bp)
+v1_bp.register_blueprint(reportes_bp)
 v1_bp.register_blueprint(dispositivos_bp)
 v1_bp.register_blueprint(avisos_bp)
 v1_bp.register_blueprint(cierres_bp)
@@ -37,7 +43,10 @@ __all__ = [
     "asistencia_bp",
     "movimientos_bp",
     "obligaciones_bp",
+    "presupuesto_bp",
     "proyecciones_bp",
+    "proyectos_bp",
+    "reportes_bp",
     "dispositivos_bp",
     "avisos_bp",
     "cierres_bp",

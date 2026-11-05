@@ -7,7 +7,17 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [2.0.0] - 2026-11-04
 
+### Corregido
+* **Sincronización Inmediata Write-Through de Asistencia Laboral (`src/logic/logic.py`):**
+  * **Incidente detectado:** Al refactorizar a la arquitectura *Local-First* con SQLite (`LocalRepository`), `AgenteAutonomoHoras.ejecutar_marcado_para_bot` y `ejecutar_corte_automatico` actualizaban la tabla `asistencia_laboral` con `sincronizado_sheets = 0`, pero `SyncService.volcar_local_a_sheets` sólo estaba disponible como invocación manual en `POST /api/v1/asistencia/sync`. Esto provocaba que las marcaciones (vía Telegram o API REST) quedaran en SQLite sin reflejarse en la pestaña correspondiente de Google Sheets (ej. `Horas_Noviembre_2026`).
+  * **Solución aplicada:** Se implementó sincronización inmediata *write-through* en `src/logic/logic.py`. Tras la inserción en SQLite, se ejecuta el volcado a Google Sheets marcando `sincronizado_sheets = 1`. Si la API de Google Sheets no está disponible o sufre rate limit, se captura defensivamente la excepción manteniendo el registro seguro en SQLite para su posterior sincronización sin bloquear al usuario.
+
 ### Añadido
+* **Paridad Funcional Backend API v2 para Gamma Mobile (Fase 6):**
+  * Nuevos esquemas Pydantic v2 en `src/api/schemas.py` para Presupuesto, Techos, Proyectos, Estado de Jornada y Bootstrap.
+  * Nuevo Blueprint `presupuesto_bp` (`src/api/v1/routes_presupuesto.py`) con endpoints `GET /presupuesto/fijos`, `PUT /presupuesto/fijos/<concepto>`, `POST /presupuesto/fijos`, `PUT /presupuesto/salario-base` y `GET /presupuesto/techos`.
+  * Nuevo Blueprint `proyectos_bp` (`src/api/v1/routes_proyectos.py`) con endpoints `POST /proyectos/simular` y `POST /proyectos/<id_proyecto>/aprobar`.
+  * Nuevo endpoint `GET /api/v1/asistencia/estado-hoy` en `src/api/v1/routes_asistencia.py` para consulta de reloj diario sin mutación (`PENDIENTE`, `TRABAJANDO`, `COMPLETADO`, `LIBRE`).
 * **Motor Proyector de Flujo de Caja a 30 Días (Fase 5):**
   * Implementado `CashFlowProjector` (`src/services/cashflow_service.py`) con simulación temporal diaria, imputación de compromisos bancarios de `Obligaciones_Maestro`, proyección de consumo variable diario y detección proactiva de días críticos con saldo negativo o iliquidez.
   * Nuevo endpoint REST `GET /api/v1/proyecciones/flujo-caja` en `src/api/v1/routes_proyecciones.py` con DTOs `FlujoCajaResponse` y `FlujoCajaItemDiario`.

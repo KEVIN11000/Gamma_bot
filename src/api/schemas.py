@@ -404,3 +404,174 @@ class DispositivoResponse(BaseModel):
     status: str = "ok"
     registrado: bool = True
     dispositivos_activos: int = 1
+
+
+# ============================================================================
+# Schemas v2.0.0: Presupuesto Base, Techos, Proyectos, Asistencia y Bootstrap
+# ============================================================================
+
+
+class GastoFijoItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    concepto: str = Field(
+        ..., min_length=1, description="Nombre o concepto del gasto fijo"
+    )
+    monto: int = Field(..., ge=0, description="Monto mensual en guaraníes")
+    concepto_id: str = Field(..., description="Identificador único del concepto")
+
+
+class PresupuestoFijosResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    salario_base: int = Field(
+        ..., ge=0, description="Salario o ingreso base mensual en guaraníes"
+    )
+    total_gastos_fijos: int = Field(
+        ..., ge=0, description="Total acumulado de gastos fijos mensuales"
+    )
+    categorias: dict[str, list[GastoFijoItem]] = Field(
+        default_factory=dict,
+        description="Mapa de categoría -> lista de conceptos fijos",
+    )
+
+
+class GastoFijoUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    nuevo_monto: int = Field(
+        ..., gt=0, description="Nuevo importe mensual del gasto fijo"
+    )
+
+
+class GastoFijoCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    categoria: str = Field(
+        ..., min_length=1, description="Categoría (ej. Vivienda, Servicios)"
+    )
+    concepto: str = Field(..., min_length=1, description="Nombre del concepto fijo")
+    monto: int = Field(..., gt=0, description="Importe mensual en guaraníes")
+
+
+class SalarioBaseUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    nuevo_salario: int = Field(
+        ..., gt=0, description="Nuevo ingreso mensual de referencia"
+    )
+
+
+class TechoPresupuestarioItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    categoria: str = Field(..., description="Categoría presupuestada")
+    limite_mensual: int = Field(
+        ..., ge=0, description="Límite máximo fijado para el mes"
+    )
+    consumido: int = Field(..., ge=0, description="Monto total devengado en el mes")
+    porcentaje: float = Field(
+        ..., ge=0.0, description="Porcentaje consumido (0.0 a 100.0+)"
+    )
+    umbral_alerta: int = Field(
+        default=80, ge=1, le=100, description="Porcentaje de umbral preventivo"
+    )
+    alerta_emitida: bool = Field(
+        default=False, description="True si supera o iguala el umbral"
+    )
+    estado: str = Field(default="NORMAL", description="'NORMAL', 'ALERTA' o 'EXCEDIDO'")
+    mensaje: str = Field(default="", description="Detalle explicativo")
+
+
+class ProyectoSimularRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    concepto: str = Field(
+        default="Proyecto General", description="Nombre o descripción del proyecto"
+    )
+    monto: int = Field(..., gt=0, description="Monto total de la inversión / compra")
+    meses: int = Field(..., gt=0, description="Cantidad de cuotas o meses a financiar")
+
+
+class ProyectoSimularResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id_proyecto: str = Field(..., description="ID asignado en estado Simulado")
+    concepto: str = Field(..., description="Concepto del proyecto")
+    monto_total: int = Field(..., description="Monto total")
+    meses: int = Field(..., description="Cantidad de meses")
+    cuota_mensual: int = Field(..., description="Monto de la cuota mensual")
+    ingreso_base: int = Field(..., description="Ingreso base mensual considerado")
+    gastos_fijos: int = Field(..., description="Total gastos fijos")
+    cuotas_actuales: int = Field(..., description="Total cuotas de deudas vigentes")
+    margen_libre_post_proyecto: int = Field(
+        ..., description="Margen libre resultante (MLD)"
+    )
+    dti_resultante: float = Field(
+        ..., description="Ratio de endeudamiento DTI en porcentaje"
+    )
+    diagnostico: str = Field(..., description="'Viable', 'Ajustado' o 'Riesgo'")
+    semaforo: str = Field(..., description="'VERDE', 'AMARILLO' o 'ROJO'")
+    mensaje: str = Field(..., description="Detalle del impacto")
+
+
+class ProyectoAprobarResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str = Field(default="ok")
+    id_proyecto: str = Field(..., description="ID del proyecto aprobado")
+    estado: str = Field(default="Activo", description="Nuevo estado")
+    mensaje: str = Field(
+        default="Proyecto aprobado e incorporado como obligación activa."
+    )
+
+
+class EstadoJornadaHoyResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    fecha: str = Field(..., description="Fecha de hoy (DD/MM/YYYY o YYYY-MM-DD)")
+    estado: str = Field(
+        default="PENDIENTE",
+        description="'PENDIENTE', 'TRABAJANDO', 'COMPLETADO' o 'LIBRE'",
+    )
+    hora_entrada: Optional[str] = Field(
+        default=None, description="Hora de entrada (HH:MM)"
+    )
+    hora_salida: Optional[str] = Field(
+        default=None, description="Hora de salida (HH:MM)"
+    )
+    minutos_transcurridos: int = Field(
+        default=0, ge=0, description="Minutos transcurridos desde la entrada"
+    )
+    tiempo_transcurrido_formato: str = Field(
+        default="0h 00m", description="Tiempo en formato legible"
+    )
+    puede_marcar_entrada: bool = Field(
+        default=True, description="True si puede registrar entrada"
+    )
+    puede_marcar_salida: bool = Field(
+        default=False, description="True si puede registrar salida"
+    )
+    es_feriado_o_descanso: bool = Field(
+        default=False, description="True si es día no laborable"
+    )
+
+
+class BootstrapResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    resumen_financiero: dict[str, Any] = Field(
+        ..., description="Resumen para tarjetas de dashboard"
+    )
+    estado_asistencia_hoy: EstadoJornadaHoyResponse = Field(
+        ..., description="Estado de la jornada laboral actual"
+    )
+    clima: dict[str, Any] = Field(
+        default_factory=dict, description="Pronóstico y alerta paraguas"
+    )
+    proximos_avisos: list[dict[str, Any]] = Field(
+        default_factory=list, description="Avisos prioritarios"
+    )
+    proximos_vencimientos: list[dict[str, Any]] = Field(
+        default_factory=list, description="Compromisos a vencer"
+    )

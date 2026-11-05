@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 
 from api.schemas import (
     AnaliticasHorasResponse,
+    EstadoJornadaHoyResponse,
     PeriodosResponse,
     SyncRequest,
     SyncResponse,
@@ -30,6 +32,102 @@ def _get_reportes_dir() -> Path:
         return bp.REPORTES_DIR
     except Exception:
         return Path(__file__).resolve().parents[2] / "reportes"
+
+
+def obtener_estado_jornada_hoy_dto() -> EstadoJornadaHoyResponse:
+    """Calcula y retorna el DTO del estado de la jornada laboral de hoy."""
+    from repositories.local_repository import get_local_repository
+
+    repo = get_local_repository()
+    ahora = get_now_py()
+    fecha_iso = ahora.strftime("%Y-%m-%d")
+    fecha_display = ahora.strftime("%d/%m/%Y")
+    es_descanso = ahora.weekday() in (5, 6)
+
+    jornada = repo.obtener_jornada_por_fecha(fecha_iso)
+
+    if not jornada or not jornada.get("hora_entrada"):
+        estado = "LIBRE" if es_descanso else "PENDIENTE"
+        return EstadoJornadaHoyResponse(
+            fecha=fecha_display,
+            estado=estado,
+            hora_entrada=None,
+            hora_salida=None,
+            minutos_transcurridos=0,
+            tiempo_transcurrido_formato="0h 00m",
+            puede_marcar_entrada=not es_descanso,
+            puede_marcar_salida=False,
+            es_feriado_o_descanso=es_descanso,
+        )
+
+    h_in = str(jornada.get("hora_entrada", "")).strip()
+    h_out = jornada.get("hora_salida")
+    if h_out:
+        h_out = str(h_out).strip()
+
+    if not h_out:
+        minutos = 0
+        try:
+            dt_in = datetime.strptime(f"{fecha_iso} {h_in}", "%Y-%m-%d %H:%M")
+            dt_in = dt_in.replace(tzinfo=ahora.tzinfo)
+            minutos = max(0, int((ahora - dt_in).total_seconds() // 60))
+        except Exception:
+            pass
+
+        horas = minutos // 60
+        mins = minutos % 60
+        tiempo_fmt = f"{horas}h {mins:02d}m"
+
+        return EstadoJornadaHoyResponse(
+            fecha=fecha_display,
+            estado="TRABAJANDO",
+            hora_entrada=h_in,
+            hora_salida=None,
+            minutos_transcurridos=minutos,
+            tiempo_transcurrido_formato=tiempo_fmt,
+            puede_marcar_entrada=False,
+            puede_marcar_salida=True,
+            es_feriado_o_descanso=es_descanso,
+        )
+
+    horas_dec = float(jornada.get("horas_decimal", 0.0) or 0.0)
+    minutos_totales = int(round(horas_dec * 60))
+    horas = minutos_totales // 60
+    mins = minutos_totales % 60
+    tiempo_fmt = f"{horas}h {mins:02d}m"
+
+    return EstadoJornadaHoyResponse(
+        fecha=fecha_display,
+        estado="COMPLETADO",
+        hora_entrada=h_in,
+        hora_salida=h_out,
+        minutos_transcurridos=minutos_totales,
+        tiempo_transcurrido_formato=tiempo_fmt,
+        puede_marcar_entrada=False,
+        puede_marcar_salida=False,
+        es_feriado_o_descanso=es_descanso,
+    )
+
+
+@asistencia_bp.route("/asistencia/estado-hoy", methods=["GET"])
+@require_api_key
+def get_estado_jornada_hoy() -> Any:
+    """Consulta el estado del reloj y jornada laboral de hoy sin mutar datos."""
+    try:
+        resp = obtener_estado_jornada_hoy_dto()
+        return jsonify(resp.model_dump()), 200
+    except Exception as exc:
+        logger.error(f"Error consultando estado de jornada hoy: {exc}", exc_info=True)
+        return (
+            jsonify(
+                {
+                    "error": True,
+                    "code": "INTERNAL_ERROR",
+                    "mensaje": f"No se pudo consultar la jornada actual: {exc}",
+                }
+            ),
+            500,
+        )
 
 
 @asistencia_bp.route("/asistencia/marcar", methods=["POST"])

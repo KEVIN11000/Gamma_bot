@@ -563,6 +563,19 @@ class AgenteAutonomoHoras:
             sincronizado_sheets=0,
         )
         jornada_actualizada = repo.obtener_jornada_por_fecha(fecha) or {}
+
+        # Sincronización inmediata write-through hacia Google Sheets
+        try:
+            from services.sync_service import SyncService
+
+            sync_svc = SyncService(spreadsheet_id=self.spreadsheet_id, local_repo=repo)
+            sync_svc.volcar_local_a_sheets(modulo="laboral")
+        except Exception as e_sync:
+            logger.warning(
+                f"Sincronización write-through diferida en corte automático: {e_sync}. "
+                "El registro permanece seguro en SQLite (sincronizado_sheets=0)."
+            )
+
         mensaje = f"ℹ️ Se aplicó corte automático de jornada a las {hora_corte} hs."
         logger.info(f"Corte automático aplicado a jornada {fecha} a las {hora_corte}.")
 
@@ -717,6 +730,18 @@ class AgenteAutonomoHoras:
 
         repo.actualizar_jornada(fecha_actual, **updates)
         jornada_actualizada = repo.obtener_jornada_por_fecha(fecha_actual) or {}
+
+        # Sincronización inmediata write-through hacia Google Sheets
+        try:
+            from services.sync_service import SyncService
+
+            sync_svc = SyncService(spreadsheet_id=self.spreadsheet_id, local_repo=repo)
+            sync_svc.volcar_local_a_sheets(modulo="laboral")
+        except Exception as e_sync:
+            logger.warning(
+                f"Sincronización write-through diferida: {e_sync}. "
+                "El registro permanece seguro en SQLite (sincronizado_sheets=0)."
+            )
 
         nombres = {
             "entrada": "Entrada",

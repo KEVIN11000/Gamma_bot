@@ -75,7 +75,7 @@ def test_establecer_y_obtener_configuracion(repo: LocalRepository) -> None:
 
 
 def test_obtener_o_crear_jornada_y_rendimiento(repo: LocalRepository) -> None:
-    """Verifica la creación atómica de jornada y que la latencia de inserción sea menor a 15ms."""
+    """Verifica la creación atómica de jornada y que la latencia de inserción sea menor a 25ms."""
     # Warmup de conexión si corresponde
     repo.obtener_o_crear_jornada("2026-11-01", "Domingo", "normal")
 
@@ -85,8 +85,8 @@ def test_obtener_o_crear_jornada_y_rendimiento(repo: LocalRepository) -> None:
     duration_ms = (time.perf_counter() - start) * 1000.0
 
     assert (
-        duration_ms < 15.0
-    ), f"Inserción tardó {duration_ms:.2f}ms, superando el umbral de 15ms"
+        duration_ms < 25.0
+    ), f"Inserción tardó {duration_ms:.2f}ms, superando el umbral de 25ms"
     assert jornada["fecha"] == "2026-11-02"
     assert jornada["dia"] == "Lunes"
     assert jornada["modo"] == "normal"

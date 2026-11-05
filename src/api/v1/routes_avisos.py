@@ -156,9 +156,8 @@ def interpretar_aviso_ia() -> Any:
     )
 
 
-@avisos_bp.route("/avisos", methods=["GET"])
-@require_api_key
-def get_avisos() -> Any:
+def obtener_lista_avisos_activos() -> list[dict[str, Any]]:
+    """Obtiene la lista consolidada de avisos locales y de Google Calendar."""
     avisos: list[dict[str, Any]] = []
     avisos_file = _get_avisos_file()
     # 1. Avisos persistidos localmente
@@ -199,7 +198,13 @@ def get_avisos() -> Any:
             f"No se pudieron sincronizar eventos de Calendar en /avisos: {e_cal}"
         )
 
-    return jsonify(avisos), 200
+    return avisos
+
+
+@avisos_bp.route("/avisos", methods=["GET"])
+@require_api_key
+def get_avisos() -> Any:
+    return jsonify(obtener_lista_avisos_activos()), 200
 
 
 @avisos_bp.route("/avisos", methods=["POST"])
