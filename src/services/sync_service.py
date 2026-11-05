@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from logger_config import setup_logger
@@ -24,15 +25,18 @@ class SyncService:
         local_repo: LocalRepository | None = None,
         sheets_repo: SheetsRepository | None = None,
         spreadsheet_id: str | None = None,
+        spreadsheet_materias_id: str | None = None,
     ) -> None:
         self.local_repo = (
             local_repo if local_repo is not None else get_local_repository()
         )
-        self.spreadsheet_id = (
-            spreadsheet_id
-            or os.getenv("LIBRO_CONTABLE_ID")
-            or os.getenv("SPREADSHEET_ID")
-            or ""
+        # AISLAMIENTO ESTRICTO DE PLANILLAS:
+        # 1. Asistencia laboral usa exclusivamente SPREADSHEET_ID.
+        # 2. Asistencia académica usa SPREADSHEET_MATERIAS_ID (o fallback canónico AgenteAsistenciaMaterias).
+        # Queda terminantemente prohibido el uso o fallback a LIBRO_CONTABLE_ID.
+        self.spreadsheet_id = spreadsheet_id or os.getenv("SPREADSHEET_ID") or ""
+        self.spreadsheet_materias_id = (
+            spreadsheet_materias_id or os.getenv("SPREADSHEET_MATERIAS_ID") or ""
         )
         self.sheets_repo = (
             sheets_repo if sheets_repo is not None else SheetsRepository()
@@ -51,11 +55,27 @@ class SyncService:
             )
         return cliente
 
-    def _obtener_workbook(self) -> Any:
+    def _obtener_workbook(self, modulo: str = "laboral") -> Any:
         cliente = self._obtener_cliente_sheets()
-        if not self.spreadsheet_id:
-            raise ValueError("SPREADSHEET_ID no está configurado.")
-        return cliente.open_by_key(self.spreadsheet_id)
+        if modulo == "materias":
+            from logic.logic import AgenteAsistenciaMaterias
+
+            target_id = (
+                self.spreadsheet_materias_id
+                or os.getenv("SPREADSHEET_MATERIAS_ID")
+                or getattr(AgenteAsistenciaMaterias, "SPREADSHEET_ID", "")
+                or self.spreadsheet_id
+            )
+            if not target_id:
+                raise ValueError("ID de planilla para materias no está configurado.")
+            return cliente.open_by_key(target_id)
+        else:
+            target_id = self.spreadsheet_id or os.getenv("SPREADSHEET_ID") or ""
+            if not target_id:
+                raise ValueError(
+                    "SPREADSHEET_ID no está configurado para asistencia laboral."
+                )
+            return cliente.open_by_key(target_id)
 
     def _nombre_hoja_horas(
         self, mes: int | None = None, anio: int | None = None
@@ -63,6 +83,35 @@ class SyncService:
         ahora = get_now_py()
         m = mes if mes is not None else ahora.month
         y = anio if anio is not None else ahora.year
+
+        # 1. Priorizar periodo_actual.txt como fuente de verdad si existe
+        src_dir = Path(__file__).resolve().parent.parent
+        candidates = [
+            src_dir / "periodo_actual.txt",
+            src_dir.parent / "periodo_actual.txt",
+        ]
+        for p in candidates:
+            if p.exists():
+                try:
+                    contenido = p.read_text(encoding="utf-8").strip()
+                    if contenido:
+                        if mes is None and anio is None:
+                            return contenido
+                        partes = contenido.split()
+                        if len(partes) == 2 and partes[1] == str(y):
+                            mes_txt = (
+                                partes[0].lower().replace("septiembre", "setiembre")
+                            )
+                            mes_esperado = (
+                                MESES_ES[m - 1]
+                                .lower()
+                                .replace("septiembre", "setiembre")
+                            )
+                            if mes_txt == mes_esperado:
+                                return contenido
+                except Exception:
+                    pass
+
         return f"{MESES_ES[m - 1]} {y}"
 
     def _obtener_o_crear_hoja_laboral(
@@ -72,7 +121,7 @@ class SyncService:
         titulos = [h.title for h in wb.worksheets()]
         if nombre not in titulos:
             ws = wb.add_worksheet(title=nombre, rows="60", cols="10")
-            ws.update("A1:G1", [ENCABEZADOS_HORAS])
+            ws.update([ENCABEZADOS_HORAS], "A1:G1", value_input_option="USER_ENTERED")
             return ws
         return wb.worksheet(nombre)
 
@@ -80,7 +129,9 @@ class SyncService:
         titulos = [h.title for h in wb.worksheets()]
         if materia not in titulos:
             ws = wb.add_worksheet(title=materia, rows="100", cols="6")
-            ws.update("A1:F1", [ENCABEZADOS_MATERIAS])
+            ws.update(
+                [ENCABEZADOS_MATERIAS], "A1:F1", value_input_option="USER_ENTERED"
+            )
             return ws
         return wb.worksheet(materia)
 
@@ -118,18 +169,25 @@ class SyncService:
         mes: int | None = None,
         anio: int | None = None,
         modulo: str = "laboral",
+        forzar: bool = False,
     ) -> dict[str, Any]:
         """
         Vuelca registros pendientes (sincronizado_sheets = 0) desde SQLite hacia Google Sheets.
         Al confirmarse la escritura, marca sincronizado_sheets = 1.
+        Si forzar=True, vuelca todos los registros del mes/período aunque figuren sincronizados.
         """
         try:
-            wb = self._obtener_workbook()
             total_sincronizados = 0
 
             # 1. Sincronizar Asistencia Laboral
             if modulo in ("laboral", "todo"):
-                pendientes = self.local_repo.listar_jornadas_pendientes_sincronizacion()
+                wb_laboral = self._obtener_workbook(modulo="laboral")
+                if forzar:
+                    pendientes = self.local_repo.listar_jornadas(mes=mes, anio=anio)
+                else:
+                    pendientes = (
+                        self.local_repo.listar_jornadas_pendientes_sincronizacion()
+                    )
                 fechas_ok: list[str] = []
 
                 # Agrupar jornadas por período (mes y año)
@@ -145,34 +203,63 @@ class SyncService:
                         continue
 
                     ws = self._obtener_o_crear_hoja_laboral(
-                        wb, mes=dt.month, anio=dt.year
+                        wb_laboral, mes=dt.month, anio=dt.year
                     )
                     fecha_display = self._normalizar_a_display(f_iso)
                     fechas_col = ws.col_values(2)
 
+                    # Búsqueda secuencial en rango operativo de filas (2..40)
                     fila_encontrada: int | None = None
-                    for idx, val in enumerate(fechas_col):
-                        val_iso = self._normalizar_a_iso(val)
-                        if val_iso == f_iso:
-                            fila_encontrada = idx + 1
-                            break
+                    primera_fila_vacia: int | None = None
 
-                    fila_datos = [
-                        j.get("dia", ""),
-                        fecha_display,
+                    for i in range(1, 40):
+                        fila_candidata = i + 1
+                        if i < len(fechas_col):
+                            val_iso = self._normalizar_a_iso(fechas_col[i])
+                            if val_iso == f_iso:
+                                fila_encontrada = fila_candidata
+                                break
+                        elif primera_fila_vacia is None:
+                            primera_fila_vacia = fila_candidata
+
+                    fila_destino = (
+                        fila_encontrada or primera_fila_vacia or (len(fechas_col) + 1)
+                    )
+
+                    # Si la fecha no estaba en la planilla, registrar encabezados de día y fecha
+                    if fila_encontrada is None:
+                        ws.update(
+                            [[j.get("dia", ""), fecha_display]],
+                            f"A{fila_destino}:B{fila_destino}",
+                            value_input_option="USER_ENTERED",
+                        )
+
+                    # Escribir marcas horarias en columnas C:F
+                    marcas = [
                         j.get("hora_entrada") or "",
                         j.get("hora_salida_almuerzo") or "",
                         j.get("hora_vuelta_almuerzo") or "",
                         j.get("hora_salida") or "",
-                        float(j.get("horas_decimal", 0.0) or 0.0),
                     ]
+                    ws.update(
+                        [marcas],
+                        f"C{fila_destino}:F{fila_destino}",
+                        value_input_option="USER_ENTERED",
+                    )
 
-                    if fila_encontrada is not None:
-                        ws.update(
-                            f"A{fila_encontrada}:G{fila_encontrada}", [fila_datos]
+                    # Manejo de Columna G: insertar fórmula dinámica oficial en fila nueva
+                    if fila_encontrada is None:
+                        formula_horas = (
+                            f'=SI(VALOR(D{fila_destino})<>""; '
+                            f"(VALOR(D{fila_destino})-VALOR(C{fila_destino}))"
+                            f"+(VALOR(F{fila_destino})-VALOR(E{fila_destino})); "
+                            f"VALOR(F{fila_destino})-VALOR(C{fila_destino})) * 24"
                         )
-                    else:
-                        ws.append_row(fila_datos)
+                        ws.update(
+                            [[formula_horas]],
+                            f"G{fila_destino}",
+                            value_input_option="USER_ENTERED",
+                        )
 
                     fechas_ok.append(f_iso)
 
@@ -182,6 +269,7 @@ class SyncService:
 
             # 2. Sincronizar Asistencia Materias
             if modulo in ("materias", "todo"):
+                wb_materias = self._obtener_workbook(modulo="materias")
                 pendientes_mat = (
                     self.local_repo.listar_materias_pendientes_sincronizacion()
                 )
@@ -202,7 +290,7 @@ class SyncService:
                     if not materia:
                         continue
 
-                    ws_mat = self._obtener_o_crear_hoja_materia(wb, materia)
+                    ws_mat = self._obtener_o_crear_hoja_materia(wb_materias, materia)
                     fecha_display = self._normalizar_a_display(f_iso)
                     fechas_col = ws_mat.col_values(2)
 
@@ -219,22 +307,29 @@ class SyncService:
                     if fila_mat is None:
                         fila_mat = len(fechas_col) + 1
                         if fila_mat == 1:
-                            ws_mat.update("A1:F1", [ENCABEZADOS_MATERIAS])
+                            ws_mat.update(
+                                [ENCABEZADOS_MATERIAS],
+                                "A1:F1",
+                                value_input_option="USER_ENTERED",
+                            )
                             fila_mat = 2
                         ws_mat.update(
-                            f"A{fila_mat}:B{fila_mat}",
                             [[m.get("dia", ""), fecha_display]],
+                            f"A{fila_mat}:B{fila_mat}",
+                            value_input_option="USER_ENTERED",
                         )
 
                     if "teor" in tipo_turno:
                         ws_mat.update(
-                            f"C{fila_mat}:D{fila_mat}",
                             [[hora_in, "Presente"]],
+                            f"C{fila_mat}:D{fila_mat}",
+                            value_input_option="USER_ENTERED",
                         )
                     else:
                         ws_mat.update(
-                            f"E{fila_mat}:F{fila_mat}",
                             [[hora_in, "Presente"]],
+                            f"E{fila_mat}:F{fila_mat}",
+                            value_input_option="USER_ENTERED",
                         )
 
                     if m.get("id"):
@@ -272,14 +367,14 @@ class SyncService:
         Útil para rescatar ediciones directas en Google Sheets o restaurar estado local.
         """
         try:
-            wb = self._obtener_workbook()
             total_importados = 0
 
             # 1. Importar Asistencia Laboral
             if modulo in ("laboral", "todo"):
+                wb_laboral = self._obtener_workbook(modulo="laboral")
                 nombre_hoja = self._nombre_hoja_horas(mes=mes, anio=anio)
                 try:
-                    ws = wb.worksheet(nombre_hoja)
+                    ws = wb_laboral.worksheet(nombre_hoja)
                     filas = ws.get_all_values()
                 except Exception as e_ws:
                     logger.warning(
@@ -326,7 +421,8 @@ class SyncService:
 
             # 2. Importar Asistencia Materias
             if modulo in ("materias", "todo"):
-                for ws in wb.worksheets():
+                wb_materias = self._obtener_workbook(modulo="materias")
+                for ws in wb_materias.worksheets():
                     titulo = ws.title
                     if (
                         titulo.lower()

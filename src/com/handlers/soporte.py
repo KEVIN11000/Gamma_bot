@@ -237,14 +237,22 @@ def register_soporte_handlers(bot: TeleBot, gamma_app: Any) -> None:
         }
         label = iconos.get(tipo, "📝 Soporte")
 
-        bot.edit_message_text(
-            f"Seleccionaste: <b>{label}</b>\n\n"
-            f"✍️ <i>Escribe a continuación el detalle de tu mensaje o problema:</i>\n\n"
-            f"💡 <i>Puedes enviar /cancelar en cualquier momento para abortar.</i>",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            parse_mode="HTML",
-        )
+        try:
+            bot.edit_message_text(
+                f"Seleccionaste: <b>{label}</b>\n\n"
+                f"✍️ <i>Escribe a continuación el detalle de tu mensaje o problema:</i>\n\n"
+                f"💡 <i>Puedes enviar /cancelar en cualquier momento para abortar.</i>",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            if "message is not modified" in str(e).lower():
+                logger.debug(
+                    f"Ignorando callback duplicado o mensaje no modificado en soporte: {e}"
+                )
+            else:
+                raise
 
     @bot.message_handler(
         func=lambda msg: not msg.text.startswith("/")

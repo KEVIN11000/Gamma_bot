@@ -569,7 +569,12 @@ class AgenteAutonomoHoras:
             from services.sync_service import SyncService
 
             sync_svc = SyncService(spreadsheet_id=self.spreadsheet_id, local_repo=repo)
-            sync_svc.volcar_local_a_sheets(modulo="laboral")
+            res_sync = sync_svc.volcar_local_a_sheets(modulo="laboral")
+            if not res_sync.get("exito", False):
+                logger.warning(
+                    f"Sincronización write-through diferida en corte automático: {res_sync.get('detalles', '')}. "
+                    "El registro permanece seguro en SQLite (sincronizado_sheets=0)."
+                )
         except Exception as e_sync:
             logger.warning(
                 f"Sincronización write-through diferida en corte automático: {e_sync}. "
@@ -736,7 +741,12 @@ class AgenteAutonomoHoras:
             from services.sync_service import SyncService
 
             sync_svc = SyncService(spreadsheet_id=self.spreadsheet_id, local_repo=repo)
-            sync_svc.volcar_local_a_sheets(modulo="laboral")
+            res_sync = sync_svc.volcar_local_a_sheets(modulo="laboral")
+            if not res_sync.get("exito", False):
+                logger.warning(
+                    f"Sincronización write-through diferida: {res_sync.get('detalles', '')}. "
+                    "El registro permanece seguro en SQLite (sincronizado_sheets=0)."
+                )
         except Exception as e_sync:
             logger.warning(
                 f"Sincronización write-through diferida: {e_sync}. "

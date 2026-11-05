@@ -189,6 +189,36 @@ class LocalRepository:
             row = cur.fetchone()
             return dict(row) if row else None
 
+    def listar_jornadas(
+        self,
+        mes: int | None = None,
+        anio: int | None = None,
+        limite: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Lista jornadas filtradas opcionalmente por mes y año."""
+        query = "SELECT * FROM asistencia_laboral"
+        conditions = []
+        params: list[Any] = []
+        if mes is not None and anio is not None:
+            patron = f"{anio:04d}-{mes:02d}-%"
+            conditions.append("fecha LIKE ?")
+            params.append(patron)
+        elif anio is not None:
+            patron = f"{anio:04d}-%"
+            conditions.append("fecha LIKE ?")
+            params.append(patron)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY fecha ASC"
+        if limite is not None:
+            query += " LIMIT ?"
+            params.append(limite)
+
+        with self.get_connection() as conn:
+            cur = conn.execute(query, params)
+            return [dict(r) for r in cur.fetchall()]
+
     def listar_jornadas_pendientes_sincronizacion(
         self, limite: int | None = None
     ) -> list[dict[str, Any]]:

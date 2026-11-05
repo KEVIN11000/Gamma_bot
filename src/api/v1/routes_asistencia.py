@@ -572,7 +572,7 @@ def sincronizar_asistencia() -> Any:
     try:
         from services.sync_service import SyncService
 
-        service = SyncService()
+        service = SyncService(spreadsheet_id=os.getenv("SPREADSHEET_ID"))
         if req_obj.direccion == "local_to_sheets":
             resultado = service.volcar_local_a_sheets(
                 mes=req_obj.mes, anio=req_obj.anio, modulo=req_obj.modulo

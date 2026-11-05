@@ -215,6 +215,20 @@ def deploy() -> Any:
             except Exception as e:
                 logger.error(f"[deploy] Error enviando aviso de deploy: {e}")
 
+        # 4.5. Sincronización post-deploy defensiva de asistencia laboral
+        try:
+            from services.sync_service import SyncService
+
+            sync_svc = SyncService(spreadsheet_id=os.getenv("SPREADSHEET_ID"))
+            res_sync = sync_svc.volcar_local_a_sheets(modulo="laboral", forzar=True)
+            logger.info(
+                f"[deploy] Sincronización post-deploy: {res_sync.get('registros_sincronizados', 0)} registros conciliados."
+            )
+        except Exception as e_deploy_sync:
+            logger.warning(
+                f"[deploy] Sincronización post-deploy diferida: {e_deploy_sync}"
+            )
+
         # 5. Tocar el WSGI para que PythonAnywhere recargue la app
         # (Se hace al final para no matar el worker antes de enviar el mensaje)
         if Path(wsgi_path).exists():

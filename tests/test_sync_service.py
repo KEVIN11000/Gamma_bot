@@ -100,7 +100,8 @@ def test_volcar_local_a_sheets_laboral_exitoso(
 
         assert res["exito"] is True
         assert res["registros_sincronizados"] == 2
-        assert mock_ws.append_row.call_count == 2
+        mock_ws.append_row.assert_not_called()
+        assert mock_ws.update.called
 
         # Verificar que en SQLite ahora están sincronizadas (0 pendientes)
         pendientes_despues = local_repo_temp.listar_jornadas_pendientes_sincronizacion()
@@ -328,3 +329,142 @@ def test_endpoint_asistencia_sync_failure_returns_502(client: Any) -> None:
         data = res.get_json()
         assert data["exito"] is False
         assert data["registros_sincronizados"] == 0
+
+
+def test_sync_service_isolates_spreadsheet_id(
+    local_repo_temp: LocalRepository,
+) -> None:
+    """Verifica aislamiento estricto: SyncService no usa LIBRO_CONTABLE_ID bajo ningún concepto."""
+    with patch.dict(
+        os.environ,
+        {
+            "SPREADSHEET_ID": "asistencia_correcta_id",
+            "LIBRO_CONTABLE_ID": "contable_peligroso_id",
+        },
+    ):
+        service = SyncService(local_repo=local_repo_temp)
+        assert service.spreadsheet_id == "asistencia_correcta_id"
+        assert service.spreadsheet_id != "contable_peligroso_id"
+
+
+def test_sync_service_materias_distinct_spreadsheet(
+    local_repo_temp: LocalRepository,
+) -> None:
+    """Verifica que el módulo de materias consulte la planilla universitaria correspondiente."""
+    mock_ws = MagicMock()
+    mock_ws.title = "Materias"
+    mock_ws.col_values.return_value = ["Fecha"]
+
+    mock_wb_materias = MagicMock()
+    mock_wb_materias.worksheets.return_value = [mock_ws]
+    mock_wb_materias.worksheet.return_value = mock_ws
+
+    mock_client = MagicMock()
+    mock_client.open_by_key.return_value = mock_wb_materias
+
+    with patch(
+        "logic.logic.ConexionSheets.obtener_cliente", return_value=mock_client
+    ), patch.dict(
+        os.environ,
+        {
+            "SPREADSHEET_ID": "laboral_id",
+            "SPREADSHEET_MATERIAS_ID": "materias_univ_id",
+        },
+    ):
+        service = SyncService(local_repo=local_repo_temp)
+        wb = service._obtener_workbook(modulo="materias")
+        assert wb == mock_wb_materias
+        mock_client.open_by_key.assert_called_with("materias_univ_id")
+
+
+def test_volcar_local_a_sheets_secuencial_rango_2_40(
+    local_repo_temp: LocalRepository,
+) -> None:
+    """Verifica que si hay 10 filas existentes, una nueva fecha se asigne a la fila 11 sin append_row."""
+    local_repo_temp.obtener_o_crear_jornada(
+        fecha="2026-11-05", dia="Jueves", modo="normal"
+    )
+    local_repo_temp.actualizar_jornada(
+        fecha="2026-11-05",
+        hora_entrada="08:43",
+        hora_salida="15:09",
+        horas_decimal=5.83,
+        sincronizado_sheets=0,
+    )
+
+    mock_ws = MagicMock()
+    mock_ws.title = "Noviembre 2026"
+    # Simular 10 fechas existentes en columna B (cabecera + 9 días previos)
+    fechas_existentes = [
+        "Fecha",
+        "27/10/2026",
+        "28/10/2026",
+        "29/10/2026",
+        "30/10/2026",
+        "31/10/2026",
+        "01/11/2026",
+        "02/11/2026",
+        "03/11/2026",
+        "04/11/2026",
+    ]
+    mock_ws.col_values.return_value = fechas_existentes
+
+    mock_wb = MagicMock()
+    mock_wb.worksheets.return_value = [mock_ws]
+    mock_wb.worksheet.return_value = mock_ws
+
+    mock_client = MagicMock()
+    mock_client.open_by_key.return_value = mock_wb
+
+    with patch("logic.logic.ConexionSheets.obtener_cliente", return_value=mock_client):
+        service = SyncService(
+            local_repo=local_repo_temp, spreadsheet_id="test_sheet_id"
+        )
+        res = service.volcar_local_a_sheets(modulo="laboral")
+
+        assert res["exito"] is True
+        assert res["registros_sincronizados"] == 1
+        mock_ws.append_row.assert_not_called()
+
+        # Debe haber actualizado la fila 11 (A11:B11, C11:F11, G11 o C11:F11)
+        llamadas_str = [str(c) for c in mock_ws.update.mock_calls]
+        assert any("11" in call for call in llamadas_str)
+
+
+def test_volcar_local_a_sheets_con_forzar(
+    local_repo_temp: LocalRepository,
+) -> None:
+    """Verifica que con forzar=True se sincronicen registros aunque sincronizado_sheets=1."""
+    local_repo_temp.obtener_o_crear_jornada(
+        fecha="2026-11-05", dia="Jueves", modo="normal"
+    )
+    local_repo_temp.actualizar_jornada(
+        fecha="2026-11-05",
+        hora_entrada="08:43",
+        sincronizado_sheets=1,  # Ya marcado como sincronizado
+    )
+
+    mock_ws = MagicMock()
+    mock_ws.title = "Noviembre 2026"
+    mock_ws.col_values.return_value = ["Fecha"]
+
+    mock_wb = MagicMock()
+    mock_wb.worksheets.return_value = [mock_ws]
+    mock_wb.worksheet.return_value = mock_ws
+
+    mock_client = MagicMock()
+    mock_client.open_by_key.return_value = mock_wb
+
+    with patch("logic.logic.ConexionSheets.obtener_cliente", return_value=mock_client):
+        service = SyncService(
+            local_repo=local_repo_temp, spreadsheet_id="test_sheet_id"
+        )
+        # Sin forzar -> 0 sincronizados
+        res_normal = service.volcar_local_a_sheets(modulo="laboral", forzar=False)
+        assert res_normal["registros_sincronizados"] == 0
+
+        # Con forzar=True -> 1 sincronizado
+        res_forzar = service.volcar_local_a_sheets(
+            mes=11, anio=2026, modulo="laboral", forzar=True
+        )
+        assert res_forzar["registros_sincronizados"] == 1
