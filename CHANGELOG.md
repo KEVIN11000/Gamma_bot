@@ -5,6 +5,18 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [2.1.2] - 2026-11-09
+
+### Añadido
+* **Modo de Edición de Asistencia Protegido por X-API-KEY (`src/com/handlers/asistencia.py`, `src/services/asistencia_service.py`):**
+  * **Flujo interactivo en Telegram:** Nuevo comando `/editar` (y alias `/editar_asistencia`) y botón inline *"✏️ Modo Edición"* dentro de `/horas`.
+  * **Privacidad y Seguridad:** Desafío de autenticación solicitando la `X-API-KEY`. El bot elimina de inmediato el mensaje con la clave (`bot.delete_message`) para prevenir filtraciones en el historial del chat, y valida con `is_valid_api_key` en tiempo constante.
+  * **Acción rápida de limpieza:** Botón inline *"🔄 Limpiar salida de hoy"* para anular salidas accidentales o prematuras en SQLite (`hora_salida = None`), vaciar la celda en Google Sheets y dejar la jornada en estado TRABAJANDO para marcar normalmente al retirarse.
+  * **Rectificación guiada por fecha:** Opciones para rectificar *"📅 Ayer"* o ingresar cualquier fecha (`YYYY-MM-DD`) con parseo determinista de tramos y sincronización forzada write-through a Google Sheets.
+  * **Especificación para Gamma Mobile (`docs/specs/modo-edicion-asistencia/spec.md`):** Arquitectura y contratos para la tarjeta del reloj con botón candado 🔒 y selectores `TimePicker`.
+
+---
+
 ## [2.1.1] - 2026-11-05
 
 ### Corregido

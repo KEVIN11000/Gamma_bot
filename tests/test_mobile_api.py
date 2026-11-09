@@ -48,13 +48,13 @@ def test_health_with_key(client):
     assert data["status"] == "ok"
     assert data["sheets_connected"] is True
     assert data["calendar_connected"] is True
-    assert data["version"] == "2.1.1"
+    assert data["version"] == "2.1.2"
     assert data["mobile_version"] == "0.0.10"
     assert (
         data["download_url"]
         == "https://github.com/KEVIN11000/Gamma_Mobile/releases/latest"
     )
-    assert data["version_api"] == "2.1.1"
+    assert data["version_api"] == "2.1.2"
     assert data["latest_app_version"] == "0.0.10"
 
 
