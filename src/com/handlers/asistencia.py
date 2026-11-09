@@ -16,7 +16,9 @@ from com.core.security import auth_required
 from logger_config import setup_logger
 from logic.logic import EstadoGestor
 from services.asistencia_service import (  # noqa: F401
+    iniciar_flujo_edicion_asistencia,
     iniciar_flujo_reporte_horas,
+    procesar_callback_edicion_asistencia,
     generar_y_enviar_reporte_financiero,
     capturar_monto_descuento,
     generar_y_enviar_reporte,
@@ -45,6 +47,28 @@ def register_asistencia_handlers(bot: TeleBot, gamma_app: "GammaApp") -> None:
     @safe_handler(bot, logger)
     def comando_periodo(message):
         procesar_comando_periodo(bot, gamma_app, message)
+
+    @bot.message_handler(commands=["editar", "editar_asistencia"])
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def comando_editar(message):
+        iniciar_flujo_edicion_asistencia(bot, message.chat.id)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "iniciar_modo_edicion")
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_iniciar_modo_edicion(call):
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception:
+            pass
+        iniciar_flujo_edicion_asistencia(bot, call.message.chat.id)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_asist:"))
+    @auth_required(bot)
+    @safe_handler(bot, logger)
+    def callback_modo_edicion_asistencia(call):
+        procesar_callback_edicion_asistencia(call, bot)
 
     @bot.message_handler(commands=["marcar"])
     @auth_required(bot)
