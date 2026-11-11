@@ -692,3 +692,67 @@
 | `POST dispositivos/registrar` | Push FCM | ✅ Disponible | Ninguna |
 | `POST cierres/ejecutar` | Cierres | ✅ Disponible | Ninguna |
 | `GET soporte/tickets` | Soporte | ✅ Disponible | Ninguna |
+
+---
+
+## 4. Matriz de Paridad Exhaustiva: Comandos de Telegram ↔ Endpoints de la API Mobile
+
+Esta matriz detalla la correspondencia exacta entre cada comando del bot de Telegram (`Gamma_bot`), el endpoint REST correspondiente en la API v1, y cómo la aplicación Android `GammaMobile` amplía y supera la experiencia de usuario:
+
+### 4.1 Comandos Generales & Sistema
+
+| Comando Telegram | Endpoint REST v1 | Método | Capacidades Superiores en Gamma Mobile (Más Allá del Bot) |
+|---|---|---|---|
+| `/start` | `/bootstrap` | `GET` | Hidratación atómica offline (Room DB): en vez de un mensaje de texto con botones, la app carga el Dashboard completo (saldo, margen libre, asistencia hoy, clima, avisos y vencimientos) de forma instantánea. |
+| `/comandos` | `/capacidades` | `GET` | Auto-descubrimiento dinámico de API (`RutaEndpointInfo` y `capacidades_clave`): la app adapta sus pantallas y oculta/muestra componentes según las capacidades reales del backend. |
+| `/cancelar` | *Gestión nativa de UI* | — | No requiere comando: en Android se resuelve mediante navegación nativa (Back handler, gestos y dismiss de diálogos). |
+| `/soporte` | `/soporte/tickets` | `POST` / `GET` / `PATCH` | Panel dedicado de soporte: permite adjuntar logs de error locales, ver el historial de tickets reportados y su estado de resolución en tiempo real. |
+| `/debug` | `/sistema/logs` | `GET` | Visor de logs con filtrado por nivel (`INFO`, `WARNING`, `ERROR`), búsqueda de texto y botón de exportar. |
+| `/app` | `/health` | `GET` | Verificación automática de actualizaciones en segundo plano (`latest_app_version`), avisando al usuario con banner de descarga directa sin requerir solicitud manual. |
+
+### 4.2 Finanzas & Presupuesto
+
+| Comando Telegram | Endpoint REST v1 | Método | Capacidades Superiores en Gamma Mobile (Más Allá del Bot) |
+|---|---|---|---|
+| `/gasto` | `/movimientos` / `/movimientos/parse` | `POST` | Doble modalidad: formulario asistido con autocompletado y selector táctil de categorías, o entrada rápida por texto natural con IA (`/movimientos/parse`). |
+| *(Foto Factura)* | `/movimientos/ocr` | `POST` | **Superpoder Mobile**: Escaneo directo con la cámara del dispositivo mediante ML Kit/CameraX, recorte inteligente y envío al OCR del backend para prellenar montos, conceptos y comercios. |
+| `/ingreso` | `/movimientos` | `POST` | Registro tipificado de ingresos con impacto reactivo e inmediato en el Saldo Acumulado y Margen Libre del Dashboard. |
+| `/balance` | `/dashboard/summary`<br>`/proyecciones/flujo-caja`<br>`/reportes/financiero/excel` | `GET` | Gráficos interactivos de tarta y barras en Compose (consumo vs presupuesto), timeline de ingresos/egresos, proyecciones a 30/60 días y descarga de reportes contables. |
+| `/fijos` / `/fijo_nuevo` / `/fijo_set` | `/presupuesto/fijos`<br>`/presupuesto/techos`<br>`/presupuesto/salario-base` | `GET`<br>`POST`<br>`PUT`<br>`DELETE` | Pantalla integral de Presupuesto (`PresupuestoScreen`): gestión CRUD completa con sliders interactivos de techos de gasto por categoría, alertas visuales por semáforo de color y eliminación con swipe. |
+| `/cierre_mensual` | `/cierres/ejecutar`<br>`/cierres` | `POST`<br>`GET` | Asistente visual de cierre mensual paso a paso, con previsualización del resumen de liquidación antes de confirmar y visor directo de reportes archivados. |
+
+### 4.3 Obligaciones, Deudas & Proyectos de Inversión
+
+| Comando Telegram | Endpoint REST v1 | Método | Capacidades Superiores en Gamma Mobile (Más Allá del Bot) |
+|---|---|---|---|
+| `/deudas` | `/obligaciones` | `GET` | Vista kanban o lista con barras de progreso animadas por acreedor, porcentaje de avance de cancelación, estado de cuotas y fechas de vencimiento. |
+| `/nueva_deuda` | `/obligaciones` | `POST` | Formulario estructurado con cálculo automático de fecha fin de cuotas y validación de tipos sin requerir campos legacy (`cuotas`, `event_id`). |
+| `/abonar` | `/obligaciones/abonar` | `POST` | Diálogo rápido de abono ordinario o extraordinario, con descuento automático de saldo y asiento reflejado en caja al instante. |
+| `/estrategia` / `/cola_deudas` | `/obligaciones/foco` | `GET` | Alternancia visual entre estrategia **Bola de Nieve** (menor saldo) y **Avalancha** (mayor interés), mostrando el ranking y tiempo proyectado de libertad financiera. |
+| `/foco` | `/obligaciones/foco` | `GET` | Tarjeta destacada (*Hero Card*) en la parte superior de la pantalla de deudas con la meta financiera del mes. |
+| `/evaluar_abono` | `/obligaciones/simular` | `POST` | Simulador interactivo: el usuario ingresa un monto con un slider táctil y ve en tiempo real cuántos meses de deuda ahorra y el dinero economizado en intereses. |
+| `/vencimientos` | `/obligaciones/vencimientos` | `GET` | Vista de calendario mensual táctil con puntos indicadores por día de pago y notificaciones push programadas. |
+| `/simular` | `/proyectos/simular`<br>`/obligaciones/proyectar-capacidad` | `POST` | Simulador de compras/inversiones complejas evaluando el impacto sobre el Margen Libre antes de contraer el gasto. |
+| `/aprobar_proyecto` | `/proyectos/{id}/aprobar` | `POST` | Conversión de un proyecto aprobado en gasto o deuda activa con un solo tap. |
+
+### 4.4 Asistencia, Horarios & Materias
+
+| Comando Telegram | Endpoint REST v1 | Método | Capacidades Superiores en Gamma Mobile (Más Allá del Bot) |
+|---|---|---|---|
+| `/marcar` | `/asistencia/marcar`<br>`/asistencia/estado-hoy` | `POST`<br>`GET` | **Operación Offline**: La app permite marcar aún si el celular no tiene cobertura (sótanos, facultades); guarda la marca en SQLite local y la sincroniza en segundo plano vía `/asistencia/sync`. Además incluye botón gigante táctil con estado en tiempo real. |
+| `/marcar_materia` | `/asistencia/materia`<br>`/asistencia/materias` | `POST`<br>`GET` | Selector táctil tipo chips/dropdown con las materias pedagógicas activas, eliminando errores de tipeo de nombres de materias. |
+| `/horas` | `/asistencia/analiticas` | `GET` | Dashboard analítico: velocímetro de horas trabajadas vs esperadas MTD, cálculo de ingresos acumulados a cobrar y desglose de horas perdidas. |
+| `/periodo` | `/asistencia/periodos` | `GET` | Indicador visual de días restantes del período, fecha de corte y días hábiles trabajados. |
+| `/editar` / `/editar_asistencia` | `/asistencia/jornadas/{fecha}` | `PUT` | Selector de fecha y TimePicker nativo para corregir cualquier marcación de entrada, almuerzo o salida sin necesidad de comandos de texto complejos. |
+| `/reporte` | `/asistencia/reporte/pdf`<br>`/asistencia/reporte/excel` | `GET` | Previsualizador nativo del PDF oficial calibrado en **1 sola carátula A4** (`INV-A4`) y botón para abrir o compartir directamente la planilla Excel `.xlsx`. |
+| `/cierre` | `/cierres/ejecutar` | `POST` | Cierre laboral de horas con confirmación táctil y generación automática del balance de horas del período. |
+
+### 4.5 Avisos, Agenda & Alertas Ambientales
+
+| Comando Telegram | Endpoint REST v1 | Método | Capacidades Superiores en Gamma Mobile (Más Allá del Bot) |
+|---|---|---|---|
+| `/aviso` | `/ia/interpretar/aviso`<br>`/avisos` | `POST` | Reconocimiento por voz/texto de avisos con IA y agenda táctil con fecha/hora mediante DatePicker. |
+| `/avisos` | `/avisos` | `GET`<br>`PUT`<br>`DELETE` | Gestión de lista de tareas pendientes con checkbox para marcar como completado, edición rápida y recordatorios locales. |
+| *(Alertas meteorológicas)* | `/clima` | `GET` | Widget del tiempo en Asunción con recomendación visual (ej. paraguas ☔) integrado en el home screen. |
+| *(Alertas automáticas)* | `/dispositivos/registrar`<br>`/dispositivos/notificar` | `POST` | **Push Notifications (FCM)**: En vez de tener que consultar manualmente, el servidor despierta a la app con notificaciones push ante vencimientos inminentes o alertas de presupuesto. |
+
