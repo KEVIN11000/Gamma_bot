@@ -540,7 +540,24 @@ def descargar_reporte_pdf_asistencia() -> Any:
             )
 
         pdf_service = PDFService()
-        ruta_archivo = pdf_service.generar_reporte_generico(datos)
+        resultado_pdf = pdf_service.generar_reporte_generico(datos)
+        if isinstance(resultado_pdf, tuple):
+            ruta_archivo = resultado_pdf[0]
+        else:
+            ruta_archivo = resultado_pdf
+
+        if not ruta_archivo or not os.path.exists(ruta_archivo):
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": "REPORTE_ERROR",
+                            "message": "No se pudo generar el archivo PDF",
+                        }
+                    }
+                ),
+                500,
+            )
 
         return send_file(
             ruta_archivo,

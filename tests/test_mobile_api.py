@@ -48,13 +48,13 @@ def test_health_with_key(client):
     assert data["status"] == "ok"
     assert data["sheets_connected"] is True
     assert data["calendar_connected"] is True
-    assert data["version"] == "2.1.2"
+    assert data["version"] == "2.1.4"
     assert data["mobile_version"] == "0.0.10"
     assert (
         data["download_url"]
         == "https://github.com/KEVIN11000/Gamma_Mobile/releases/latest"
     )
-    assert data["version_api"] == "2.1.2"
+    assert data["version_api"] == "2.1.4"
     assert data["latest_app_version"] == "0.0.10"
 
 
@@ -1288,3 +1288,48 @@ def test_paridad_gammamobile_nuevos_contratos(client):
     data_cierres = res_cierres.get_json()
     assert data_cierres["status"] == "ok"
     assert isinstance(data_cierres["cierres"], list)
+
+
+def test_obtener_capacidades_api(client):
+    headers = {"X-API-KEY": "test-secret-key"}
+
+    # 1. Sin autenticación -> 401
+    res_unauth = client.get("/api/v1/capacidades")
+    assert res_unauth.status_code == 401
+
+    # 2. Catálogo completo
+    res = client.get("/api/v1/capacidades", headers=headers)
+    assert res.status_code == 200
+    data = res.get_json()
+
+    assert "version_api" in data
+    assert data["total_rutas"] > 20
+    assert "modulos" in data
+    assert "presupuesto" in data["modulos"]
+    assert "asistencia" in data["modulos"]
+    assert "obligaciones" in data["modulos"]
+
+    # Validar flags de capacidades clave
+    cap = data["capacidades_clave"]
+    assert cap["presupuesto_fijos_delete"] is True
+    assert cap["presupuesto_techos_put"] is True
+    assert cap["asistencia_excel_export"] is True
+    assert cap["capacidades_discovery"] is True
+
+    # Validar que existan rutas específicas descubiertas
+    rutas = data["rutas"]
+    rutas_str = [r["ruta"] for r in rutas]
+    assert "/api/v1/capacidades" in rutas_str
+    assert "/api/v1/health" in rutas_str
+    assert (
+        "/api/v1/presupuesto/fijos/<string:concepto>" in rutas_str
+        or "/api/v1/presupuesto/fijos/<concepto>" in rutas_str
+    )
+
+    # 3. Filtro por módulo específico
+    res_filtro = client.get("/api/v1/capacidades?modulo=presupuesto", headers=headers)
+    assert res_filtro.status_code == 200
+    data_filtro = res_filtro.get_json()
+    assert data_filtro["total_rutas"] > 0
+    for r in data_filtro["rutas"]:
+        assert r["modulo"] == "presupuesto"

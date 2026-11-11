@@ -234,3 +234,115 @@ def test_get_techos_presupuestarios(mock_records, mock_sheet, mock_eval, client)
     assert comb["porcentaje"] == 41.6
     assert comb["alerta_emitida"] is False
     assert comb["estado"] == "NORMAL"
+
+
+def test_delete_gasto_fijo_unauthorized(client):
+    res = client.delete("/api/v1/presupuesto/fijos/Alquiler")
+    assert res.status_code == 401
+
+
+@patch("repositories.sheets_repository.SheetsRepository.eliminar_gasto_fijo")
+def test_delete_gasto_fijo_success(mock_eliminar, client):
+    mock_eliminar.return_value = True
+    res = client.delete("/api/v1/presupuesto/fijos/Alquiler", headers=HEADERS)
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "ok"
+    assert data["concepto"] == "Alquiler"
+    assert "eliminado correctamente" in data["mensaje"]
+
+
+@patch("repositories.sheets_repository.SheetsRepository.eliminar_gasto_fijo")
+def test_delete_gasto_fijo_not_found(mock_eliminar, client):
+    mock_eliminar.return_value = False
+    res = client.delete("/api/v1/presupuesto/fijos/Inexistente", headers=HEADERS)
+    assert res.status_code == 404
+    data = res.get_json()
+    assert data["error"] is True
+    assert data["code"] == "NOT_FOUND"
+
+
+@patch("repositories.sheets_repository.SheetsRepository.eliminar_gasto_fijo")
+def test_delete_gasto_fijo_sheets_error(mock_eliminar, client):
+    mock_eliminar.side_effect = RuntimeError("Falla de red en Google Sheets")
+    res = client.delete("/api/v1/presupuesto/fijos/Alquiler", headers=HEADERS)
+    assert res.status_code == 500
+    data = res.get_json()
+    assert data["error"] is True
+    assert data["code"] == "SHEETS_ERROR"
+
+
+def test_update_techo_presupuestario_unauthorized(client):
+    res = client.put("/api/v1/presupuesto/techos/Supermercado")
+    assert res.status_code == 401
+
+
+def test_update_techo_presupuestario_validation_negative_limit(client):
+    res = client.put(
+        "/api/v1/presupuesto/techos/Supermercado",
+        headers=HEADERS,
+        json={"limite_mensual": -500},
+    )
+    assert res.status_code == 400
+    data = res.get_json()
+    assert data["error"] is True
+    assert data["code"] == "VALIDATION_ERROR"
+
+
+@patch("repositories.local_repository.get_local_repository")
+@patch(
+    "repositories.sheets_repository.SheetsRepository.actualizar_techo_presupuesto_base"
+)
+def test_update_techo_presupuestario_success(mock_update_sheet, mock_get_local, client):
+    mock_local = MagicMock()
+    mock_get_local.return_value = mock_local
+    mock_update_sheet.return_value = True
+
+    res = client.put(
+        "/api/v1/presupuesto/techos/Supermercado",
+        headers=HEADERS,
+        json={"limite_mensual": 1500000, "umbral_alerta": 85},
+    )
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "ok"
+    assert data["categoria"] == "Supermercado"
+    assert data["limite_mensual"] == 1500000
+    assert data["umbral_alerta"] == 85
+
+    mock_local.establecer_configuracion.assert_any_call(
+        "PRESUPUESTO_TECHO_SUPERMERCADO", 1500000, tipo="int"
+    )
+    mock_local.establecer_configuracion.assert_any_call(
+        "PRESUPUESTO_UMBRAL_SUPERMERCADO", 85, tipo="int"
+    )
+    mock_update_sheet.assert_called_once_with("Supermercado", 1500000)
+
+
+def test_update_techo_presupuestario_integration(tmp_path, client):
+    from repositories.local_repository import LocalRepository
+
+    db_file = tmp_path / "gamma_test_local.db"
+    test_local_repo = LocalRepository(db_path=db_file)
+
+    with patch(
+        "repositories.local_repository.get_local_repository",
+        return_value=test_local_repo,
+    ), patch(
+        "repositories.sheets_repository.SheetsRepository.actualizar_techo_presupuesto_base",
+        return_value=True,
+    ):
+        res = client.put(
+            "/api/v1/presupuesto/techos/Combustible",
+            headers=HEADERS,
+            json={"limite_mensual": 800000, "umbral_alerta": 90},
+        )
+        assert res.status_code == 200
+        assert (
+            test_local_repo.obtener_configuracion("PRESUPUESTO_TECHO_COMBUSTIBLE")
+            == 800000
+        )
+        assert (
+            test_local_repo.obtener_configuracion("PRESUPUESTO_UMBRAL_COMBUSTIBLE")
+            == 90
+        )

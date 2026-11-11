@@ -13,6 +13,8 @@ from api.schemas import (
     ProyectoAprobarResponse,
     EstadoJornadaHoyResponse,
     BootstrapResponse,
+    RutaEndpointInfo,
+    CapacidadesResponse,
 )
 
 
@@ -170,3 +172,44 @@ def test_bootstrap_response():
     assert boot.resumen_financiero["margen_libre"] == 2500000
     assert boot.estado_asistencia_hoy.estado == "TRABAJANDO"
     assert boot.clima["llevar_paraguas"] is True
+
+
+def test_capacidades_schemas_validos():
+    r1 = RutaEndpointInfo(
+        modulo="presupuesto",
+        ruta="/api/v1/presupuesto/techos/<categoria>",
+        metodos=["PUT"],
+        nombre_endpoint="mobile_api.actualizar_techo_presupuestario",
+        descripcion="Actualiza el límite presupuestario.",
+        autenticacion=True,
+        parametros=["categoria"],
+    )
+    assert r1.modulo == "presupuesto"
+    assert r1.metodos == ["PUT"]
+    assert r1.parametros == ["categoria"]
+
+    resp = CapacidadesResponse(
+        version_api="2.1.4",
+        total_rutas=1,
+        modulos=["presupuesto"],
+        capacidades_clave={
+            "presupuesto_fijos_delete": True,
+            "presupuesto_techos_put": True,
+        },
+        rutas=[r1],
+    )
+    assert resp.version_api == "2.1.4"
+    assert resp.total_rutas == 1
+    assert resp.capacidades_clave["presupuesto_techos_put"] is True
+    assert len(resp.rutas) == 1
+    assert resp.rutas[0].ruta == "/api/v1/presupuesto/techos/<categoria>"
+
+
+def test_capacidades_schemas_invalidos():
+    with pytest.raises(ValidationError):
+        # Falta modulo y ruta
+        RutaEndpointInfo(metodos=["GET"], nombre_endpoint="ep")
+
+    with pytest.raises(ValidationError):
+        # Falta version_api y total_rutas
+        CapacidadesResponse(modulos=[], rutas=[])

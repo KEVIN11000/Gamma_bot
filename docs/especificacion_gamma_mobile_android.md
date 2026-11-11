@@ -339,6 +339,8 @@ app/src/main/java/com/kevin/gammamobile/
 
 │   ├── transacciones/                \# TransaccionesScreen & FormularioTransaccionScreen
 
+│   ├── presupuesto/                  \# PresupuestoScreen & PresupuestoViewModel
+
 │   ├── obligaciones/                 \# ObligacionesScreen & SimuladorModal
 
 │   ├── avisos/                       \# AvisosScreen & DetalleAvisoDialog
@@ -384,6 +386,24 @@ app/src/main/java/com/kevin/gammamobile/
    - Indicador de progreso circular o barra lineal con porcentaje de amortización (`Saldo_Actual / Monto_Inicial`).  
    - Botón directo "Abonar" que abre modal precargado y descuenta automáticamente el saldo.  
    - Pestaña de "Simulador": Sliders para monto y meses que proyectan el impacto en el margen mensual en tiempo real.
+
+5. **Gestión de Presupuesto Base y Gastos Fijos (`PresupuestoScreen`):**  
+     
+   - **Card Superior de Salario Base:** Presenta el ingreso base mensual configurado con botón de edición rápida (icono ✏️) para abrir diálogo interactivo (`PUT /api/v1/presupuesto/salario-base`).  
+   - **Métricas de Estructura:** Comparativa entre Total de Gastos Fijos y Margen Libre Proyectado.  
+   - **Lista de Gastos Fijos Agrupada por Categoría:** Acordeones colapsables (Vivienda, Servicios, Seguros, etc.) con acción de edición de monto y botón de eliminación (`DELETE /api/v1/presupuesto/fijos/{concepto}`). Botón Flotante (FAB) para "Nuevo Gasto Fijo" (`POST /api/v1/presupuesto/fijos`).  
+   - **Monitor de Techos Presupuestarios Variables:** Barras de progreso de consumo en tiempo real para categorías variables (Supermercado, Combustible, etc.) con semáforo de estado (Verde NORMAL, Amarillo ALERTA >80%, Rojo EXCEDIDO >=100%) y selector para ajustar el techo mensual (`PUT /api/v1/presupuesto/techos/{categoria}`).  
+   - **Máquina de Estados Jetpack Compose:**
+     ```kotlin
+     data class PresupuestoUiState(
+         val isLoading: Boolean = false,
+         val salarioBase: Long = 0L,
+         val totalGastosFijos: Long = 0L,
+         val categoriasGastosFijos: Map<String, List<GastoFijoItemDto>> = emptyMap(),
+         val techosVariables: List<TechoPresupuestarioItemDto> = emptyList(),
+         val errorMensaje: String? = null
+     )
+     ```
 
 ---
 

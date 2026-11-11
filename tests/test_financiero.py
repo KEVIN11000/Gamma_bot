@@ -418,6 +418,39 @@ class TestFinancieroLogic(unittest.TestCase):
             "Vivienda", "Internet", 150000, ""
         )
 
+    @patch("repositories.sheets_repository.SheetsRepository")
+    def test_agente_eliminar_gasto(self, MockRepo):
+        from logic.financiero import AgenteFinanciero
+
+        repo_instance = MockRepo.return_value
+        repo_instance.eliminar_gasto_fijo.return_value = True
+
+        agente = AgenteFinanciero("dummy_id")
+        res = agente.eliminar_gasto_fijo("Internet")
+        self.assertTrue(res)
+        repo_instance.eliminar_gasto_fijo.assert_called_once_with("Internet")
+
+    @patch("repositories.sheets_repository.SheetsRepository._get_sheet")
+    @patch("repositories.sheets_repository.SheetsRepository._get_records")
+    def test_repo_eliminar_gasto_fijo(self, mock_get_records, mock_get_sheet):
+        from repositories.sheets_repository import SheetsRepository
+
+        mock_ws = mock_get_sheet.return_value
+        mock_get_records.return_value = [
+            {"Concepto": "Alquiler", "Monto_Mensual_Gs": 2000000},
+            {"Concepto": "Internet", "Monto_Mensual_Gs": 150000},
+        ]
+
+        repo = SheetsRepository()
+        # Internet está en el segundo registro, es decir fila idx=3 (start=2)
+        res = repo.eliminar_gasto_fijo("Internet")
+        self.assertTrue(res)
+        mock_ws.delete_rows.assert_called_once_with(3)
+
+        # Caso inexistente
+        res2 = repo.eliminar_gasto_fijo("No Existe")
+        self.assertFalse(res2)
+
     def test_obtener_balance_con_saldo_inicial(self):
         from logic.financiero import AgenteFinanciero
 

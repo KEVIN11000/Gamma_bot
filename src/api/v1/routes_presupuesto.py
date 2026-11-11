@@ -11,6 +11,7 @@ from api.schemas import (
     GastoFijoCreate,
     SalarioBaseUpdate,
     TechoPresupuestarioItem,
+    TechoPresupuestarioUpdate,
 )
 from api.security import require_api_key
 from logger_config import setup_logger
@@ -144,6 +145,71 @@ def update_gasto_fijo(concepto: str) -> Any:
                     "error": True,
                     "code": "SHEETS_ERROR",
                     "mensaje": f"Error al actualizar en Google Sheets: {exc}",
+                    "detalles": None,
+                }
+            ),
+            500,
+        )
+
+
+@presupuesto_bp.route("/presupuesto/fijos/<concepto>", methods=["DELETE"])
+@require_api_key
+def delete_gasto_fijo(concepto: str) -> Any:
+    """Elimina un concepto de gasto fijo existente en Presupuesto_Base."""
+    concepto_limpio = concepto.strip()
+    if not concepto_limpio:
+        return (
+            jsonify(
+                {
+                    "error": True,
+                    "code": "VALIDATION_ERROR",
+                    "mensaje": "El concepto no puede estar vacío.",
+                    "detalles": None,
+                }
+            ),
+            400,
+        )
+
+    try:
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        eliminado = repo.eliminar_gasto_fijo(concepto_id=concepto_limpio)
+
+        if not eliminado:
+            return (
+                jsonify(
+                    {
+                        "error": True,
+                        "code": "NOT_FOUND",
+                        "mensaje": f"No se encontró el concepto fijo '{concepto_limpio}'.",
+                        "detalles": None,
+                    }
+                ),
+                404,
+            )
+
+        return (
+            jsonify(
+                {
+                    "status": "ok",
+                    "concepto": concepto_limpio,
+                    "mensaje": "Gasto fijo eliminado correctamente de Presupuesto_Base.",
+                }
+            ),
+            200,
+        )
+    except Exception as exc:
+        logger.error(
+            f"Error eliminando gasto fijo '{concepto_limpio}': {exc}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "error": True,
+                    "code": "SHEETS_ERROR",
+                    "mensaje": f"Error al eliminar en Google Sheets: {exc}",
                     "detalles": None,
                 }
             ),
@@ -368,6 +434,97 @@ def get_techos_presupuestarios() -> Any:
                     "error": True,
                     "code": "INTERNAL_ERROR",
                     "mensaje": f"No se pudo evaluar techos presupuestarios: {exc}",
+                    "detalles": None,
+                }
+            ),
+            500,
+        )
+
+
+@presupuesto_bp.route("/presupuesto/techos/<categoria>", methods=["PUT"])
+@require_api_key
+def update_techo_presupuestario(categoria: str) -> Any:
+    """Actualiza o configura el techo presupuestario y umbral de alerta para una categoría."""
+    cat_limpia = categoria.strip()
+    if not cat_limpia:
+        return (
+            jsonify(
+                {
+                    "error": True,
+                    "code": "VALIDATION_ERROR",
+                    "mensaje": "La categoría no puede estar vacía.",
+                    "detalles": None,
+                }
+            ),
+            400,
+        )
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        req = TechoPresupuestarioUpdate(**payload)
+    except ValidationError as ve:
+        return (
+            jsonify(
+                {
+                    "error": True,
+                    "code": "VALIDATION_ERROR",
+                    "mensaje": "Datos de techo presupuestario inválidos.",
+                    "detalles": ve.errors(),
+                }
+            ),
+            400,
+        )
+
+    try:
+        from repositories.local_repository import get_local_repository
+        from repositories.sheets_repository import SheetsRepository
+
+        local_repo = get_local_repository()
+        sheets_repo = SheetsRepository()
+
+        # 1. Persistir en LocalRepository
+        clave_techo = f"PRESUPUESTO_TECHO_{cat_limpia.upper().replace(' ', '_')}"
+        local_repo.establecer_configuracion(clave_techo, req.limite_mensual, tipo="int")
+
+        if req.umbral_alerta is not None:
+            clave_umbral = f"PRESUPUESTO_UMBRAL_{cat_limpia.upper().replace(' ', '_')}"
+            local_repo.establecer_configuracion(
+                clave_umbral, req.umbral_alerta, tipo="int"
+            )
+
+        # 2. Si la categoría existe en Presupuesto_Base, actualizar también la celda
+        try:
+            sheets_repo.actualizar_techo_presupuesto_base(
+                cat_limpia, req.limite_mensual
+            )
+        except Exception as e_sheet:
+            logger.debug(
+                f"No se actualizó en Sheets (o no existe fila en Presupuesto_Base): {e_sheet}"
+            )
+
+        return (
+            jsonify(
+                {
+                    "status": "ok",
+                    "categoria": cat_limpia,
+                    "limite_mensual": req.limite_mensual,
+                    "umbral_alerta": req.umbral_alerta,
+                    "mensaje": "Techo presupuestario actualizado exitosamente.",
+                }
+            ),
+            200,
+        )
+    except Exception as exc:
+        logger.error(
+            f"Error actualizando techo presupuestario para '{cat_limpia}': {exc}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "error": True,
+                    "code": "INTERNAL_ERROR",
+                    "mensaje": f"Error actualizando techo presupuestario: {exc}",
                     "detalles": None,
                 }
             ),

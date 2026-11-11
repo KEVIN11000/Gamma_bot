@@ -209,9 +209,11 @@ class ExcelReportService:
             c_cant.fill = fill_encabezado
             c_cant.border = border_celda
 
-            # Fila: mes (Total horas trabajadas)
+            # Fila: Horas del mes (Total horas trabajadas)
             fila_mes = fila_resumen + 1
-            ws.cell(row=fila_mes, column=1, value="mes").alignment = align_left
+            ws.cell(row=fila_mes, column=1, value="Horas del mes").alignment = (
+                align_left
+            )
             ws.cell(row=fila_mes, column=1).font = font_datos
             ws.cell(row=fila_mes, column=1).border = border_celda
 
@@ -225,9 +227,11 @@ class ExcelReportService:
             c_mes_val.number_format = "0.0"
             c_mes_val.border = border_celda
 
-            # Fila: hora (Monto tarifa por hora)
+            # Fila: Monto por hora (Monto tarifa por hora)
             fila_hora = fila_mes + 1
-            ws.cell(row=fila_hora, column=1, value="hora").alignment = align_left
+            ws.cell(row=fila_hora, column=1, value="Monto por hora").alignment = (
+                align_left
+            )
             ws.cell(row=fila_hora, column=1).font = font_datos
             ws.cell(row=fila_hora, column=1).border = border_celda
 
@@ -237,11 +241,11 @@ class ExcelReportService:
             c_hora_val.number_format = cls.FORMATO_MONEDA
             c_hora_val.border = border_celda
 
-            # Fila: por Horas (Suma horas * Tarifa)
+            # Fila: Total Monto por Horas (Suma horas * Tarifa)
             fila_por_horas = fila_hora + 1
-            ws.cell(row=fila_por_horas, column=1, value="por Horas").alignment = (
-                align_left
-            )
+            ws.cell(
+                row=fila_por_horas, column=1, value="Total Monto por Horas"
+            ).alignment = align_left
             ws.cell(row=fila_por_horas, column=1).font = font_datos
             ws.cell(row=fila_por_horas, column=1).border = border_celda
 
@@ -271,11 +275,11 @@ class ExcelReportService:
             c_iva_val.number_format = cls.FORMATO_MONEDA
             c_iva_val.border = border_celda
 
-            # Fila: INCLUIDO
+            # Fila: TOTAL IVA INCLUIDO
             fila_incluido = fila_iva + 1
-            ws.cell(row=fila_incluido, column=1, value="INCLUIDO").alignment = (
-                align_left
-            )
+            ws.cell(
+                row=fila_incluido, column=1, value="TOTAL IVA INCLUIDO"
+            ).alignment = align_left
             ws.cell(row=fila_incluido, column=1).font = font_datos
             ws.cell(row=fila_incluido, column=1).border = border_celda
 
@@ -320,9 +324,9 @@ class ExcelReportService:
                 c_val.number_format = cls.FORMATO_MONEDA
                 c_val.border = border_celda
 
-            # Fila Final: FACTURA
+            # Fila Final: TOTAL FACTURA
             fila_factura = (fila_ajuste + 1) if fila_ajuste else (fila_incluido + 1)
-            c_fac_lbl = ws.cell(row=fila_factura, column=1, value="FACTURA")
+            c_fac_lbl = ws.cell(row=fila_factura, column=1, value="TOTAL FACTURA")
             c_fac_lbl.font = font_destacado
             c_fac_lbl.alignment = align_left
             c_fac_lbl.fill = fill_destacado

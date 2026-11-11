@@ -507,6 +507,18 @@ class TechoPresupuestarioItem(BaseModel):
     mensaje: str = Field(default="", description="Detalle explicativo")
 
 
+class TechoPresupuestarioUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    limite_mensual: int = Field(..., gt=0, description="Monto límite mensual en Gs.")
+    umbral_alerta: int = Field(
+        default=80,
+        ge=1,
+        le=100,
+        description="Porcentaje que dispara la advertencia preventiva",
+    )
+
+
 class ProyectoSimularRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -691,4 +703,54 @@ class JornadaRectificarResponse(BaseModel):
     mensaje: str = Field(
         default="Jornada actualizada correctamente",
         description="Mensaje informativo para el usuario",
+    )
+
+
+class RutaEndpointInfo(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    modulo: str = Field(
+        ...,
+        description="Módulo funcional al que pertenece el endpoint (ej. presupuesto, asistencia, obligaciones)",
+    )
+    ruta: str = Field(
+        ...,
+        description="Ruta URL del endpoint (ej. /api/v1/presupuesto/fijos/<concepto>)",
+    )
+    metodos: list[str] = Field(
+        ...,
+        description="Lista de métodos HTTP soportados (GET, POST, PUT, DELETE)",
+    )
+    nombre_endpoint: str = Field(
+        ...,
+        description="Identificador interno de Flask (ej. mobile_api.obtener_capacidades)",
+    )
+    descripcion: str = Field(
+        default="",
+        description="Descripción o docstring resumido del método",
+    )
+    autenticacion: bool = Field(
+        default=True,
+        description="Indica si el endpoint requiere autenticación (API Key)",
+    )
+    parametros: list[str] = Field(
+        default_factory=list,
+        description="Parámetros dinámicos capturados en la URL",
+    )
+
+
+class CapacidadesResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    version_api: str = Field(..., description="Versión activa del backend")
+    total_rutas: int = Field(..., description="Cantidad total de rutas disponibles")
+    modulos: list[str] = Field(
+        ..., description="Listado de módulos funcionales descubiertos"
+    )
+    capacidades_clave: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Banderas booleanas de soporte de alto nivel para feature toggles rápidos",
+    )
+    rutas: list[RutaEndpointInfo] = Field(
+        ..., description="Catálogo exhaustivo de endpoints de la API"
     )

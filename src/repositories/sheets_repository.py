@@ -182,9 +182,17 @@ class SheetsRepository:
     def insert_obligacion(self, obligacion_dict: dict) -> None:
         ws = self._get_sheet("Obligaciones_Maestro")
         headers = ENCABEZADOS_OBLIGACIONES_MAESTRO
-        row = [
-            obligacion_dict.get(h, obligacion_dict.get(h.lower(), "")) for h in headers
-        ]
+
+        # Blindaje defensivo para campos obsoletos / legacy (Cuotas y Event_ID)
+        datos = dict(obligacion_dict)
+        if "Cuotas" not in datos and "cuotas" not in datos:
+            datos["Cuotas"] = datos.get(
+                "Cuotas_Totales", datos.get("cuotas_totales", "")
+            )
+        if "Event_ID" not in datos and "event_id" not in datos:
+            datos["Event_ID"] = ""
+
+        row = [datos.get(h, datos.get(h.lower(), "")) for h in headers]
         ws.append_row(row)
         self.cache.invalidate("obligaciones_")
         self.cache.invalidate("presupuesto_base")
@@ -589,6 +597,44 @@ class SheetsRepository:
         ws.append_row(row)
         self.cache.invalidate("presupuesto_base")
         return True
+
+    def eliminar_gasto_fijo(self, concepto_id: str) -> bool:
+        """Elimina la fila correspondiente a un gasto fijo en Presupuesto_Base."""
+        concepto_limpio = concepto_id.strip().lower()
+        if not concepto_limpio:
+            return False
+
+        ws = self._get_sheet("Presupuesto_Base")
+        records = self._get_records(ws, ENCABEZADOS_PRESUPUESTO_BASE)
+
+        for idx, r in enumerate(records, start=2):
+            concepto = str(r.get("Concepto", "")).strip()
+            if concepto.lower() == concepto_limpio:
+                ws.delete_rows(idx)
+                self.cache.invalidate("presupuesto_base")
+                return True
+        return False
+
+    def actualizar_techo_presupuesto_base(
+        self, categoria: str, nuevo_monto: int
+    ) -> bool:
+        """Actualiza el monto mensual de una categoría en Presupuesto_Base si existe."""
+        ws = self._get_sheet("Presupuesto_Base")
+        records = self._get_records(ws, ENCABEZADOS_PRESUPUESTO_BASE)
+        cat_limpia = categoria.strip().lower()
+
+        for idx, r in enumerate(records, start=2):
+            c_sheet = str(r.get("Categoria", "")).strip().lower()
+            if c_sheet == cat_limpia:
+                keys = list(r.keys())
+                try:
+                    col_idx = keys.index("Monto_Mensual_Gs") + 1
+                except ValueError:
+                    col_idx = 4
+                ws.update_cell(idx, col_idx, nuevo_monto)
+                self.cache.invalidate("presupuesto_base")
+                return True
+        return False
 
     def upsert_salario_presupuesto_base(self, nuevo_salario: int) -> bool:
         """Actualiza la fila de sueldo/salario en Presupuesto_Base o la inserta si no existe."""

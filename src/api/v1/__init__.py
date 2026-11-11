@@ -4,6 +4,7 @@ from flask import Blueprint
 
 from api.v1.routes_asistencia import asistencia_bp
 from api.v1.routes_avisos import avisos_bp
+from api.v1.routes_capacidades import capacidades_bp
 from api.v1.routes_cierres import cierres_bp
 from api.v1.routes_clima import clima_bp
 from api.v1.routes_dashboard import dashboard_bp
@@ -21,6 +22,7 @@ from api.v1.routes_webhooks import webhooks_bp
 v1_bp = Blueprint("mobile_api", __name__)
 
 v1_bp.register_blueprint(health_bp)
+v1_bp.register_blueprint(capacidades_bp)
 v1_bp.register_blueprint(dashboard_bp)
 v1_bp.register_blueprint(asistencia_bp)
 v1_bp.register_blueprint(movimientos_bp)
@@ -39,6 +41,7 @@ v1_bp.register_blueprint(webhooks_bp)
 __all__ = [
     "v1_bp",
     "health_bp",
+    "capacidades_bp",
     "dashboard_bp",
     "asistencia_bp",
     "movimientos_bp",

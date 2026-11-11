@@ -5,6 +5,41 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [2.1.4] - 2026-11-11
+
+### Añadido
+* **Endpoint de Auto-Descubrimiento de la API (`GET /api/v1/capacidades`):**
+  * Nuevo módulo [`src/api/v1/routes_capacidades.py`](file:///e:/PG/vcp-s/Gamma_bot/src/api/v1/routes_capacidades.py) con introspección dinámica de `current_app.url_map`.
+  * Catálogo completo de rutas activas de `/api/v1`, métodos HTTP soportados, docstrings descriptivos, argumentos dinámicos y flags de `capacidades_clave`.
+  * Filtro opcional por módulo `?modulo=<nombre>` (ej. `?modulo=presupuesto`).
+  * Esquemas Pydantic formales [`RutaEndpointInfo`](file:///e:/PG/vcp-s/Gamma_bot/src/api/schemas.py) y [`CapacidadesResponse`](file:///e:/PG/vcp-s/Gamma_bot/src/api/schemas.py).
+
+### Optimizado
+* **Calibración Dimensional de ReportLab para Hoja Única A4 (`src/logic/pdf_service.py`):**
+  * Márgenes calibrados a 1.0 cm (alto útil expandido a 785.20 pt).
+  * Banner superior unificado A1:G1 (20 pt) y fila compacta de subtítulo y metadata de emisión Asunción (16 pt).
+  * Padding vertical de celdas optimizado a 2.2 pt para tablas mensuales de hasta 31 días corridos más cuadro resumen de facturación con IVA (136 pt).
+  * Certificación empírica mediante test unitario [`tests/test_pdf_a4_fit.py`](file:///e:/PG/vcp-s/Gamma_bot/tests/test_pdf_a4_fit.py) garantizando `TOTAL_PAGINAS_GENERADAS == 1` con ocupación del 92.4% y 2.10 cm de margen libre de seguridad (`INV-A4`).
+* **Estandarización de Etiquetas Canónicas de Liquidación (`src/logic/logic.py`, `src/services/excel_service.py`):**
+  * Unificación de etiquetas de facturación a: `Horas del mes`, `Monto por hora`, `Total Monto por Horas`, `IVA 10%`, `TOTAL IVA INCLUIDO`, `TOTAL FACTURA`.
+  * Filtro defensivo anti-duplicación actualizado para tolerar nombres anteriores y nuevos en re-ejecuciones de cierre.
+
+---
+
+## [2.1.3] - 2026-11-10
+
+### Añadido
+* **Acceso y Gestión de Presupuesto Base (`src/repositories/sheets_repository.py`, `src/api/v1/routes_presupuesto.py`, `src/api/schemas.py`):**
+  * **Eliminación de Gastos Fijos:** Nuevo método `eliminar_gasto_fijo(concepto)` en `SheetsRepository` y `AgenteFinanciero`, y endpoint REST `DELETE /api/v1/presupuesto/fijos/<concepto>` protegido por `X-API-KEY`.
+  * **Configuración de Techos Presupuestarios Variables:** Nuevo esquema `TechoPresupuestarioUpdate` y endpoint REST `PUT /api/v1/presupuesto/techos/<categoria>` con persistencia dual en `LocalRepository` (`PRESUPUESTO_TECHO_<CAT>` y `PRESUPUESTO_UMBRAL_<CAT>`) y sincronización en celda de `Presupuesto_Base`.
+  * **Blindaje Defensivo de `Obligaciones_Maestro`:** Manejo retrocompatible de columnas obsoletas (`Cuotas` legacy autocompletada con `Cuotas_Totales` y `Event_ID` con `""`), desacoplando clientes móviles de campos legados sin corrimientos columnares en Google Sheets.
+  * **Especificación y Contratos para Gamma Mobile (`docs/specs/paridad-presupuesto-obligaciones-mobile/`):**
+    * Actualización canónica de `docs/ESPECIFICACIONES_API_MOBILE.md` y `docs/especificacion_gamma_mobile_android.md`.
+    * Diseño completo de UI/UX para `PresupuestoScreen` en Jetpack Compose (Salario Base editable, Gastos Fijos por categoría con edición/borrado, y Monitor de Techos de Consumo Variable con barras de progreso y semáforo de estado).
+    * Creación de `docs/SYSTEM_MAP.md` como inventario de verdad del sistema e invariantes de gobernanza.
+
+---
+
 ## [2.1.2] - 2026-11-09
 
 ### Añadido

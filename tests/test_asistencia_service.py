@@ -366,12 +366,12 @@ def test_agente_horas_preparar_datos_reporte_y_cuadro_resumen():
     assert error is None
     conceptos = [c[0] for c in reporte.lineas_resumen]
     assert conceptos == [
-        "mes",
-        "hora",
-        "por Horas",
+        "Horas del mes",
+        "Monto por hora",
+        "Total Monto por Horas",
         "IVA 10%",
-        "INCLUIDO",
-        "FACTURA",
+        "TOTAL IVA INCLUIDO",
+        "TOTAL FACTURA",
     ]
     assert "SALDO ANTERIOR" not in conceptos
     assert "Descuento" not in conceptos

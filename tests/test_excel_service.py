@@ -66,28 +66,28 @@ def test_generar_excel_sin_ajuste_ni_descuento(sample_datos_horas):
     assert ws["A9"].value == "Resumen"
     assert ws["B9"].value == "Cantidades"
 
-    # Fila 10: mes
-    assert ws["A10"].value == "mes"
+    # Fila 10: Horas del mes
+    assert ws["A10"].value == "Horas del mes"
     assert ws["B10"].value == "=SUM(G3:G7)"
 
-    # Fila 11: hora
-    assert ws["A11"].value == "hora"
+    # Fila 11: Monto por hora
+    assert ws["A11"].value == "Monto por hora"
     assert ws["B11"].value == 14634
 
-    # Fila 12: por Horas
-    assert ws["A12"].value == "por Horas"
+    # Fila 12: Total Monto por Horas
+    assert ws["A12"].value == "Total Monto por Horas"
     assert ws["B12"].value == "=ROUND(B10*B11, 0)"
 
     # Fila 13: IVA 10%
     assert ws["A13"].value == "IVA 10%"
     assert ws["B13"].value == "=ROUND(B12*0.1, 0)"
 
-    # Fila 14: INCLUIDO
-    assert ws["A14"].value == "INCLUIDO"
+    # Fila 14: TOTAL IVA INCLUIDO
+    assert ws["A14"].value == "TOTAL IVA INCLUIDO"
     assert ws["B14"].value == "=B12+B13"
 
-    # Fila 15: FACTURA (sin fila de SALDO ANTERIOR ni Descuento intermedia)
-    assert ws["A15"].value == "FACTURA"
+    # Fila 15: TOTAL FACTURA (sin fila de SALDO ANTERIOR ni Descuento intermedia)
+    assert ws["A15"].value == "TOTAL FACTURA"
     assert ws["B15"].value == "=B14"
 
     # Limpieza de archivo temporal
@@ -104,15 +104,15 @@ def test_generar_excel_con_saldo_anterior(sample_datos_horas):
     wb = openpyxl.load_workbook(ruta_xlsx)
     ws = wb.active
 
-    # Fila 14: INCLUIDO
-    assert ws["A14"].value == "INCLUIDO"
+    # Fila 14: TOTAL IVA INCLUIDO
+    assert ws["A14"].value == "TOTAL IVA INCLUIDO"
 
     # Fila 15: SALDO ANTERIOR
     assert ws["A15"].value == "SALDO ANTERIOR"
     assert ws["B15"].value == 177364
 
-    # Fila 16: FACTURA
-    assert ws["A16"].value == "FACTURA"
+    # Fila 16: TOTAL FACTURA
+    assert ws["A16"].value == "TOTAL FACTURA"
     assert ws["B16"].value == "=B14+B15"
 
     if Path(ruta_xlsx).exists():
@@ -128,15 +128,15 @@ def test_generar_excel_con_descuento(sample_datos_horas):
     wb = openpyxl.load_workbook(ruta_xlsx)
     ws = wb.active
 
-    # Fila 14: INCLUIDO
-    assert ws["A14"].value == "INCLUIDO"
+    # Fila 14: TOTAL IVA INCLUIDO
+    assert ws["A14"].value == "TOTAL IVA INCLUIDO"
 
     # Fila 15: Descuento
     assert ws["A15"].value == "Descuento"
     assert ws["B15"].value == -50000
 
-    # Fila 16: FACTURA
-    assert ws["A16"].value == "FACTURA"
+    # Fila 16: TOTAL FACTURA
+    assert ws["A16"].value == "TOTAL FACTURA"
     assert ws["B16"].value == "=B14+B15"
 
     if Path(ruta_xlsx).exists():

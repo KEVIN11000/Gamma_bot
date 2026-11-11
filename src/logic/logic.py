@@ -947,6 +947,7 @@ class AgenteAutonomoHoras:
             if any(c.strip() for c in f)
             and f[0].strip().lower() != "resumen"
             and f[0].strip().lower() != "mes"
+            and f[0].strip().lower() != "horas del mes"
         ]
 
         col_horas = next(
@@ -986,11 +987,11 @@ class AgenteAutonomoHoras:
             return f"${int(round(val)):,}"
 
         resumen_data = [
-            ["mes", f"{total_decimal_redondeado:.1f}"],
-            ["hora", fmt_m(monto_por_hora)],
-            ["por Horas", fmt_m(monto_por_horas)],
+            ["Horas del mes", f"{total_decimal_redondeado:.1f}"],
+            ["Monto por hora", fmt_m(monto_por_hora)],
+            ["Total Monto por Horas", fmt_m(monto_por_horas)],
             ["IVA 10%", fmt_m(monto_iva)],
-            ["INCLUIDO", fmt_m(subtotal_incluido)],
+            ["TOTAL IVA INCLUIDO", fmt_m(subtotal_incluido)],
         ]
 
         if monto_saldo_anterior > 0:
@@ -998,7 +999,7 @@ class AgenteAutonomoHoras:
         elif monto_descuento > 0:
             resumen_data.append(["Descuento", f"-{fmt_m(monto_descuento)}"])
 
-        resumen_data.append(["FACTURA", fmt_m(total_factura)])
+        resumen_data.append(["TOTAL FACTURA", fmt_m(total_factura)])
 
         nombre_archivo = (
             f"reporte_horas_{nombre_periodo.replace(' ', '_').replace('/', '-')}.pdf"
@@ -1046,7 +1047,10 @@ class AgenteAutonomoHoras:
             ultima_fila = len(datos)
             for idx in range(len(datos) - 1, -1, -1):
                 fila_vals = datos[idx]
-                if len(fila_vals) > 0 and fila_vals[0].strip().lower() == "resumen":
+                if len(fila_vals) > 0 and fila_vals[0].strip().lower() in (
+                    "resumen",
+                    "horas del mes",
+                ):
                     ultima_fila = idx
                     break
                 elif any(c.strip() for c in fila_vals):
@@ -1064,6 +1068,7 @@ class AgenteAutonomoHoras:
                 if any(c.strip() for c in f)
                 and f[0].strip().lower() != "resumen"
                 and f[0].strip().lower() != "mes"
+                and f[0].strip().lower() != "horas del mes"
             ]
 
             total_decimal = sum(
@@ -1095,11 +1100,11 @@ class AgenteAutonomoHoras:
 
             filas_resumen = [
                 ["Resumen", "Cantidades"],
-                ["mes", f"{total_decimal_redondeado:.1f}"],
-                ["hora", fmt_m(monto_por_hora)],
-                ["por Horas", fmt_m(monto_por_horas)],
+                ["Horas del mes", f"{total_decimal_redondeado:.1f}"],
+                ["Monto por hora", fmt_m(monto_por_hora)],
+                ["Total Monto por Horas", fmt_m(monto_por_horas)],
                 ["IVA 10%", fmt_m(monto_iva)],
-                ["INCLUIDO", fmt_m(subtotal_incluido)],
+                ["TOTAL IVA INCLUIDO", fmt_m(subtotal_incluido)],
             ]
 
             if monto_saldo_anterior > 0:
@@ -1107,7 +1112,7 @@ class AgenteAutonomoHoras:
             elif monto_descuento > 0:
                 filas_resumen.append(["Descuento", f"-{fmt_m(monto_descuento)}"])
 
-            filas_resumen.append(["FACTURA", fmt_m(total_factura)])
+            filas_resumen.append(["TOTAL FACTURA", fmt_m(total_factura)])
 
             fila_inicio = (
                 ultima_fila + 2 if ultima_fila == len(datos) else ultima_fila + 1

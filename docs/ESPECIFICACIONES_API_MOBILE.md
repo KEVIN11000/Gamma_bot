@@ -86,6 +86,64 @@
 - **Headers:** `X-API-KEY`
 - **Respuesta Exitosa (`HTTP 200 OK`):** Lista cronológica de logs de depuración.
 
+#### A.4 Consulta de Capacidades y Auto-Descubrimiento de la API (v2.1.4)
+- **Método / Ruta:** `GET capacidades`
+- **Headers:** `X-API-KEY`
+- **Query Params Opcionales:** `modulo=<nombre>` (ej. `?modulo=presupuesto`)
+- **Uso en Mobile:** Permite a Gamma Mobile inspeccionar dinámicamente el catálogo completo de rutas activas, métodos HTTP admitidos, parámetros dinámicos y banderas booleanas de alto nivel (`capacidades_clave`) para activar o desactivar dinámicamente componentes de UI (feature toggles) sin riesgo de fallas 404 por desfasaje de versiones.
+- **Respuesta Exitosa (`HTTP 200 OK`):**
+```json
+{
+  "version_api": "2.1.4",
+  "total_rutas": 39,
+  "modulos": [
+    "asistencia",
+    "avisos",
+    "capacidades",
+    "cierres",
+    "clima",
+    "dashboard",
+    "dispositivos",
+    "health",
+    "movimientos",
+    "obligaciones",
+    "presupuesto",
+    "proyecciones",
+    "proyectos",
+    "reportes",
+    "soporte"
+  ],
+  "capacidades_clave": {
+    "presupuesto_fijos_delete": true,
+    "presupuesto_techos_put": true,
+    "presupuesto_salario_put": true,
+    "asistencia_excel_export": true,
+    "asistencia_pdf_a4_optimizado": true,
+    "asistencia_rectificar_post": true,
+    "obligaciones_deuda_foco": true,
+    "obligaciones_abonar_post": true,
+    "obligaciones_eliminar_delete": true,
+    "cierres_historicos_get": true,
+    "proyectos_simular_post": true,
+    "proyectos_aprobar_post": true,
+    "reportes_financiero_pdf": true,
+    "reportes_financiero_excel": true,
+    "capacidades_discovery": true
+  },
+  "rutas": [
+    {
+      "modulo": "capacidades",
+      "ruta": "/api/v1/capacidades",
+      "metodos": ["GET"],
+      "nombre_endpoint": "mobile_api.capacidades_v1.obtener_capacidades",
+      "descripcion": "Catálogo y auto-descubrimiento dinámico de endpoints y capacidades del backend.",
+      "autenticacion": true,
+      "parametros": []
+    }
+  ]
+}
+```
+
 ---
 
 ### Módulo B: Dashboard y Proyecciones Financieras
@@ -248,6 +306,40 @@
     "mensaje": "Dentro del límite presupuestario."
   }
 ]
+```
+
+#### C.6 Eliminar Gasto Fijo
+- **Método / Ruta:** `DELETE presupuesto/fijos/{concepto}`
+- **Uso en Mobile:** Permite retirar un gasto fijo que ya no forma parte de la estructura mensual.
+- **Headers:** `X-API-KEY`
+- **Respuesta Exitosa (`HTTP 200 OK`):**
+```json
+{
+  "status": "ok",
+  "concepto": "Suscripción Innecesaria",
+  "mensaje": "Gasto fijo eliminado correctamente de Presupuesto_Base."
+}
+```
+
+#### C.7 Configurar Techo Presupuestario Variable
+- **Método / Ruta:** `PUT presupuesto/techos/{categoria}`
+- **Uso en Mobile:** Ajusta el límite mensual en Guaraníes y el umbral de alerta (50-100%) para una categoría de gasto variable.
+- **Payload (`JSON`):**
+```json
+{
+  "limite_mensual": 1800000,
+  "umbral_alerta": 85
+}
+```
+- **Respuesta Exitosa (`HTTP 200 OK`):**
+```json
+{
+  "status": "ok",
+  "categoria": "Supermercado",
+  "limite_mensual": 1800000,
+  "umbral_alerta": 85,
+  "mensaje": "Techo presupuestario actualizado exitosamente."
+}
 ```
 
 ---
@@ -555,35 +647,41 @@
 
 ---
 
-## 3. Estado de Disponibilidad de Endpoints en Producción (v2.0.0)
+## 3. Estado de Disponibilidad de Endpoints en Producción (v2.1.4)
 
 | Endpoint | Módulo | Estado en Producción | Acción Backend Requerida |
 |---|---|---|---|
 | `GET health` | Sistema | ✅ Disponible | Ninguna |
-| `GET bootstrap` | Sistema | ⏳ Pendiente | Implementar endpoint unificado |
-| `GET dashboard/summary` | Finanzas | ✅ Disponible | Corregir cálculo de `flujo_neto` |
+| `GET bootstrap` | Sistema | ✅ Disponible | Ninguna |
+| `GET capacidades` | Sistema | ✅ Disponible | Ninguna (Catálogo e Introspección Dinámica) |
+| `GET dashboard/summary` | Finanzas | ✅ Disponible | Ninguna (Margen MLD desacoplado) |
 | `GET proyecciones/flujo-caja` | Finanzas | ✅ Disponible | Ninguna |
-| `GET presupuesto/fijos` | Presupuesto | ⏳ Pendiente | Implementar Blueprint `routes_presupuesto.py` |
-| `PUT presupuesto/fijos/{concepto}` | Presupuesto | ⏳ Pendiente | Implementar Blueprint `routes_presupuesto.py` |
-| `POST presupuesto/fijos` | Presupuesto | ⏳ Pendiente | Implementar Blueprint `routes_presupuesto.py` |
-| `PUT presupuesto/salario-base` | Presupuesto | ⏳ Pendiente | Implementar Blueprint `routes_presupuesto.py` |
-| `GET presupuesto/techos` | Presupuesto | ⏳ Pendiente | Implementar Blueprint `routes_presupuesto.py` |
+| `GET presupuesto/fijos` | Presupuesto | ✅ Disponible | Ninguna |
+| `PUT presupuesto/fijos/{concepto}` | Presupuesto | ✅ Disponible | Ninguna |
+| `POST presupuesto/fijos` | Presupuesto | ✅ Disponible | Ninguna |
+| `DELETE presupuesto/fijos/{concepto}` | Presupuesto | ✅ Disponible | Ninguna |
+| `PUT presupuesto/salario-base` | Presupuesto | ✅ Disponible | Ninguna |
+| `GET presupuesto/techos` | Presupuesto | ✅ Disponible | Ninguna |
+| `PUT presupuesto/techos/{categoria}` | Presupuesto | ✅ Disponible | Ninguna |
 | `GET movimientos` | Transacciones | ✅ Disponible | Ninguna |
 | `POST movimientos` | Transacciones | ✅ Disponible | Ninguna |
 | `POST movimientos/parse` | Transacciones | ✅ Disponible | Ninguna |
 | `POST movimientos/ocr` | Transacciones | ✅ Disponible | Ninguna |
-| `GET reportes/financiero/excel` | Reportes | ⏳ Pendiente | Exponer endpoint de Libro Diario |
-| `GET reportes/financiero/pdf` | Reportes | ⏳ Pendiente | Exponer endpoint de Libro Diario |
+| `GET reportes/financiero/excel` | Reportes | ✅ Disponible | Ninguna |
+| `GET reportes/financiero/pdf` | Reportes | ✅ Disponible | Ninguna |
 | `GET obligaciones` | Deudas | ✅ Disponible | Ninguna |
 | `POST obligaciones` | Deudas | ✅ Disponible | Ninguna |
+| `PUT obligaciones/{id}` | Deudas | ✅ Disponible | Ninguna (Pausar/Reactivar) |
+| `DELETE obligaciones/{id}` | Deudas | ✅ Disponible | Ninguna |
 | `POST obligaciones/abonar` | Deudas | ✅ Disponible | Ninguna |
 | `GET obligaciones/vencimientos` | Deudas | ✅ Disponible | Ninguna |
 | `GET obligaciones/foco` | Deudas | ✅ Disponible | Ninguna |
 | `POST obligaciones/proyectar-capacidad` | Deudas | ✅ Disponible | Ninguna |
-| `POST proyectos/simular` | Proyectos | ⏳ Pendiente | Incorporar persistencia de ID Simulado |
-| `POST proyectos/{id}/aprobar` | Proyectos | ⏳ Pendiente | Implementar aprobación de proyecto |
-| `GET asistencia/estado-hoy` | Asistencia | ⏳ Pendiente | Implementar consulta rápida de jornada |
+| `POST proyectos/simular` | Proyectos | ✅ Disponible | Ninguna |
+| `POST proyectos/{id}/aprobar` | Proyectos | ✅ Disponible | Ninguna |
+| `GET asistencia/estado-hoy` | Asistencia | ✅ Disponible | Ninguna |
 | `POST asistencia/marcar` | Asistencia | ✅ Disponible | Ninguna |
+| `PUT asistencia/jornadas/{fecha}` | Asistencia | ✅ Disponible | Ninguna (Modo Edición) |
 | `GET asistencia/materias` | Asistencia | ✅ Disponible | Ninguna |
 | `POST asistencia/materia` | Asistencia | ✅ Disponible | Ninguna |
 | `GET asistencia/analiticas` | Asistencia | ✅ Disponible | Ninguna |
@@ -592,5 +690,5 @@
 | `GET/POST/PUT/DELETE avisos` | Avisos | ✅ Disponible | Ninguna |
 | `GET clima` | Ambiental | ✅ Disponible | Ninguna |
 | `POST dispositivos/registrar` | Push FCM | ✅ Disponible | Ninguna |
-| `POST cierres/ejecutar` | Cierres | ✅ Disponible | Habilitar `tipo="deudas"` |
+| `POST cierres/ejecutar` | Cierres | ✅ Disponible | Ninguna |
 | `GET soporte/tickets` | Soporte | ✅ Disponible | Ninguna |

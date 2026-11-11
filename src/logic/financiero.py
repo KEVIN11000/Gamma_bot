@@ -355,6 +355,13 @@ class AgenteFinanciero:
         repo = SheetsRepository()
         return repo.agregar_gasto_fijo(categoria, concepto, monto, obs)
 
+    def eliminar_gasto_fijo(self, concepto: str) -> bool:
+        """Elimina un gasto fijo del Presupuesto_Base."""
+        from repositories.sheets_repository import SheetsRepository
+
+        repo = SheetsRepository()
+        return repo.eliminar_gasto_fijo(concepto)
+
     def obtener_balance(self) -> dict:
         """
         Calcula el Flujo Neto basado en el Libro Diario completo (o del mes actual).
