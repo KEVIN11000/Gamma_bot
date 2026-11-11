@@ -417,12 +417,53 @@ app/src/main/java/com/kevin/gammamobile/
   2. La UI actualiza inmediatamente el balance de forma optimista.  
   3. `SyncMovimientosWorker` se encola con restricciones de red (`NetworkType.CONNECTED`). Al restablecerse la conectividad, ejecuta `POST /api/v1/movimientos` y actualiza a `sync_status = "SYNCED"`.
 
-### 6.2 Notificaciones Locales de Recordatorios (`AvisosWorker`)
+### 6.2 Motor de Notificaciones y Alarmas Autónomo en el Dispositivo (Mobile Engine)
 
-- Para evitar costos de servidores push o sockets permanentes en PythonAnywhere:  
-  - `AvisosWorker` se programa en el dispositivo Android mediante `WorkManager` con periodicidad diaria a las 08:00 AM (hora Paraguay).  
-  - Consulta `avisos.json` en caché local.  
-  - Si la diferencia de días coincide con los hitos oficiales (`30, 7, 5, 3, 1`), lanza una notificación local al sistema de notificaciones de Android con sonido y vibración.
+Para garantizar resiliencia absoluta sin depender de servidores push permanentes ni agotar la batería del dispositivo, `GammaMobile` opera un **motor local autónomo** coordinado mediante `WorkManager` (para chequeos periódicos de baja prioridad) y `AlarmManager` (para alarmas exactas que deben sonar incluso en reposo):
+
+#### A. Canales de Notificación Nativos (Android API 26+)
+1. `channel_avisos_alarmas`: **Alarmas y Recordatorios IA** (`IMPORTANCE_HIGH` / `URGENT`). Sonido continuo y vibración para avisos exactos programados. Acciones rápidas: *Posponer 10 min* y *Completar*.
+2. `channel_vencimientos`: **Vencimientos y Finanzas** (`IMPORTANCE_HIGH`). Avisos de pago de deudas en los días 3, 1 y 0 (día del vencimiento) a la hora matutina configurada.
+3. `channel_asistencia`: **Asistencia y Jornada** (`IMPORTANCE_DEFAULT`). Guardia matutina de lunes a viernes (si a las 08:15 no marcó entrada) y aviso vespertino al computar 8 horas de trabajo.
+4. `channel_clima`: **Pronóstico y Alerta Meteorológica** (`IMPORTANCE_LOW` / `DEFAULT`). Reporte matutino silencioso o con toque suave.
+5. `channel_presupuesto`: **Alertas de Presupuesto** (`IMPORTANCE_DEFAULT`). Notificación preventiva al rebasar el 80% o 100% de techos variables.
+
+#### B. Mecanismos de Ejecución y Programación
+- **Alimentación por Hidratación (`GET /bootstrap`):** Tras cada sincronización exitosa, `LocalNotificationScheduler` lee los datos consolidados en Room:
+  - **Clima:** `ClimaWorker` evalúa el pronóstico en caché a la hora configurada (ej. 07:00 AM). Si `soloLluviaOExtremo == true`, solo emite si `llevar_paraguas == true`, viento $>35$ km/h o temperaturas extremas ($<12^\circ\text{C}$ o $>38^\circ\text{C}$).
+  - **Asistencia:** En días hábiles, `AsistenciaReminderWorker` verifica a las 08:15 si la jornada está iniciada; si no, lanza notificación con botón *Marcar Entrada*. Si está trabajando, programa una alarma para $HoraEntrada + 8$ horas con aviso de salida.
+  - **Vencimientos:** Para deudas con vencimiento en 3, 1 o 0 días, programa notificaciones a las 08:30 AM con acción directa *Abonar*.
+  - **Alarmas Exactas IA (`proximos_avisos`):** Para cada hito con fecha y hora explícita, registra `AlarmManager.setExactAndAllowWhileIdle()` apuntando a `AlarmaReceiver.kt` con permiso `USE_EXACT_ALARM`.
+
+### 6.3 Configuración de Preferencias en la App (`ConfiguracionNotificacionesScreen`)
+
+Respaldado por **Jetpack DataStore** (`UserPreferencesRepository`), permitiendo al usuario configurar horarios, días y umbrales directamente desde el móvil:
+
+```kotlin
+data class NotificacionesPreferences(
+    // Clima
+    val climaHabilitado: Boolean = true,
+    val climaHoraReporte: String = "07:00",
+    val climaSoloLluviaOExtremo: Boolean = true,
+    
+    // Asistencia
+    val asistenciaRecordatorioEntrada: Boolean = true,
+    val asistenciaHoraEntrada: String = "08:15",
+    val asistenciaRecordatorioSalida: Boolean = true,
+    val asistenciaDiasLaborales: Set<Int> = setOf(Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY, Calendar.THURSDAY, Calendar.FRIDAY),
+    
+    // Deudas y Finanzas
+    val deudasAvisosVencimiento: Boolean = true,
+    val deudasHoraVencimiento: String = "08:30",
+    val deudasDiasAnticipacion: Set<Int> = setOf(3, 1, 0),
+    val presupuestoAlertasTechos: Boolean = true,
+    
+    // No Molestar / Silencio
+    val noMolestarHabilitado: Boolean = false,
+    val noMolestarInicio: String = "22:00",
+    val noMolestarFin: String = "06:30"
+)
+```
 
 ---
 
@@ -513,14 +554,16 @@ app/src/main/java/com/kevin/gammamobile/
   3. Pantalla de simulación con cálculo de viabilidad (indicadores Verde, Amarillo, Rojo).  
 - **Criterio de Aceptación:** El simulador muestra advertencia de déficit si la cuota supera el margen disponible.
 
-#### `TICKET-MOB-10`: Programación de Notificaciones y Sincronización con WorkManager
+#### `TICKET-MOB-10`: Motor Autónomo de Notificaciones, Alarmas y Pantalla de Configuración
 
-- **Archivos:** `worker/SyncMovimientosWorker.kt`, `worker/AlarmaAvisosWorker.kt`  
+- **Archivos:** `worker/SyncMovimientosWorker.kt`, `worker/LocalNotificationScheduler.kt`, `worker/ClimaWorker.kt`, `worker/AsistenciaReminderWorker.kt`, `receiver/AlarmaReceiver.kt`, `data/repository/UserPreferencesRepository.kt`, `presentation/configuracion/ConfiguracionNotificacionesScreen.kt`  
 - **Tareas:**  
-  1. Configurar `SyncMovimientosWorker` con reintento exponencial (`BackoffPolicy.EXPONENTIAL`).  
-  2. Configurar `PeriodicWorkRequestBuilder` para `AlarmaAvisosWorker` cada 24 horas.  
-  3. Crear canal de notificaciones Android (`NotificationChannel`) para recordatorios contables.  
-- **Criterio de Aceptación:** Se dispara notificación en la barra de estado cuando faltan 5, 3 o 1 días para un evento registrado.
+  1. Configurar los 5 canales de notificación nativos (`NotificationChannel`) en `GammaApplication.kt`.  
+  2. Implementar `LocalNotificationScheduler` que orquesta avisos al hidratar Room mediante `GET /bootstrap`.  
+  3. Programar `ClimaWorker` diario y `AsistenciaReminderWorker` (guardia de entrada a las 08:15 y salida a las 8 hs).  
+  4. Configurar `AlarmManager.setExactAndAllowWhileIdle()` para alarmas exactas IA de `/aviso` y `AlarmaReceiver` con acciones rápidas (*Posponer* / *Completar*).  
+  5. Crear la pantalla `ConfiguracionNotificacionesScreen` conectada a Jetpack DataStore para control total del usuario sobre horarios, filtros de lluvia y días laborales.  
+- **Criterio de Aceptación:** Las notificaciones y alarmas se disparan puntualmente incluso sin conexión a internet ni dependencia de servidores push externos, respetando fielmente las preferencias del usuario.
 
 ---
 
