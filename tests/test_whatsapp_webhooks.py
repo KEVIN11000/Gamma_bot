@@ -14,6 +14,7 @@ os.environ.setdefault("TOKEN", "test_token_123")
 os.environ.setdefault("CHAT_ID", "123456")
 os.environ.setdefault("SPREADSHEET_ID", "test_sheet_id")
 os.environ.setdefault("WHATSAPP_WEBHOOK_SECRET", "dev-webhook-secret")
+os.environ.setdefault("ENABLE_WHATSAPP", "true")
 
 with patch("com.bot.GAMMA") as MockGamma, patch(
     "logic.cron_jobs.notificacion_clima"
@@ -308,3 +309,38 @@ def test_whatsapp_webhook_enqueues_successfully(client):
         assert row["estado"] == "pendiente"
     finally:
         conn.close()
+
+
+def test_whatsapp_webhook_disabled_by_default_or_env(client, monkeypatch):
+    """Verifies HTTP 503 MODULE_DISABLED when WhatsApp module is disabled."""
+    monkeypatch.setenv("ENABLE_WHATSAPP", "false")
+    payload = {
+        "event": "messages.upsert",
+        "instance": "gamma",
+        "data": {
+            "key": {
+                "remoteJid": "595981777888@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {"conversation": "Hola"},
+        },
+    }
+    res = client.post(
+        "/api/v1/webhooks/whatsapp",
+        json=payload,
+        headers={"X-Webhook-Secret": "dev-webhook-secret"},
+    )
+    assert res.status_code == 503
+    data = res.get_json()
+    assert data["error"]["code"] == "MODULE_DISABLED"
+
+    # Also verify DISABLED_MODULES overrides ENABLE_WHATSAPP=true
+    monkeypatch.setenv("ENABLE_WHATSAPP", "true")
+    monkeypatch.setenv("DISABLED_MODULES", "whatsapp")
+    res_disabled = client.post(
+        "/api/v1/webhooks/whatsapp",
+        json=payload,
+        headers={"X-Webhook-Secret": "dev-webhook-secret"},
+    )
+    assert res_disabled.status_code == 503
+    assert res_disabled.get_json()["error"]["code"] == "MODULE_DISABLED"

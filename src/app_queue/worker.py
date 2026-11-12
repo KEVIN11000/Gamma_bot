@@ -33,8 +33,10 @@ def create_default_dispatcher(bot: Any = None) -> NotificationDispatcher:
     if bot is not None:
         dispatcher.register_adapter("telegram", _resolve_notifier(bot))
 
+    from config import is_module_enabled
+
     wa_api_url = os.getenv("WHATSAPP_API_URL")
-    if wa_api_url:
+    if wa_api_url and is_module_enabled("whatsapp"):
         try:
             wa_adapter = WhatsAppNotificationAdapter()
             dispatcher.register_adapter("whatsapp", wa_adapter)

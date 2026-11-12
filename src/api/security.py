@@ -28,13 +28,10 @@ limiter = Limiter(
 def is_valid_api_key(provided_key: str | None) -> bool:
     if not provided_key:
         return False
-    from config import is_production
 
     expected_key = os.getenv("X_API_KEY") or os.getenv("GAMMA_MOBILE_API_KEY")
     if not expected_key:
-        if is_production():
-            return False
-        expected_key = "dev-key"
+        return False
 
     # Timing-attack resistant hash comparison
     h_provided = hashlib.sha256(provided_key.encode("utf-8")).digest()
@@ -45,7 +42,6 @@ def is_valid_api_key(provided_key: str | None) -> bool:
 def is_valid_webhook_secret(provided_secret: str | None) -> bool:
     if not provided_secret:
         return False
-    from config import is_production
 
     expected_secret = (
         os.getenv("WHATSAPP_WEBHOOK_SECRET")
@@ -53,9 +49,7 @@ def is_valid_webhook_secret(provided_secret: str | None) -> bool:
         or os.getenv("X_API_KEY")
     )
     if not expected_secret:
-        if is_production():
-            return False
-        expected_secret = "dev-webhook-secret"
+        return False
 
     h_provided = hashlib.sha256(provided_secret.encode("utf-8")).digest()
     h_expected = hashlib.sha256(expected_secret.encode("utf-8")).digest()

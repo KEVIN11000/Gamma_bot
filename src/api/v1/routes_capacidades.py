@@ -42,6 +42,10 @@ def obtener_capacidades() -> Any:
     rutas_info: list[RutaEndpointInfo] = []
     modulos_set: set[str] = set()
 
+    from config import get_disabled_modules, is_module_enabled
+
+    disabled_modules = get_disabled_modules()
+
     for rule in current_app.url_map.iter_rules():
         rule_str = rule.rule
         if not rule_str.startswith("/api/v1"):
@@ -57,6 +61,14 @@ def obtener_capacidades() -> Any:
         modulo = partes[0] if partes else "general"
         if modulo.startswith("<"):
             modulo = "general"
+
+        if modulo.lower() in disabled_modules:
+            continue
+        if rule_str.endswith("/webhooks/whatsapp") and not is_module_enabled(
+            "whatsapp"
+        ):
+            continue
+
         modulos_set.add(modulo)
 
         if filtro_modulo and modulo.lower() != filtro_modulo:
@@ -101,6 +113,7 @@ def obtener_capacidades() -> Any:
         "reportes_financiero_pdf": True,
         "reportes_financiero_excel": True,
         "capacidades_discovery": True,
+        "whatsapp_webhook_enabled": is_module_enabled("whatsapp"),
     }
 
     response_obj = CapacidadesResponse(

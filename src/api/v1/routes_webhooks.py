@@ -19,6 +19,20 @@ webhooks_bp = Blueprint("webhooks_v1", __name__)
 @require_webhook_secret
 def handle_whatsapp_webhook() -> Any:
     """Ingests incoming WhatsApp events and enqueues messages asynchronously."""
+    from config import is_module_enabled
+
+    if not is_module_enabled("whatsapp"):
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "MODULE_DISABLED",
+                        "message": "El módulo de WhatsApp se encuentra desactivado",
+                    }
+                }
+            ),
+            503,
+        )
     if request.content_length and request.content_length > 65536:
         return (
             jsonify(

@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Set
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -27,6 +27,41 @@ CRON_SECRET: Optional[str] = os.getenv("CRON_SECRET")
 # Simple flag to differentiate dev vs prod (defaults to development)
 FLASK_ENV: str = os.getenv("FLASK_ENV", "development").lower()
 
+# Default module state: WhatsApp is disabled by default until explicitly enabled
+_DEFAULT_MODULE_STATES: dict[str, bool] = {
+    "whatsapp": False,
+}
+
+
+def get_disabled_modules() -> Set[str]:
+    """Return the normalized set of module names explicitly disabled via DISABLED_MODULES."""
+    raw = os.getenv("DISABLED_MODULES", "")
+    if not raw:
+        return set()
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
+def is_module_enabled(module_name: str) -> bool:
+    """Return True if a module is enabled, honoring DISABLED_MODULES and ENABLE_<MODULE>."""
+    norm = module_name.strip().lower()
+    if not norm:
+        return False
+
+    disabled = get_disabled_modules()
+    if norm in disabled or (norm == "webhooks" and "whatsapp" in disabled):
+        return False
+
+    env_key = f"ENABLE_{norm.upper()}"
+    raw_flag = os.getenv(env_key)
+    if raw_flag is not None and raw_flag.strip() != "":
+        val = raw_flag.strip().lower()
+        if val in ("1", "true", "yes", "on"):
+            return True
+        if val in ("0", "false", "no", "off"):
+            return False
+
+    return _DEFAULT_MODULE_STATES.get(norm, True)
+
 
 def is_production() -> bool:
     """Return True when the app is running in a production‑like environment."""
@@ -44,15 +79,15 @@ def validate_production_config() -> None:
     if not is_production():
         return
     missing = []
-    if not GITHUB_WEBHOOK_SECRET:
+    if not (os.getenv("GITHUB_WEBHOOK_SECRET") or GITHUB_WEBHOOK_SECRET):
         missing.append("GITHUB_WEBHOOK_SECRET")
-    if not CRON_SECRET:
+    if not (os.getenv("CRON_SECRET") or CRON_SECRET):
         missing.append("CRON_SECRET")
-    if not TOKEN:
+    if not (os.getenv("TOKEN") or TOKEN):
         missing.append("TOKEN")
     if not (os.getenv("X_API_KEY") or os.getenv("GAMMA_MOBILE_API_KEY")):
         missing.append("X_API_KEY")
-    if not os.getenv("WHATSAPP_WEBHOOK_SECRET"):
+    if is_module_enabled("whatsapp") and not os.getenv("WHATSAPP_WEBHOOK_SECRET"):
         missing.append("WHATSAPP_WEBHOOK_SECRET")
     if missing:
         raise RuntimeError(

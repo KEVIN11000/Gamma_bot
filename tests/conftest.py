@@ -7,6 +7,7 @@ os.environ["SPREADSHEET_ID"] = "dummy_spreadsheet_id"
 os.environ["CALENDAR_ID"] = "dummy_calendar_id"
 os.environ["LIBRO_CONTABLE_ID"] = "dummy_libro_contable_id"
 os.environ["MONTO_POR_HORA"] = "30000"
+os.environ.setdefault("X_API_KEY", "test-secret-key")
 
 
 @pytest.fixture(autouse=True)

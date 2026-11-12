@@ -11,6 +11,7 @@ os.environ.setdefault("TOKEN", "test_token_123")
 os.environ.setdefault("CHAT_ID", "123456")
 os.environ.setdefault("SPREADSHEET_ID", "test_sheet_id")
 os.environ.setdefault("WHATSAPP_WEBHOOK_SECRET", "dev-webhook-secret")
+os.environ.setdefault("ENABLE_WHATSAPP", "true")
 
 with patch("com.bot.GAMMA") as MockGamma, patch(
     "logic.cron_jobs.notificacion_clima"

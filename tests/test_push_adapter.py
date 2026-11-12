@@ -50,7 +50,7 @@ def client(push_adapter: PushNotificationAdapter):
 
 
 def _get_api_headers() -> dict[str, str]:
-    api_key = os.getenv("X_API_KEY") or "dev-key"
+    api_key = os.getenv("X_API_KEY") or "test-secret-key"
     return {"X-API-KEY": api_key, "Content-Type": "application/json"}
 
 

@@ -12,6 +12,7 @@ from api.schemas import FlujoCajaResponse, FlujoCajaItemDiario
 os.environ.setdefault("TOKEN", "test_token_123")
 os.environ.setdefault("CHAT_ID", "123456")
 os.environ.setdefault("SPREADSHEET_ID", "test_sheet_id")
+os.environ.setdefault("X_API_KEY", "test-secret-key")
 
 with patch("com.bot.GAMMA") as MockGamma, patch(
     "logic.cron_jobs.notificacion_clima"
@@ -23,7 +24,9 @@ with patch("com.bot.GAMMA") as MockGamma, patch(
 
 
 def _get_valid_api_key() -> str:
-    return os.getenv("X_API_KEY") or os.getenv("GAMMA_MOBILE_API_KEY") or "dev-key"
+    return (
+        os.getenv("X_API_KEY") or os.getenv("GAMMA_MOBILE_API_KEY") or "test-secret-key"
+    )
 
 
 @pytest.fixture
