@@ -40,8 +40,9 @@ scripts/vigia.py
 src/vigia_engine.py
 tests/test_vigia.py
 
-# Archivos y carpetas locales del entorno de desarrollo
+# Archivos y carpetas locales del entorno de desarrollo y auditoría interna
 /repositories/
 /.specify/
 /rules/
+docs/seguridad_*.md
 

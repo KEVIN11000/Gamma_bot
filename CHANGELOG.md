@@ -5,6 +5,20 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ---
 
+## [2.1.5] - 2026-11-12
+
+### Seguridad
+* **Autenticación *Fail-Closed* en API y Webhooks (`src/api/security.py`):**
+  * Eliminación de valores por defecto de desarrollo en `is_valid_api_key()` e `is_valid_webhook_secret()`, garantizando rechazo inmediato (`401 Unauthorized`) si las claves de entorno no están definidas en cualquier entorno.
+
+### Añadido
+* **Control de Activación/Desactivación de Módulos (`src/config.py`, `src/api/v1/routes_webhooks.py`, `src/api/v1/routes_capacidades.py`, `src/app_queue/worker.py`):**
+  * Nuevas funciones `is_module_enabled(module_name)` y `get_disabled_modules()` con soporte para `ENABLE_<MODULO>` y `DISABLED_MODULES`.
+  * Módulo `whatsapp` desactivado por defecto (`ENABLE_WHATSAPP=false`), retornando `503 MODULE_DISABLED` en `/api/v1/webhooks/whatsapp` cuando se encuentra apagado y omitiendo la exigencia de `WHATSAPP_WEBHOOK_SECRET` en `validate_production_config()` hasta su habilitación explícita.
+  * Exposición del estado `"whatsapp_webhook_enabled"` en `GET /api/v1/capacidades` y filtrado dinámico de módulos deshabilitados.
+
+---
+
 ## [2.1.4] - 2026-11-11
 
 ### Añadido
